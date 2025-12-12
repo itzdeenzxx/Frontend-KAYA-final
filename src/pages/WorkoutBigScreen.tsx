@@ -11,7 +11,9 @@ import {
   PersonStanding, 
   Heart,
   Smartphone,
-  Wifi
+  Wifi,
+  Bone,
+  EyeOff
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -22,6 +24,8 @@ import {
   WorkoutSession,
   RemoteAction,
 } from '@/lib/session';
+import { useMediaPipePose } from '@/hooks/useMediaPipePose';
+import { SkeletonOverlay } from '@/components/shared/SkeletonOverlay';
 
 // Map icon names to components
 const exerciseIcons: Record<string, React.ReactNode> = {
@@ -70,6 +74,17 @@ export default function WorkoutBigScreen() {
   // Video ref for webcam
   const videoRef = useRef<HTMLVideoElement>(null);
   const [cameraError, setCameraError] = useState<string>('');
+  
+  // Skeleton overlay state
+  const [showSkeleton, setShowSkeleton] = useState(true);
+  const [showOpticalFlow, setShowOpticalFlow] = useState(true);
+  const [videoDimensions, setVideoDimensions] = useState({ width: 1920, height: 1080 });
+  
+  // MediaPipe pose detection
+  const { landmarks, opticalFlowPoints, getFlowHistory, isLoading: poseLoading } = useMediaPipePose(
+    videoRef,
+    { enabled: showSkeleton || showOpticalFlow }
+  );
 
   // Initialize webcam
   useEffect(() => {
@@ -85,6 +100,16 @@ export default function WorkoutBigScreen() {
         });
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
+          
+          // Track video dimensions when metadata loads
+          videoRef.current.onloadedmetadata = () => {
+            if (videoRef.current) {
+              setVideoDimensions({
+                width: videoRef.current.videoWidth || 1920,
+                height: videoRef.current.videoHeight || 1080,
+              });
+            }
+          };
         }
       } catch (error) {
         console.error('Camera error:', error);
@@ -93,8 +118,22 @@ export default function WorkoutBigScreen() {
     };
 
     startCamera();
+    
+    // Update dimensions on window resize
+    const handleResize = () => {
+      if (videoRef.current) {
+        setVideoDimensions({
+          width: window.innerWidth,
+          height: window.innerHeight,
+        });
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+    handleResize();
 
     return () => {
+      window.removeEventListener('resize', handleResize);
       if (videoRef.current?.srcObject) {
         const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
         tracks.forEach((track) => track.stop());
@@ -150,6 +189,9 @@ export default function WorkoutBigScreen() {
         break;
       case 'end':
         handleStop();
+        break;
+      case 'toggleSkeleton':
+        setShowSkeleton((prev) => !prev);
         break;
     }
 
@@ -242,18 +284,33 @@ export default function WorkoutBigScreen() {
             <p className="text-white text-xl">{cameraError}</p>
           </div>
         ) : (
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="w-full h-full object-cover scale-x-[-1]"
-          />
+          <>
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover scale-x-[-1]"
+            />
+            {/* Skeleton Overlay */}
+            {(showSkeleton || showOpticalFlow) && (
+              <SkeletonOverlay
+                landmarks={landmarks}
+                opticalFlowPoints={opticalFlowPoints}
+                getFlowHistory={getFlowHistory}
+                showSkeleton={showSkeleton}
+                showOpticalFlow={showOpticalFlow}
+                width={videoDimensions.width}
+                height={videoDimensions.height}
+                mirrored={true}
+              />
+            )}
+          </>
         )}
       </div>
 
       {/* Overlay gradient */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40 pointer-events-none" />
 
       {/* Top Bar */}
       <div className="absolute top-0 left-0 right-0 p-6 flex items-center justify-between z-10">
@@ -263,6 +320,18 @@ export default function WorkoutBigScreen() {
           className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur-sm flex items-center justify-center text-white hover:bg-white/20 transition-colors"
         >
           <X className="w-6 h-6" />
+        </button>
+        
+        {/* Skeleton Toggle */}
+        <button
+          onClick={() => setShowSkeleton(!showSkeleton)}
+          className={cn(
+            "w-12 h-12 rounded-xl backdrop-blur-sm flex items-center justify-center text-white transition-colors",
+            showSkeleton ? "bg-primary/80 hover:bg-primary" : "bg-white/10 hover:bg-white/20"
+          )}
+          title={showSkeleton ? "ซ่อนโครงกระดูก" : "แสดงโครงกระดูก"}
+        >
+          {showSkeleton ? <Bone className="w-6 h-6" /> : <EyeOff className="w-6 h-6" />}
         </button>
 
         {/* Connection Status */}

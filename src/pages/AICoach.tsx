@@ -88,9 +88,9 @@ export default function AICoach() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* Header */}
-      <div className="bg-background border-b border-border px-6 py-4 flex items-center gap-4">
+    <div className="h-screen bg-background flex flex-col overflow-hidden">
+      {/* Header - Fixed */}
+      <div className="fixed top-0 left-0 right-0 z-10 bg-background/95 backdrop-blur-md border-b border-border px-6 py-4 flex items-center gap-4">
         <Link
           to="/dashboard"
           className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center"
@@ -115,8 +115,8 @@ export default function AICoach() {
         </button>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+      {/* Messages - Scrollable area with padding for fixed header and input */}
+      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 mt-20 mb-32">
         {messages.map((message) => (
           <div
             key={message.id}
@@ -169,8 +169,8 @@ export default function AICoach() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
-      <div className="border-t border-border px-6 py-4 safe-area-inset-bottom">
+      {/* Input - Fixed */}
+      <div className="fixed bottom-16 left-0 right-0 z-10 border-t border-border px-6 py-4 bg-background/95 backdrop-blur-md safe-area-inset-bottom">
         <div className="flex items-center gap-3">
           <button
             onClick={handleVoiceInput}

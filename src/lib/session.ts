@@ -20,13 +20,14 @@ export interface WorkoutSession {
   status: 'waiting' | 'connected' | 'active' | 'ended';
   currentExercise: number;
   isPaused: boolean;
+  showSkeleton?: boolean;
   remoteAction?: RemoteAction;
   createdAt: Timestamp;
   lastActivity: Timestamp;
 }
 
 export interface RemoteAction {
-  type: 'play' | 'pause' | 'next' | 'previous' | 'volume' | 'end';
+  type: 'play' | 'pause' | 'next' | 'previous' | 'volume' | 'end' | 'toggleSkeleton';
   timestamp: number;
   data?: Record<string, unknown>;
 }

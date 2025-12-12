@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Play, Pause, SkipForward, SkipBack, X, Volume2, MessageCircle, Dumbbell, Flame, PersonStanding, Heart, Brain, Sparkles, Target, Zap, Camera, CameraOff, Activity } from "lucide-react";
+import { Play, Pause, SkipForward, SkipBack, X, Volume2, MessageCircle, Dumbbell, Flame, PersonStanding, Heart, Brain, Sparkles, Target, Zap, Camera, CameraOff, Activity, Bone, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useMediaPipePose } from "@/hooks/useMediaPipePose";
+import { SkeletonOverlay } from "@/components/shared/SkeletonOverlay";
 
 // Map icon names to components
 const exerciseIcons: Record<string, React.ReactNode> = {
@@ -56,6 +58,17 @@ export default function WorkoutUI() {
   const [cameraError, setCameraError] = useState<string>('');
   const [cameraEnabled, setCameraEnabled] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  
+  // Skeleton overlay state
+  const [showSkeleton, setShowSkeleton] = useState(true);
+  const [showOpticalFlow, setShowOpticalFlow] = useState(true);
+  const [videoDimensions, setVideoDimensions] = useState({ width: 1920, height: 1080 });
+  
+  // MediaPipe pose detection
+  const { landmarks, opticalFlowPoints, getFlowHistory } = useMediaPipePose(
+    videoRef,
+    { enabled: cameraEnabled && (showSkeleton || showOpticalFlow) }
+  );
 
   // Detect mobile
   useEffect(() => {
@@ -90,6 +103,16 @@ export default function WorkoutUI() {
         });
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
+          
+          // Track video dimensions when metadata loads
+          videoRef.current.onloadedmetadata = () => {
+            if (videoRef.current) {
+              setVideoDimensions({
+                width: videoRef.current.videoWidth || 1920,
+                height: videoRef.current.videoHeight || 1080,
+              });
+            }
+          };
         }
         setCameraError('');
       } catch (error) {
@@ -99,8 +122,20 @@ export default function WorkoutUI() {
     };
 
     startCamera();
+    
+    // Update dimensions on window resize
+    const handleResize = () => {
+      setVideoDimensions({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+    };
+    
+    window.addEventListener('resize', handleResize);
+    handleResize();
 
     return () => {
+      window.removeEventListener('resize', handleResize);
       if (videoRef.current?.srcObject) {
         const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
         tracks.forEach((track) => track.stop());
@@ -198,18 +233,33 @@ export default function WorkoutUI() {
               <p className="text-white/70 text-xl">{cameraError}</p>
             </div>
           ) : (
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover scale-x-[-1]"
-            />
+            <>
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover scale-x-[-1]"
+              />
+              {/* Skeleton Overlay */}
+              {cameraEnabled && (showSkeleton || showOpticalFlow) && (
+                <SkeletonOverlay
+                  landmarks={landmarks}
+                  opticalFlowPoints={opticalFlowPoints}
+                  getFlowHistory={getFlowHistory}
+                  showSkeleton={showSkeleton}
+                  showOpticalFlow={showOpticalFlow}
+                  width={videoDimensions.width}
+                  height={videoDimensions.height}
+                  mirrored={true}
+                />
+              )}
+            </>
           )}
         </div>
 
         {/* Overlay gradient */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40 pointer-events-none" />
 
         {/* AI Powered Badge */}
         <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20">
@@ -244,6 +294,17 @@ export default function WorkoutUI() {
 
           {/* Total Time & Camera Toggle */}
           <div className="flex items-center gap-3">
+            {/* Skeleton Toggle */}
+            <button
+              onClick={() => setShowSkeleton(!showSkeleton)}
+              className={cn(
+                "w-12 h-12 rounded-xl backdrop-blur-sm flex items-center justify-center transition-colors",
+                showSkeleton ? "bg-primary/80 text-white hover:bg-primary" : "bg-white/10 text-white/60 hover:bg-white/20"
+              )}
+              title={showSkeleton ? "ซ่อนโครงกระดูก" : "แสดงโครงกระดูก"}
+            >
+              {showSkeleton ? <Bone className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
+            </button>
             <button
               onClick={toggleCamera}
               className={cn(
@@ -408,18 +469,33 @@ export default function WorkoutUI() {
             <p className="text-white/50">{cameraError}</p>
           </div>
         ) : (
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="w-full h-full object-cover scale-x-[-1]"
-          />
+          <>
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover scale-x-[-1]"
+            />
+            {/* Skeleton Overlay for Mobile */}
+            {cameraEnabled && (showSkeleton || showOpticalFlow) && (
+              <SkeletonOverlay
+                landmarks={landmarks}
+                opticalFlowPoints={opticalFlowPoints}
+                getFlowHistory={getFlowHistory}
+                showSkeleton={showSkeleton}
+                showOpticalFlow={showOpticalFlow}
+                width={videoDimensions.width}
+                height={videoDimensions.height}
+                mirrored={true}
+              />
+            )}
+          </>
         )}
       </div>
 
       {/* Overlay gradient */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-black/60" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-black/60 pointer-events-none" />
 
       {/* Content */}
       <div className="relative z-10 flex flex-col h-full">
@@ -438,6 +514,17 @@ export default function WorkoutUI() {
             </div>
 
             <div className="flex items-center gap-2">
+              {/* Skeleton Toggle for Mobile */}
+              <button 
+                onClick={() => setShowSkeleton(!showSkeleton)}
+                className={cn(
+                  "w-10 h-10 rounded-xl backdrop-blur-sm flex items-center justify-center transition-colors",
+                  showSkeleton ? "bg-primary/80 text-white" : "bg-white/10 text-white/60"
+                )}
+                title={showSkeleton ? "ซ่อนโครงกระดูก" : "แสดงโครงกระดูก"}
+              >
+                {showSkeleton ? <Bone className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
+              </button>
               <button 
                 onClick={toggleCamera}
                 className={cn(

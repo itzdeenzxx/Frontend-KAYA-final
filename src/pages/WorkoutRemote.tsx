@@ -12,6 +12,8 @@ import {
   Wifi,
   WifiOff,
   X,
+  Bone,
+  EyeOff,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -42,6 +44,7 @@ export default function WorkoutRemote() {
   // Local state
   const [vibrationEnabled, setVibrationEnabled] = useState(true);
   const [lastActionSent, setLastActionSent] = useState<string>('');
+  const [skeletonEnabled, setSkeletonEnabled] = useState(true);
 
   // Subscribe to session updates
   useEffect(() => {
@@ -69,7 +72,7 @@ export default function WorkoutRemote() {
   }, [pairingCode, navigate]);
 
   // Send action to Big Screen
-  const sendAction = async (type: 'play' | 'pause' | 'next' | 'previous' | 'end') => {
+  const sendAction = async (type: 'play' | 'pause' | 'next' | 'previous' | 'end' | 'toggleSkeleton') => {
     if (!pairingCode || !isConnected) return;
 
     // Vibrate on action
@@ -85,6 +88,11 @@ export default function WorkoutRemote() {
         type,
         timestamp: Date.now(),
       });
+      
+      // Update local skeleton state if toggling
+      if (type === 'toggleSkeleton') {
+        setSkeletonEnabled(!skeletonEnabled);
+      }
     } catch (error) {
       console.error('Failed to send action:', error);
     }
@@ -171,9 +179,24 @@ export default function WorkoutRemote() {
         </p>
 
         {/* Session Code Display */}
-        <div className="mt-4 bg-background/10 rounded-xl px-4 py-2 inline-flex items-center gap-2">
-          <span className="text-background/60 text-sm">รหัส:</span>
-          <span className="font-mono font-bold tracking-widest">{pairingCode}</span>
+        <div className="mt-4 flex items-center gap-3 flex-wrap">
+          <div className="bg-background/10 rounded-xl px-4 py-2 inline-flex items-center gap-2">
+            <span className="text-background/60 text-sm">รหัส:</span>
+            <span className="font-mono font-bold tracking-widest">{pairingCode}</span>
+          </div>
+          
+          {/* Skeleton Toggle Button */}
+          <button
+            onClick={() => sendAction('toggleSkeleton')}
+            className={cn(
+              'h-10 px-4 rounded-xl flex items-center gap-2 transition-colors',
+              skeletonEnabled ? 'bg-primary text-white' : 'bg-background/10 text-background/60'
+            )}
+            disabled={!isConnected}
+          >
+            {skeletonEnabled ? <Bone className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
+            <span className="text-sm font-medium">{skeletonEnabled ? 'โครงกระดูก' : 'ซ่อน'}</span>
+          </button>
         </div>
       </div>
 
