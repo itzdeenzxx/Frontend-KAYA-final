@@ -1,0 +1,512 @@
+import i18n from 'i18next';
+import { initReactI18next } from 'react-i18next';
+
+const resources = {
+  en: {
+    translation: {
+      // App
+      appName: 'KAYA',
+      
+      // Navigation
+      nav: {
+        home: 'Home',
+        workout: 'Workout',
+        nutrition: 'Nutrition',
+        coach: 'Coach',
+        profile: 'Profile',
+        settings: 'Settings',
+      },
+      
+      // Greetings
+      greeting: {
+        morning: 'Good morning!',
+        afternoon: 'Good afternoon!',
+        evening: 'Good evening!',
+        welcome: 'Welcome back,',
+      },
+      
+      // Dashboard
+      dashboard: {
+        todayProgress: "Today's Progress",
+        goalLabel: 'Goal',
+        readyWorkout: 'Ready to workout?',
+        crushGoals: "Let's crush your goals!",
+        start: 'Start',
+        todayStats: "Today's Stats",
+        caloriesBurned: 'Calories Burned',
+        workoutTime: 'Workout Time',
+        sleep: 'Sleep',
+        waterIntake: 'Water Intake',
+        recommendedWorkout: 'Recommended Workout',
+        foodSummary: 'Food Summary',
+        dailyIntake: 'Daily intake',
+        viewAll: 'View all',
+        streakDays: 'Day Streak',
+        yourTier: 'Your Tier',
+        challenges: 'Challenges',
+        leaderboard: 'Leaderboard',
+      },
+      
+      // Tiers
+      tiers: {
+        silver: 'Silver',
+        gold: 'Gold',
+        diamond: 'Diamond',
+        diamondPlus: 'Diamond+',
+      },
+      
+      // Workout
+      workout: {
+        modeSelection: 'How do you want to exercise?',
+        mobileMode: 'Workout on mobile',
+        mobileDesc: 'Full workout experience on your phone',
+        castMode: 'Cast to big screen',
+        castDesc: 'Use mobile as remote control',
+        pairing: 'Device Pairing',
+        pairQR: 'Scan QR Code',
+        pairCode: 'Enter 6-digit code',
+        pairAuto: 'Auto-pair by session',
+        paired: 'Connected',
+        notPaired: 'Not connected',
+        connecting: 'Connecting...',
+        startWorkout: 'Start Workout',
+        pause: 'Pause',
+        resume: 'Resume',
+        next: 'Next',
+        stop: 'Stop',
+        restTime: 'Rest Time',
+        getReady: 'Get Ready!',
+        wellDone: 'Well Done!',
+        reps: 'Reps',
+        sets: 'Sets',
+        duration: 'Duration',
+        calories: 'Calories',
+        difficulty: 'Difficulty',
+        warmUp: 'Warm-up',
+        coolDown: 'Cool-down',
+        mainWorkout: 'Main Workout',
+        repCounter: 'Rep Counter',
+        currentExercise: 'Current Exercise',
+        nextExercise: 'Next Exercise',
+        poseCorrection: 'Pose Correction',
+        goodForm: 'Good form!',
+        adjustPosition: 'Adjust your position',
+      },
+      
+      // Workout Templates
+      templates: {
+        hiit: 'HIIT',
+        circuit: 'Circuit',
+        strength: 'Strength',
+        mobility: 'Mobility',
+        custom: 'Custom',
+        createWorkout: 'Create Workout',
+        templateLibrary: 'Template Library',
+        dragToReorder: 'Drag to reorder exercises',
+        addExercise: 'Add Exercise',
+        saveTemplate: 'Save Template',
+        aiSuggest: 'AI Suggest',
+      },
+      
+      // Nutrition
+      nutrition: {
+        todayMeals: "Today's Recommended Meals",
+        breakfast: 'Breakfast',
+        lunch: 'Lunch',
+        dinner: 'Dinner',
+        snacks: 'Snacks',
+        calories: 'Calories',
+        protein: 'Protein',
+        carbs: 'Carbs',
+        fats: 'Fats',
+        whyGood: 'Why this meal is good for you',
+        quickLog: 'Quick Log',
+        scanMeal: 'Scan Meal',
+        hydration: 'Hydration',
+        sleepTracker: 'Sleep Tracker',
+        logMeal: 'Log Meal',
+        addWater: 'Add Water',
+        logSleep: 'Log Sleep',
+      },
+      
+      // AI Coach
+      coach: {
+        title: 'AI Coach',
+        voiceAssistant: 'Voice Assistant',
+        askAnything: 'Ask me anything...',
+        listening: 'Listening...',
+        thinking: 'Thinking...',
+        commands: 'Voice Commands',
+        nextCommand: '"Next exercise"',
+        pauseCommand: '"Pause workout"',
+        howManyCommand: '"How many reps?"',
+        sessionSummary: 'Session Summary',
+        personalityOptions: 'Personality',
+        motivational: 'Motivational',
+        calm: 'Calm',
+        energetic: 'Energetic',
+        strict: 'Strict',
+        tips: 'Tips & Encouragement',
+      },
+      
+      // Profile
+      profile: {
+        title: 'Profile',
+        editProfile: 'Edit Profile',
+        weight: 'Weight',
+        height: 'Height',
+        age: 'Age',
+        goals: 'Goals',
+        progress: 'Progress',
+        achievements: 'Achievements',
+        weeklyGoal: 'Weekly Goal',
+        changePassword: 'Change Password',
+        logout: 'Logout',
+      },
+      
+      // Settings
+      settings: {
+        title: 'Settings',
+        notifications: 'Notifications',
+        workoutReminders: 'Workout Reminders',
+        mealReminders: 'Meal Reminders',
+        darkMode: 'Dark Mode',
+        language: 'Language',
+        connectedDevices: 'Connected Devices',
+        integrations: 'Integrations',
+        appleHealth: 'Apple Health',
+        googleFit: 'Google Fit',
+        heartRate: 'Heart Rate Monitor',
+        privacy: 'Privacy',
+        dataRetention: 'Data Retention',
+        exportData: 'Export Data',
+      },
+      
+      // Gamification
+      gamification: {
+        badges: 'Badges',
+        streaks: 'Streaks',
+        challenges: 'Challenges',
+        leaderboard: 'Leaderboard',
+        rank: 'Rank',
+        points: 'Points',
+        shareSession: 'Share Session',
+        weeklyChallenge: 'Weekly Challenge',
+        dailyGoal: 'Daily Goal',
+        earnedBadge: 'Badge Earned!',
+        newRecord: 'New Record!',
+        liveClasses: 'Live Classes',
+        rsvp: 'RSVP',
+        joined: 'Joined',
+      },
+      
+      // Analytics
+      analytics: {
+        title: 'Analytics',
+        accuracy: 'Accuracy Score',
+        tempo: 'Tempo',
+        trends: 'Trends',
+        export: 'Export',
+        exportCSV: 'Export CSV',
+        exportPDF: 'Export PDF',
+        thisWeek: 'This Week',
+        thisMonth: 'This Month',
+        allTime: 'All Time',
+      },
+      
+      // Common
+      common: {
+        save: 'Save',
+        cancel: 'Cancel',
+        confirm: 'Confirm',
+        delete: 'Delete',
+        edit: 'Edit',
+        close: 'Close',
+        loading: 'Loading...',
+        error: 'Error',
+        success: 'Success',
+        min: 'min',
+        hrs: 'hrs',
+        kcal: 'kcal',
+        cups: 'cups',
+        kg: 'kg',
+        lbs: 'lbs',
+        cm: 'cm',
+        ft: 'ft',
+      },
+      
+      // Auth
+      auth: {
+        login: 'Login',
+        register: 'Register',
+        username: 'Username',
+        password: 'Password',
+        confirmPassword: 'Confirm Password',
+        nickname: 'Nickname',
+        forgotPassword: 'Forgot password?',
+        createAccount: 'Create Account',
+        alreadyHaveAccount: 'Already have an account?',
+        dontHaveAccount: "Don't have an account?",
+      },
+    },
+  },
+  th: {
+    translation: {
+      // App
+      appName: 'KAYA',
+      
+      // Navigation
+      nav: {
+        home: 'หน้าหลัก',
+        workout: 'ออกกำลังกาย',
+        nutrition: 'โภชนาการ',
+        coach: 'โค้ช',
+        profile: 'โปรไฟล์',
+        settings: 'ตั้งค่า',
+      },
+      
+      // Greetings
+      greeting: {
+        morning: 'สวัสดีตอนเช้า!',
+        afternoon: 'สวัสดีตอนบ่าย!',
+        evening: 'สวัสดีตอนเย็น!',
+        welcome: 'ยินดีต้อนรับกลับ,',
+      },
+      
+      // Dashboard
+      dashboard: {
+        todayProgress: 'ความคืบหน้าวันนี้',
+        goalLabel: 'เป้าหมาย',
+        readyWorkout: 'พร้อมออกกำลังกายหรือยัง?',
+        crushGoals: 'มาทำลายเป้าหมายกันเถอะ!',
+        start: 'เริ่มต้น',
+        todayStats: 'สถิติวันนี้',
+        caloriesBurned: 'แคลอรี่ที่เผาผลาญ',
+        workoutTime: 'เวลาออกกำลังกาย',
+        sleep: 'การนอน',
+        waterIntake: 'ปริมาณน้ำ',
+        recommendedWorkout: 'การออกกำลังกายแนะนำ',
+        foodSummary: 'สรุปอาหาร',
+        dailyIntake: 'ปริมาณต่อวัน',
+        viewAll: 'ดูทั้งหมด',
+        streakDays: 'วันติดต่อกัน',
+        yourTier: 'ระดับของคุณ',
+        challenges: 'ความท้าทาย',
+        leaderboard: 'อันดับ',
+      },
+      
+      // Tiers
+      tiers: {
+        silver: 'เงิน',
+        gold: 'ทอง',
+        diamond: 'เพชร',
+        diamondPlus: 'เพชร+',
+      },
+      
+      // Workout
+      workout: {
+        modeSelection: 'คุณต้องการออกกำลังกายอย่างไร?',
+        mobileMode: 'ออกกำลังกายบนมือถือ',
+        mobileDesc: 'ประสบการณ์การออกกำลังกายเต็มรูปแบบบนโทรศัพท์',
+        castMode: 'แคสต์ไปหน้าจอใหญ่',
+        castDesc: 'ใช้มือถือเป็นรีโมทคอนโทรล',
+        pairing: 'จับคู่อุปกรณ์',
+        pairQR: 'สแกน QR Code',
+        pairCode: 'ใส่รหัส 6 หลัก',
+        pairAuto: 'จับคู่อัตโนมัติ',
+        paired: 'เชื่อมต่อแล้ว',
+        notPaired: 'ไม่ได้เชื่อมต่อ',
+        connecting: 'กำลังเชื่อมต่อ...',
+        startWorkout: 'เริ่มออกกำลังกาย',
+        pause: 'หยุดชั่วคราว',
+        resume: 'ดำเนินการต่อ',
+        next: 'ถัดไป',
+        stop: 'หยุด',
+        restTime: 'เวลาพัก',
+        getReady: 'เตรียมตัว!',
+        wellDone: 'ยอดเยี่ยม!',
+        reps: 'ครั้ง',
+        sets: 'เซ็ต',
+        duration: 'ระยะเวลา',
+        calories: 'แคลอรี่',
+        difficulty: 'ความยาก',
+        warmUp: 'อบอุ่นร่างกาย',
+        coolDown: 'คูลดาวน์',
+        mainWorkout: 'ออกกำลังกายหลัก',
+        repCounter: 'นับจำนวนครั้ง',
+        currentExercise: 'ท่าปัจจุบัน',
+        nextExercise: 'ท่าถัดไป',
+        poseCorrection: 'แก้ไขท่าทาง',
+        goodForm: 'ฟอร์มดี!',
+        adjustPosition: 'ปรับตำแหน่งของคุณ',
+      },
+      
+      // Workout Templates
+      templates: {
+        hiit: 'HIIT',
+        circuit: 'เซอร์กิต',
+        strength: 'เสริมสร้างกล้ามเนื้อ',
+        mobility: 'ความยืดหยุ่น',
+        custom: 'กำหนดเอง',
+        createWorkout: 'สร้างการออกกำลังกาย',
+        templateLibrary: 'คลังเทมเพลต',
+        dragToReorder: 'ลากเพื่อจัดเรียงใหม่',
+        addExercise: 'เพิ่มท่า',
+        saveTemplate: 'บันทึกเทมเพลต',
+        aiSuggest: 'AI แนะนำ',
+      },
+      
+      // Nutrition
+      nutrition: {
+        todayMeals: 'มื้ออาหารแนะนำวันนี้',
+        breakfast: 'มื้อเช้า',
+        lunch: 'มื้อกลางวัน',
+        dinner: 'มื้อเย็น',
+        snacks: 'ของว่าง',
+        calories: 'แคลอรี่',
+        protein: 'โปรตีน',
+        carbs: 'คาร์โบไฮเดรต',
+        fats: 'ไขมัน',
+        whyGood: 'ทำไมอาหารนี้ถึงดีสำหรับคุณ',
+        quickLog: 'บันทึกด่วน',
+        scanMeal: 'สแกนอาหาร',
+        hydration: 'การดื่มน้ำ',
+        sleepTracker: 'ติดตามการนอน',
+        logMeal: 'บันทึกอาหาร',
+        addWater: 'เพิ่มน้ำ',
+        logSleep: 'บันทึกการนอน',
+      },
+      
+      // AI Coach
+      coach: {
+        title: 'โค้ช AI',
+        voiceAssistant: 'ผู้ช่วยเสียง',
+        askAnything: 'ถามอะไรก็ได้...',
+        listening: 'กำลังฟัง...',
+        thinking: 'กำลังคิด...',
+        commands: 'คำสั่งเสียง',
+        nextCommand: '"ท่าถัดไป"',
+        pauseCommand: '"หยุดชั่วคราว"',
+        howManyCommand: '"กี่ครั้งแล้ว?"',
+        sessionSummary: 'สรุปเซสชัน',
+        personalityOptions: 'บุคลิก',
+        motivational: 'สร้างแรงบันดาลใจ',
+        calm: 'สงบ',
+        energetic: 'มีพลัง',
+        strict: 'เข้มงวด',
+        tips: 'เคล็ดลับและกำลังใจ',
+      },
+      
+      // Profile
+      profile: {
+        title: 'โปรไฟล์',
+        editProfile: 'แก้ไขโปรไฟล์',
+        weight: 'น้ำหนัก',
+        height: 'ส่วนสูง',
+        age: 'อายุ',
+        goals: 'เป้าหมาย',
+        progress: 'ความคืบหน้า',
+        achievements: 'ความสำเร็จ',
+        weeklyGoal: 'เป้าหมายรายสัปดาห์',
+        changePassword: 'เปลี่ยนรหัสผ่าน',
+        logout: 'ออกจากระบบ',
+      },
+      
+      // Settings
+      settings: {
+        title: 'ตั้งค่า',
+        notifications: 'การแจ้งเตือน',
+        workoutReminders: 'เตือนการออกกำลังกาย',
+        mealReminders: 'เตือนมื้ออาหาร',
+        darkMode: 'โหมดมืด',
+        language: 'ภาษา',
+        connectedDevices: 'อุปกรณ์ที่เชื่อมต่อ',
+        integrations: 'การเชื่อมต่อ',
+        appleHealth: 'Apple Health',
+        googleFit: 'Google Fit',
+        heartRate: 'เครื่องวัดหัวใจ',
+        privacy: 'ความเป็นส่วนตัว',
+        dataRetention: 'การเก็บข้อมูล',
+        exportData: 'ส่งออกข้อมูล',
+      },
+      
+      // Gamification
+      gamification: {
+        badges: 'เหรียญตรา',
+        streaks: 'การทำต่อเนื่อง',
+        challenges: 'ความท้าทาย',
+        leaderboard: 'ลีดเดอร์บอร์ด',
+        rank: 'อันดับ',
+        points: 'คะแนน',
+        shareSession: 'แชร์เซสชัน',
+        weeklyChallenge: 'ความท้าทายประจำสัปดาห์',
+        dailyGoal: 'เป้าหมายประจำวัน',
+        earnedBadge: 'ได้รับเหรียญ!',
+        newRecord: 'ทำลายสถิติ!',
+        liveClasses: 'คลาสสด',
+        rsvp: 'ลงทะเบียน',
+        joined: 'เข้าร่วมแล้ว',
+      },
+      
+      // Analytics
+      analytics: {
+        title: 'การวิเคราะห์',
+        accuracy: 'คะแนนความแม่นยำ',
+        tempo: 'จังหวะ',
+        trends: 'แนวโน้ม',
+        export: 'ส่งออก',
+        exportCSV: 'ส่งออก CSV',
+        exportPDF: 'ส่งออก PDF',
+        thisWeek: 'สัปดาห์นี้',
+        thisMonth: 'เดือนนี้',
+        allTime: 'ตลอดกาล',
+      },
+      
+      // Common
+      common: {
+        save: 'บันทึก',
+        cancel: 'ยกเลิก',
+        confirm: 'ยืนยัน',
+        delete: 'ลบ',
+        edit: 'แก้ไข',
+        close: 'ปิด',
+        loading: 'กำลังโหลด...',
+        error: 'ข้อผิดพลาด',
+        success: 'สำเร็จ',
+        min: 'นาที',
+        hrs: 'ชม.',
+        kcal: 'แคล',
+        cups: 'แก้ว',
+        kg: 'กก.',
+        lbs: 'ปอนด์',
+        cm: 'ซม.',
+        ft: 'ฟุต',
+      },
+      
+      // Auth
+      auth: {
+        login: 'เข้าสู่ระบบ',
+        register: 'สมัครสมาชิก',
+        username: 'ชื่อผู้ใช้',
+        password: 'รหัสผ่าน',
+        confirmPassword: 'ยืนยันรหัสผ่าน',
+        nickname: 'ชื่อเล่น',
+        forgotPassword: 'ลืมรหัสผ่าน?',
+        createAccount: 'สร้างบัญชี',
+        alreadyHaveAccount: 'มีบัญชีแล้ว?',
+        dontHaveAccount: 'ยังไม่มีบัญชี?',
+      },
+    },
+  },
+};
+
+i18n.use(initReactI18next).init({
+  resources,
+  lng: 'en',
+  fallbackLng: 'en',
+  interpolation: {
+    escapeValue: false,
+  },
+});
+
+export default i18n;

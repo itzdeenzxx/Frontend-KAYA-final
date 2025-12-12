@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
+  <defs>
+    <linearGradient id="kaya-gradient-apple" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#dd6e53"/>
+      <stop offset="100%" style="stop-color:#c55a41"/>
+    </linearGradient>
+  </defs>
+  <rect width="180" height="180" rx="36" fill="url(#kaya-gradient-apple)"/>
+  <path d="M45 45 L45 135 L62 135 L62 98 L85 135 L107 135 L79 90 L107 45 L85 45 L62 82 L62 45 Z" fill="white"/>
+</svg>
