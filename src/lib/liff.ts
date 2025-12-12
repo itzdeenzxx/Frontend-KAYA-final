@@ -135,4 +135,30 @@ export const isLiffInitialized = (): boolean => {
   }
 };
 
+// QR Code Scanner using LIFF scanCodeV2
+export interface ScanResult {
+  value: string;
+}
+
+export const scanQRCode = async (): Promise<ScanResult | null> => {
+  try {
+    // Check if scanCodeV2 is available
+    if (!liff.isApiAvailable('scanCodeV2')) {
+      console.error('QR Scanner is not available');
+      return null;
+    }
+    
+    const result = await liff.scanCodeV2();
+    return result;
+  } catch (error) {
+    console.error('Failed to scan QR code:', error);
+    return null;
+  }
+};
+
+// Check if QR Scanner is available
+export const isQRScannerAvailable = (): boolean => {
+  return liff.isApiAvailable('scanCodeV2');
+};
+
 export { liff };
