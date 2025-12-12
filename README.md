@@ -29,7 +29,7 @@ Transform your body with KAYA - your personal AI fitness coach. Smart workouts, 
 
 ```sh
 # Clone the repository
-git clone <YOUR_GIT_URL>
+git clone https://github.com/itzdeenzxx/Frontend-KAYA-final
 
 # Navigate to the project directory
 cd frontend
