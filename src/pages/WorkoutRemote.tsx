@@ -14,7 +14,9 @@ import {
   X,
   Bone,
   EyeOff,
+  Music,
 } from 'lucide-react';
+import RemoteMusicPlayer from '@/components/music/RemoteMusicPlayer';
 import { cn } from '@/lib/utils';
 import {
   subscribeToSession,
@@ -45,6 +47,7 @@ export default function WorkoutRemote() {
   const [vibrationEnabled, setVibrationEnabled] = useState(true);
   const [lastActionSent, setLastActionSent] = useState<string>('');
   const [skeletonEnabled, setSkeletonEnabled] = useState(true);
+  const [showMusicPlayer, setShowMusicPlayer] = useState(false);
 
   // Subscribe to session updates
   useEffect(() => {
@@ -197,8 +200,31 @@ export default function WorkoutRemote() {
             {skeletonEnabled ? <Bone className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
             <span className="text-sm font-medium">{skeletonEnabled ? 'โครงกระดูก' : 'ซ่อน'}</span>
           </button>
+          
+          {/* Music Toggle Button */}
+          <button
+            onClick={() => setShowMusicPlayer(!showMusicPlayer)}
+            className={cn(
+              'h-10 px-4 rounded-xl flex items-center gap-2 transition-colors',
+              showMusicPlayer ? 'bg-primary text-white' : 'bg-background/10 text-background/60'
+            )}
+          >
+            <Music className="w-5 h-5" />
+            <span className="text-sm font-medium">เพลง</span>
+          </button>
         </div>
       </div>
+
+      {/* Music Player */}
+      {showMusicPlayer && (
+        <div className="px-6 pb-4">
+          <RemoteMusicPlayer 
+            pairingCode={pairingCode} 
+            musicState={session?.musicState}
+            compact 
+          />
+        </div>
+      )}
 
       {/* Current Exercise Card */}
       <div className="px-6 py-4">

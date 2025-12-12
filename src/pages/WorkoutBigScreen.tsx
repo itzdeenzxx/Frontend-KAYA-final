@@ -26,6 +26,7 @@ import {
 } from '@/lib/session';
 import { useMediaPipePose } from '@/hooks/useMediaPipePose';
 import { SkeletonOverlay } from '@/components/shared/SkeletonOverlay';
+import BigScreenMusicPlayer from '@/components/music/BigScreenMusicPlayer';
 
 // Map icon names to components
 const exerciseIcons: Record<string, React.ReactNode> = {
@@ -474,6 +475,12 @@ export default function WorkoutBigScreen() {
           </p>
         </div>
       </div>
+
+      {/* Music Player */}
+      <BigScreenMusicPlayer 
+        pairingCode={pairingCode}
+        musicState={session?.musicState}
+      />
     </div>
   );
 }

@@ -22,8 +22,26 @@ export interface WorkoutSession {
   isPaused: boolean;
   showSkeleton?: boolean;
   remoteAction?: RemoteAction;
+  musicState?: MusicState;
   createdAt: Timestamp;
   lastActivity: Timestamp;
+}
+
+export interface MusicState {
+  currentTrack: {
+    id: string;
+    name: string;
+    artist_name: string;
+    image: string;
+    audio: string;
+    duration: number;
+  } | null;
+  isPlaying: boolean;
+  volume: number;
+  currentTime?: number;
+  showOnScreen: boolean;
+  action?: 'play' | 'pause' | 'next' | 'previous' | 'setTrack' | 'setVolume' | 'toggleVisibility';
+  timestamp: number;
 }
 
 export interface RemoteAction {
@@ -186,6 +204,27 @@ export async function endSession(pairingCode: string): Promise<void> {
 export async function deleteSession(pairingCode: string): Promise<void> {
   const upperCode = pairingCode.toUpperCase();
   await deleteDoc(doc(db, 'workout_sessions', upperCode));
+}
+
+// Update music state (from Remote)
+export async function updateMusicState(pairingCode: string, musicState: MusicState): Promise<void> {
+  const upperCode = pairingCode.toUpperCase();
+  await updateDoc(doc(db, 'workout_sessions', upperCode), {
+    musicState: musicState,
+    lastActivity: serverTimestamp(),
+  });
+}
+
+// Clear music action after processing
+export async function clearMusicAction(pairingCode: string): Promise<void> {
+  const upperCode = pairingCode.toUpperCase();
+  const session = await findSessionByCode(upperCode);
+  if (session?.musicState) {
+    await updateDoc(doc(db, 'workout_sessions', upperCode), {
+      'musicState.action': null,
+      lastActivity: serverTimestamp(),
+    });
+  }
 }
 
 // Check if device is mobile
