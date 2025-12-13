@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import healthyMeal from "@/assets/healthy-meal.jpg";
+import { useTheme } from "@/contexts/ThemeContext";
 
 const mealFilters = ["All", "Breakfast", "Lunch", "Dinner", "Snacks"];
 
@@ -79,6 +80,8 @@ const meals = [
 export default function Nutrition() {
   const [activeFilter, setActiveFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
 
   const filteredMeals = meals.filter((meal) => {
     const matchesFilter = activeFilter === "All" || meal.category === activeFilter;
@@ -87,41 +90,67 @@ export default function Nutrition() {
   });
 
   return (
-    <div className="min-h-screen bg-background pb-24">
+    <div className={cn(
+      "min-h-screen pb-24",
+      isDark ? "bg-black text-white" : "bg-gray-50 text-gray-900"
+    )}>
       {/* Header */}
-      <div className="gradient-coral px-6 pt-12 pb-20 rounded-b-[2rem]">
-        <div className="flex items-center gap-4 mb-6">
-          <Link
-            to="/dashboard"
-            className="w-10 h-10 rounded-xl bg-primary-foreground/20 flex items-center justify-center text-primary-foreground"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </Link>
-          <div>
-            <h1 className="text-2xl font-bold text-primary-foreground">Nutrition</h1>
-            <p className="text-primary-foreground/80 text-sm">Personalized meal recommendations</p>
-          </div>
+      <div className="relative">
+        <div className="absolute inset-0">
+          <img 
+            src="https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=800&q=80"
+            alt="Nutrition"
+            className="w-full h-full object-cover"
+          />
+          <div className={cn(
+            "absolute inset-0",
+            isDark 
+              ? "bg-gradient-to-b from-black/60 via-black/80 to-black" 
+              : "bg-gradient-to-b from-primary/80 via-primary/90 to-gray-50"
+          )} />
         </div>
+        <div className="relative px-6 pt-12 pb-24">
+          <div className="flex items-center gap-4 mb-6">
+            <Link
+              to="/dashboard"
+              className={cn(
+                "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
+                isDark 
+                  ? "bg-white/10 hover:bg-white/20 text-white" 
+                  : "bg-white/20 hover:bg-white/30 text-white"
+              )}
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Link>
+            <div>
+              <h1 className="text-2xl font-bold text-white">Nutrition</h1>
+              <p className="text-white/80 text-sm">Personalized meal recommendations</p>
+            </div>
+          </div>
 
-        {/* Daily Summary Card */}
-        <div className="bg-primary-foreground/10 backdrop-blur-xl rounded-2xl p-5">
-          <h3 className="text-primary-foreground/80 text-sm mb-3">Today's Recommended Intake</h3>
-          <div className="grid grid-cols-4 gap-4">
-            <div className="text-center">
-              <p className="text-xl font-bold text-primary-foreground">2,000</p>
-              <p className="text-xs text-primary-foreground/70">Calories</p>
-            </div>
-            <div className="text-center">
-              <p className="text-xl font-bold text-primary-foreground">150g</p>
-              <p className="text-xs text-primary-foreground/70">Protein</p>
-            </div>
-            <div className="text-center">
-              <p className="text-xl font-bold text-primary-foreground">200g</p>
-              <p className="text-xs text-primary-foreground/70">Carbs</p>
-            </div>
-            <div className="text-center">
-              <p className="text-xl font-bold text-primary-foreground">65g</p>
-              <p className="text-xs text-primary-foreground/70">Fat</p>
+          {/* Daily Summary Card */}
+          <div className={cn(
+            "rounded-2xl p-5 backdrop-blur",
+            isDark ? "bg-white/10" : "bg-white/20"
+          )}>
+            <h3 className="text-white/80 text-sm mb-3">Today's Recommended Intake</h3>
+            <div className="grid grid-cols-4 gap-4">
+              <div className="text-center">
+                <p className="text-xl font-bold text-white">2,000</p>
+                <p className="text-xs text-white/70">Calories</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xl font-bold text-white">150g</p>
+                <p className="text-xs text-white/70">Protein</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xl font-bold text-white">200g</p>
+                <p className="text-xs text-white/70">Carbs</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xl font-bold text-white">65g</p>
+                <p className="text-xs text-white/70">Fat</p>
+              </div>
             </div>
           </div>
         </div>
@@ -131,12 +160,20 @@ export default function Nutrition() {
       <div className="px-6 -mt-8 relative z-10">
         {/* Search */}
         <div className="relative mb-4">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+          <Search className={cn(
+            "absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5",
+            isDark ? "text-gray-400" : "text-gray-500"
+          )} />
           <Input
             placeholder="Search meals..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-12 bg-background shadow-md"
+            className={cn(
+              "pl-12",
+              isDark 
+                ? "bg-white/5 border-white/10 text-white placeholder:text-gray-500" 
+                : "bg-white border-gray-200 shadow-md"
+            )}
           />
         </div>
 
@@ -149,8 +186,10 @@ export default function Nutrition() {
               className={cn(
                 "px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all duration-200",
                 activeFilter === filter
-                  ? "gradient-coral text-primary-foreground shadow-coral"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+                  ? "bg-gradient-to-r from-primary to-orange-500 text-white shadow-lg shadow-primary/30"
+                  : isDark 
+                    ? "bg-white/10 text-gray-300 hover:bg-white/20"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               )}
             >
               {filter}
@@ -163,7 +202,12 @@ export default function Nutrition() {
           {filteredMeals.map((meal, index) => (
             <div
               key={meal.id}
-              className="card-elevated overflow-hidden animate-fade-in"
+              className={cn(
+                "overflow-hidden rounded-2xl border animate-fade-in",
+                isDark 
+                  ? "bg-white/5 border-white/10" 
+                  : "bg-white border-gray-200 shadow-sm"
+              )}
               style={{ animationDelay: `${index * 0.1}s` }}
             >
               <div className="flex">
@@ -175,17 +219,25 @@ export default function Nutrition() {
                 <div className="flex-1 p-4">
                   <div className="flex items-start justify-between mb-1">
                     <h3 className="font-semibold">{meal.name}</h3>
-                    <span className="text-xs px-2 py-1 rounded-full bg-coral-light text-primary">
+                    <span className={cn(
+                      "text-xs px-2 py-1 rounded-full",
+                      isDark 
+                        ? "bg-primary/20 text-primary" 
+                        : "bg-coral-light text-primary"
+                    )}>
                       {meal.calories} kcal
                     </span>
                   </div>
-                  <p className="text-xs text-muted-foreground mb-3 line-clamp-2">
+                  <p className={cn(
+                    "text-xs mb-3 line-clamp-2",
+                    isDark ? "text-gray-400" : "text-gray-500"
+                  )}>
                     {meal.description}
                   </p>
                   <div className="flex gap-3 text-xs">
-                    <span className="text-nature">P: {meal.protein}g</span>
-                    <span className="text-energy">C: {meal.carbs}g</span>
-                    <span className="text-calm">F: {meal.fat}g</span>
+                    <span className="text-green-500">P: {meal.protein}g</span>
+                    <span className="text-yellow-500">C: {meal.carbs}g</span>
+                    <span className="text-blue-500">F: {meal.fat}g</span>
                   </div>
                 </div>
               </div>

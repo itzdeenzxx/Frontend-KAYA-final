@@ -13,7 +13,12 @@ import {
   Smartphone,
   Wifi,
   Bone,
-  EyeOff
+  EyeOff,
+  Music,
+  Wind,
+  Waves,
+  Footprints,
+  Brain
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -27,6 +32,7 @@ import {
 import { useMediaPipePose } from '@/hooks/useMediaPipePose';
 import { SkeletonOverlay } from '@/components/shared/SkeletonOverlay';
 import BigScreenMusicPlayer from '@/components/music/BigScreenMusicPlayer';
+import { getWorkoutStyle, getExercisesForStyle, WorkoutExercise } from '@/lib/workoutStyles';
 
 // Map icon names to components
 const exerciseIcons: Record<string, React.ReactNode> = {
@@ -38,14 +44,18 @@ const exerciseIcons: Record<string, React.ReactNode> = {
   yoga: <Heart className="w-20 h-20" />,
 };
 
-const exercises = [
-  { name: 'Jumping Jacks', duration: 30, reps: null, icon: 'run' },
-  { name: 'Push-ups', duration: null, reps: 15, icon: 'muscle' },
-  { name: 'High Knees', duration: 30, reps: null, icon: 'leg' },
-  { name: 'Squats', duration: null, reps: 20, icon: 'weight' },
-  { name: 'Burpees', duration: 30, reps: null, icon: 'fire' },
-  { name: 'Plank', duration: 45, reps: null, icon: 'yoga' },
-];
+// Style icons for header
+const styleIcons: Record<string, React.ReactNode> = {
+  rhythm: <Music className="w-6 h-6" />,
+  slow: <Wind className="w-6 h-6" />,
+  stretch: <PersonStanding className="w-6 h-6" />,
+  hiit: <Flame className="w-6 h-6" />,
+  strength: <Dumbbell className="w-6 h-6" />,
+  cardio: <Heart className="w-6 h-6" />,
+  yoga: <Waves className="w-6 h-6" />,
+  dance: <Footprints className="w-6 h-6" />,
+  'ai-personalized': <Brain className="w-6 h-6" />,
+};
 
 const coachMessages = [
   'ทำได้ดีมาก! เกร็งกล้ามเนื้อแกนกลางไว้!',
@@ -60,17 +70,29 @@ export default function WorkoutBigScreen() {
   const [searchParams] = useSearchParams();
   const pairingCode = searchParams.get('code') || '';
 
-  // Workout state
-  const [currentExercise, setCurrentExercise] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(exercises[0].duration || 0);
-  const [isPaused, setIsPaused] = useState(false);
-  const [totalTime, setTotalTime] = useState(0);
-  const [coachMessage, setCoachMessage] = useState(coachMessages[0]);
-
-  // Session state
+  // Session state - will contain workout style from remote
   const [session, setSession] = useState<WorkoutSession | null>(null);
   const [lastAction, setLastAction] = useState<RemoteAction | null>(null);
   const [showActionIndicator, setShowActionIndicator] = useState(false);
+
+  // Get selected workout style from session (sent by mobile) or fallback to localStorage
+  const selectedStyleId = session?.workoutStyle || localStorage.getItem('kaya_workout_style');
+  const selectedStyle = getWorkoutStyle(selectedStyleId);
+  const exercises = getExercisesForStyle(selectedStyleId);
+
+  // Workout state
+  const [currentExercise, setCurrentExercise] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const [totalTime, setTotalTime] = useState(0);
+  const [coachMessage, setCoachMessage] = useState(coachMessages[0]);
+  
+  // Initialize timeLeft when exercises change
+  useEffect(() => {
+    if (exercises.length > 0 && currentExercise < exercises.length) {
+      setTimeLeft(exercises[currentExercise]?.duration || 0);
+    }
+  }, [exercises, currentExercise]);
 
   // Video ref for webcam
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -388,12 +410,13 @@ export default function WorkoutBigScreen() {
           {/* Exercise Info */}
           <div className="flex-1">
             <div className="flex items-center gap-4 mb-4">
-              <div className="w-24 h-24 rounded-2xl bg-primary/20 flex items-center justify-center text-primary">
+              <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-primary/30 to-orange-400/30 backdrop-blur-sm flex items-center justify-center text-primary border border-primary/20">
                 {exerciseIcons[exercise.icon]}
               </div>
               <div>
                 <p className="text-white/60 text-lg mb-1">Now Playing</p>
                 <h1 className="text-5xl font-bold text-white mb-2">{exercise.name}</h1>
+                <p className="text-white/60 text-xl mb-1">{exercise.nameTh}</p>
                 <p className="text-white/80 text-xl">
                   {exercise.duration ? `${exercise.duration} seconds` : `${exercise.reps ?? 0} reps`}
                 </p>
@@ -466,13 +489,26 @@ export default function WorkoutBigScreen() {
         </div>
       </div>
 
-      {/* Pairing Code Watermark */}
+      {/* Workout Style & Pairing Code */}
       <div className="absolute top-6 right-1/2 translate-x-1/2 z-10">
-        <div className="bg-white/10 backdrop-blur-sm rounded-xl px-4 py-2">
-          <p className="text-white/60 text-sm">Session Code</p>
-          <p className="text-white font-mono font-bold text-xl tracking-widest">
-            {pairingCode}
-          </p>
+        <div className="flex items-center gap-4">
+          {/* Workout Style Badge */}
+          {selectedStyle && (
+            <div className={cn(
+              "flex items-center gap-2 px-5 py-3 rounded-xl backdrop-blur-md border",
+              `bg-gradient-to-r ${selectedStyle.bgGradient} border-white/20`
+            )}>
+              {styleIcons[selectedStyle.id] || <Dumbbell className="w-5 h-5" />}
+              <span className="text-base font-semibold text-white">{selectedStyle.name}</span>
+            </div>
+          )}
+          {/* Session Code */}
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl px-4 py-2">
+            <p className="text-white/60 text-sm">Session Code</p>
+            <p className="text-white font-mono font-bold text-xl tracking-widest">
+              {pairingCode}
+            </p>
+          </div>
         </div>
       </div>
 

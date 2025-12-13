@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Play, Pause, SkipForward, SkipBack, X, Volume2, MessageCircle, Dumbbell, Flame, PersonStanding, Heart, Brain, Sparkles, Target, Zap, Camera, CameraOff, Activity, Bone, EyeOff } from "lucide-react";
+import { Play, Pause, SkipForward, SkipBack, X, Volume2, MessageCircle, Dumbbell, Flame, PersonStanding, Heart, Brain, Sparkles, Target, Zap, Camera, CameraOff, Activity, Bone, EyeOff, Music, Wind, Waves, Footprints } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMediaPipePose } from "@/hooks/useMediaPipePose";
 import { SkeletonOverlay } from "@/components/shared/SkeletonOverlay";
+import { getWorkoutStyle, getExercisesForStyle, WorkoutExercise } from "@/lib/workoutStyles";
 
 // Map icon names to components
 const exerciseIcons: Record<string, React.ReactNode> = {
@@ -26,14 +27,18 @@ const exerciseIconsLarge: Record<string, React.ReactNode> = {
   yoga: <Heart className="w-20 h-20" />,
 };
 
-const exercises = [
-  { name: "Jumping Jacks", duration: 30, reps: null, icon: "run" },
-  { name: "Push-ups", duration: null, reps: 15, icon: "muscle" },
-  { name: "High Knees", duration: 30, reps: null, icon: "leg" },
-  { name: "Squats", duration: null, reps: 20, icon: "weight" },
-  { name: "Burpees", duration: 30, reps: null, icon: "fire" },
-  { name: "Plank", duration: 45, reps: null, icon: "yoga" },
-];
+// Style icons for header
+const styleIcons: Record<string, React.ReactNode> = {
+  rhythm: <Music className="w-5 h-5" />,
+  slow: <Wind className="w-5 h-5" />,
+  stretch: <PersonStanding className="w-5 h-5" />,
+  hiit: <Flame className="w-5 h-5" />,
+  strength: <Dumbbell className="w-5 h-5" />,
+  cardio: <Heart className="w-5 h-5" />,
+  yoga: <Waves className="w-5 h-5" />,
+  dance: <Footprints className="w-5 h-5" />,
+  'ai-personalized': <Brain className="w-5 h-5" />,
+};
 
 const coachMessages = [
   "ทำได้ดีมาก! เกร็งกล้ามเนื้อแกนกลางไว้!",
@@ -46,8 +51,14 @@ const coachMessages = [
 
 export default function WorkoutUI() {
   const navigate = useNavigate();
+  
+  // Get selected workout style from localStorage
+  const [selectedStyleId] = useState(() => localStorage.getItem('kaya_workout_style'));
+  const selectedStyle = getWorkoutStyle(selectedStyleId);
+  const exercises = getExercisesForStyle(selectedStyleId);
+  
   const [currentExercise, setCurrentExercise] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(exercises[0].duration || 0);
+  const [timeLeft, setTimeLeft] = useState(exercises[0]?.duration || 0);
   const [isPaused, setIsPaused] = useState(false);
   const [showCoach, setShowCoach] = useState(true);
   const [coachMessage, setCoachMessage] = useState(coachMessages[0]);
@@ -263,10 +274,22 @@ export default function WorkoutUI() {
 
         {/* AI Powered Badge */}
         <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20">
-          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-primary/20 to-orange-400/20 backdrop-blur-md border border-primary/30">
-            <Brain className="w-4 h-4 text-primary" />
-            <span className="text-sm font-medium text-white">AI Pose Detection Active</span>
-            <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+          <div className="flex items-center gap-3">
+            {/* Workout Style Badge */}
+            {selectedStyle && (
+              <div className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md border",
+                `bg-gradient-to-r ${selectedStyle.bgGradient} border-white/20`
+              )}>
+                {styleIcons[selectedStyle.id] || <Dumbbell className="w-4 h-4" />}
+                <span className="text-sm font-medium text-white">{selectedStyle.name}</span>
+              </div>
+            )}
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-primary/20 to-orange-400/20 backdrop-blur-md border border-primary/30">
+              <Brain className="w-4 h-4 text-primary" />
+              <span className="text-sm font-medium text-white">AI Pose Detection Active</span>
+              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+            </div>
           </div>
         </div>
 
@@ -346,6 +369,7 @@ export default function WorkoutUI() {
                 <div>
                   <p className="text-white/60 text-lg mb-1">Now Playing</p>
                   <h1 className="text-5xl font-bold text-white mb-2">{exercise.name}</h1>
+                  <p className="text-white/60 text-xl mb-1">{exercise.nameTh}</p>
                   <p className="text-white/80 text-xl">
                     {exercise.duration ? `${exercise.duration} seconds` : `${exercise.reps ?? 0} reps`}
                   </p>

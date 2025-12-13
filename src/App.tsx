@@ -6,10 +6,12 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 
 import Dashboard from "./pages/Dashboard";
+import WorkoutSelection from "./pages/WorkoutSelection";
 import WorkoutMode from "./pages/WorkoutMode";
 import WorkoutUI from "./pages/WorkoutUI";
 import WorkoutRemote from "./pages/WorkoutRemote";
 import WorkoutBigScreen from "./pages/WorkoutBigScreen";
+import BigScreenSetup from "./pages/BigScreenSetup";
 import Nutrition from "./pages/Nutrition";
 import AICoach from "./pages/AICoach";
 import Profile from "./pages/Profile";
@@ -18,20 +20,23 @@ import NotFound from "./pages/NotFound";
 import Onboarding from "./pages/Onboarding";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
+import { ThemeSelectorModal } from "./components/shared/ThemeSelectorModal";
 
 const queryClient = new QueryClient();
 
 // Protected routes wrapper with onboarding check
 const AppRoutes = () => {
   const { isInitialized, isLoading, isAuthenticated, isNewUser, lineProfile, completeOnboarding } = useAuth();
+  const { showThemeSelector, setShowThemeSelector, isThemeLoaded, theme } = useTheme();
 
   // Show loading while initializing
-  if (!isInitialized || isLoading) {
+  if (!isInitialized || isLoading || !isThemeLoaded) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className={`min-h-screen flex items-center justify-center ${theme === 'dark' ? 'bg-black' : 'bg-gray-50'}`}>
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-muted-foreground">กำลังเชื่อมต่อ...</p>
+          <Loader2 className={`w-8 h-8 animate-spin mx-auto mb-4 ${theme === 'dark' ? 'text-orange-500' : 'text-primary'}`} />
+          <p className={theme === 'dark' ? 'text-gray-400' : 'text-muted-foreground'}>กำลังเชื่อมต่อ...</p>
         </div>
       </div>
     );
@@ -50,17 +55,24 @@ const AppRoutes = () => {
   // Not authenticated - handled by AuthContext (auto login)
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className={`min-h-screen flex items-center justify-center ${theme === 'dark' ? 'bg-black' : 'bg-gray-50'}`}>
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-muted-foreground">กำลังเข้าสู่ระบบ LINE...</p>
+          <Loader2 className={`w-8 h-8 animate-spin mx-auto mb-4 ${theme === 'dark' ? 'text-orange-500' : 'text-primary'}`} />
+          <p className={theme === 'dark' ? 'text-gray-400' : 'text-muted-foreground'}>กำลังเข้าสู่ระบบ LINE...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <BrowserRouter>
+    <>
+      {/* Theme Selector Modal for first-time users */}
+      <ThemeSelectorModal 
+        isOpen={showThemeSelector} 
+        onClose={() => setShowThemeSelector(false)}
+      />
+      
+      <BrowserRouter>
       <Routes>
         {/* Redirect root to dashboard */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -68,6 +80,7 @@ const AppRoutes = () => {
         {/* App Routes with Bottom Nav */}
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/workout-selection" element={<WorkoutSelection />} />
           <Route path="/workout-mode" element={<WorkoutMode />} />
           <Route path="/nutrition" element={<Nutrition />} />
           <Route path="/ai-coach" element={<AICoach />} />
@@ -79,22 +92,26 @@ const AppRoutes = () => {
         <Route path="/workout" element={<WorkoutUI />} />
         <Route path="/workout-remote" element={<WorkoutRemote />} />
         <Route path="/workout-bigscreen" element={<WorkoutBigScreen />} />
+        <Route path="/bigscreen-setup" element={<BigScreenSetup />} />
         
         {/* Catch-all */}
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>
+    </>
   );
 };
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <AppRoutes />
-      </TooltipProvider>
+      <ThemeProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <AppRoutes />
+        </TooltipProvider>
+      </ThemeProvider>
     </AuthProvider>
   </QueryClientProvider>
 );

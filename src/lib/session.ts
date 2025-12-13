@@ -18,6 +18,7 @@ export interface WorkoutSession {
   hostType: 'computer' | 'bigscreen';
   connectedDeviceId?: string;
   status: 'waiting' | 'connected' | 'active' | 'ended';
+  workoutStyle?: string; // The workout style selected by mobile
   currentExercise: number;
   isPaused: boolean;
   showSkeleton?: boolean;
@@ -125,7 +126,7 @@ export async function findSessionByCode(code: string): Promise<WorkoutSession | 
 }
 
 // Connect to a session (Mobile Remote)
-export async function connectToSession(pairingCode: string): Promise<boolean> {
+export async function connectToSession(pairingCode: string, workoutStyle?: string): Promise<boolean> {
   const upperCode = pairingCode.toUpperCase();
   const session = await findSessionByCode(upperCode);
   
@@ -135,13 +136,29 @@ export async function connectToSession(pairingCode: string): Promise<boolean> {
   
   const deviceId = getDeviceId();
   
-  await updateDoc(doc(db, 'workout_sessions', upperCode), {
+  const updateData: Record<string, unknown> = {
     connectedDeviceId: deviceId,
     status: 'connected',
     lastActivity: serverTimestamp(),
-  });
+  };
+  
+  // Include workout style if provided
+  if (workoutStyle) {
+    updateData.workoutStyle = workoutStyle;
+  }
+  
+  await updateDoc(doc(db, 'workout_sessions', upperCode), updateData);
   
   return true;
+}
+
+// Update workout style for a session
+export async function updateSessionWorkoutStyle(pairingCode: string, workoutStyle: string): Promise<void> {
+  const upperCode = pairingCode.toUpperCase();
+  await updateDoc(doc(db, 'workout_sessions', upperCode), {
+    workoutStyle,
+    lastActivity: serverTimestamp(),
+  });
 }
 
 // Subscribe to session updates

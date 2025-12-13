@@ -18,20 +18,12 @@ import {
 } from 'lucide-react';
 import RemoteMusicPlayer from '@/components/music/RemoteMusicPlayer';
 import { cn } from '@/lib/utils';
+import { getExercisesForStyle, getWorkoutStyle } from '@/lib/workoutStyles';
 import {
   subscribeToSession,
   sendRemoteAction,
   WorkoutSession,
 } from '@/lib/session';
-
-const exercises = [
-  { name: 'Jumping Jacks', duration: 30 },
-  { name: 'Push-ups', reps: 15 },
-  { name: 'High Knees', duration: 30 },
-  { name: 'Squats', reps: 20 },
-  { name: 'Burpees', duration: 30 },
-  { name: 'Plank', duration: 45 },
-];
 
 export default function WorkoutRemote() {
   const navigate = useNavigate();
@@ -42,6 +34,11 @@ export default function WorkoutRemote() {
   const [session, setSession] = useState<WorkoutSession | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState('');
+
+  // Get exercises from session's workout style or localStorage fallback
+  const workoutStyleId = session?.workoutStyle || localStorage.getItem('kaya_workout_style');
+  const selectedStyle = getWorkoutStyle(workoutStyleId);
+  const exercises = getExercisesForStyle(workoutStyleId);
 
   // Local state
   const [vibrationEnabled, setVibrationEnabled] = useState(true);
@@ -230,9 +227,12 @@ export default function WorkoutRemote() {
       <div className="px-6 py-4">
         <div className="gradient-coral rounded-2xl p-6 shadow-coral">
           <p className="text-primary-foreground/80 text-sm mb-1">กำลังเล่น</p>
-          <h2 className="text-2xl font-bold text-primary-foreground mb-2">
-            {exercise?.name || 'Loading...'}
+          <h2 className="text-2xl font-bold text-primary-foreground mb-1">
+            {exercise?.nameTh || exercise?.name || 'Loading...'}
           </h2>
+          <p className="text-sm text-primary-foreground/70 mb-2">
+            {exercise?.name}
+          </p>
           <p className="text-primary-foreground/80">
             {exercise?.duration
               ? `${exercise.duration} วินาที`
