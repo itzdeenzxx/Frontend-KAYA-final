@@ -12,6 +12,7 @@ import WorkoutUI from "./pages/WorkoutUI";
 import WorkoutRemote from "./pages/WorkoutRemote";
 import WorkoutBigScreen from "./pages/WorkoutBigScreen";
 import BigScreenSetup from "./pages/BigScreenSetup";
+import AIWorkoutQuiz from "./pages/AIWorkoutQuiz";
 import Nutrition from "./pages/Nutrition";
 import AICoach from "./pages/AICoach";
 import Profile from "./pages/Profile";
@@ -93,6 +94,7 @@ const AppRoutes = () => {
         <Route path="/workout-remote" element={<WorkoutRemote />} />
         <Route path="/workout-bigscreen" element={<WorkoutBigScreen />} />
         <Route path="/bigscreen-setup" element={<BigScreenSetup />} />
+        <Route path="/ai-workout-quiz" element={<AIWorkoutQuiz />} />
         
         {/* Catch-all */}
         <Route path="*" element={<NotFound />} />

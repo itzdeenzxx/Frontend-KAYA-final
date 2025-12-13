@@ -186,8 +186,8 @@ export default function WorkoutSelection() {
   };
 
   const handleAIPersonalized = () => {
-    localStorage.setItem('kaya_workout_style', 'ai-personalized');
-    navigate('/workout-mode');
+    // Navigate to AI quiz first before workout mode
+    navigate('/ai-workout-quiz');
   };
 
   return (
