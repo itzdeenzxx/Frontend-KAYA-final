@@ -143,7 +143,7 @@ export default function AIWorkoutQuiz() {
     await new Promise(resolve => setTimeout(resolve, 2000));
 
     setIsAnalyzing(false);
-    navigate('/workout-mode');
+    navigate('/workout-intro');
   };
 
   // Analyzing screen

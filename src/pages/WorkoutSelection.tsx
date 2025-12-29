@@ -182,7 +182,7 @@ export default function WorkoutSelection() {
 
   const handleStyleSelect = (styleId: string) => {
     localStorage.setItem('kaya_workout_style', styleId);
-    navigate('/workout-mode');
+    navigate('/workout-intro');
   };
 
   const handleAIPersonalized = () => {

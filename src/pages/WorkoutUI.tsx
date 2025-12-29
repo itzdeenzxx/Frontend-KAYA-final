@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { useMediaPipePose } from "@/hooks/useMediaPipePose";
 import { SkeletonOverlay } from "@/components/shared/SkeletonOverlay";
 import { getWorkoutStyle, getExercisesForStyle, WorkoutExercise } from "@/lib/workoutStyles";
+import MusicPlayer from "@/components/music/MusicPlayer";
 
 // Map icon names to components
 const exerciseIcons: Record<string, React.ReactNode> = {
@@ -74,6 +75,9 @@ export default function WorkoutUI() {
   const [showSkeleton, setShowSkeleton] = useState(true);
   const [showOpticalFlow, setShowOpticalFlow] = useState(true);
   const [videoDimensions, setVideoDimensions] = useState({ width: 1920, height: 1080 });
+  
+  // Music player state
+  const [showMusicPlayer, setShowMusicPlayer] = useState(false);
   
   // MediaPipe pose detection
   const { landmarks, opticalFlowPoints, getFlowHistory } = useMediaPipePose(
@@ -317,6 +321,17 @@ export default function WorkoutUI() {
 
           {/* Total Time & Camera Toggle */}
           <div className="flex items-center gap-3">
+            {/* Music Toggle */}
+            <button
+              onClick={() => setShowMusicPlayer(!showMusicPlayer)}
+              className={cn(
+                "w-12 h-12 rounded-xl backdrop-blur-sm flex items-center justify-center transition-colors",
+                showMusicPlayer ? "bg-primary/80 text-white hover:bg-primary" : "bg-white/10 text-white/60 hover:bg-white/20"
+              )}
+              title={showMusicPlayer ? "ซ่อนเพลง" : "เปิดเพลง"}
+            >
+              <Music className="w-5 h-5" />
+            </button>
             {/* Skeleton Toggle */}
             <button
               onClick={() => setShowSkeleton(!showSkeleton)}
@@ -342,6 +357,13 @@ export default function WorkoutUI() {
             </div>
           </div>
         </div>
+
+        {/* Music Player Panel */}
+        {showMusicPlayer && (
+          <div className="absolute top-24 right-6 z-20 w-80">
+            <MusicPlayer className="text-white" />
+          </div>
+        )}
 
         {/* Current Exercise Display */}
         <div className="absolute bottom-0 left-0 right-0 p-8 z-10">
@@ -538,6 +560,17 @@ export default function WorkoutUI() {
             </div>
 
             <div className="flex items-center gap-2">
+              {/* Music Toggle for Mobile */}
+              <button 
+                onClick={() => setShowMusicPlayer(!showMusicPlayer)}
+                className={cn(
+                  "w-10 h-10 rounded-xl backdrop-blur-sm flex items-center justify-center transition-colors",
+                  showMusicPlayer ? "bg-primary/80 text-white" : "bg-white/10 text-white/60"
+                )}
+                title={showMusicPlayer ? "ซ่อนเพลง" : "เปิดเพลง"}
+              >
+                <Music className="w-5 h-5" />
+              </button>
               {/* Skeleton Toggle for Mobile */}
               <button 
                 onClick={() => setShowSkeleton(!showSkeleton)}
@@ -563,6 +596,13 @@ export default function WorkoutUI() {
               </div>
             </div>
           </div>
+
+          {/* Music Player for Mobile */}
+          {showMusicPlayer && (
+            <div className="mt-3">
+              <MusicPlayer compact className="text-white" />
+            </div>
+          )}
 
           {/* Progress Bar */}
           <div className="h-2 bg-white/20 rounded-full overflow-hidden">

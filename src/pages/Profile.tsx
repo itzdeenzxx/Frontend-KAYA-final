@@ -25,7 +25,8 @@ import {
   Trophy,
   Medal,
   Award,
-  Gem
+  Gem,
+  Share2
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useHealthData, useUserProfile, useWorkoutHistory } from "@/hooks/useFirestore";
 import { useTheme } from "@/contexts/ThemeContext";
+import liff from "@line/liff";
 
 const goals = [
   { label: "Lose Weight", labelTh: "ลดน้ำหนัก", icon: TrendingDown, color: 'from-green-500 to-emerald-500' },
@@ -181,6 +183,245 @@ export default function Profile() {
     navigate("/login");
   };
 
+  // Share profile to LINE using Flex Message
+  const handleShareProfile = async () => {
+    if (!liff.isApiAvailable('shareTargetPicker')) {
+      alert('การแชร์ไม่พร้อมใช้งาน กรุณาเปิดใน LINE App');
+      return;
+    }
+
+    const profileName = userData.nickname || lineProfile?.displayName || "KAYA User";
+    const profilePic = lineProfile?.pictureUrl || "https://kaya-fitness.vercel.app/icon-512.png";
+    const appUrl = "https://miniapp.line.me/2008680520-UNJtwcRg";
+    
+    // Create Flex Message - simplified for compatibility
+    const flexMessage: any = {
+      type: "flex",
+      altText: `🔥 ${profileName} ชวนคุณมาออกกำลังกายกับ KAYA!`,
+      contents: {
+        type: "bubble",
+        size: "mega",
+        body: {
+          type: "box",
+          layout: "vertical",
+          contents: [
+            // Profile Image Circle
+            {
+              type: "box",
+              layout: "vertical",
+              contents: [
+                {
+                  type: "image",
+                  url: profilePic,
+                  size: "full",
+                  aspectMode: "cover"
+                }
+              ],
+              width: "100px",
+              height: "100px",
+              cornerRadius: "50px",
+              borderWidth: "3px",
+              borderColor: "#dd6e53",
+              offsetStart: "0px",
+              offsetEnd: "0px",
+              alignItems: "center"
+            },
+            // Name
+            {
+              type: "text",
+              text: profileName,
+              weight: "bold",
+              size: "xl",
+              align: "center",
+              margin: "lg",
+              color: "#ffffff"
+            },
+            // Tier Badge
+            {
+              type: "box",
+              layout: "horizontal",
+              contents: [
+                {
+                  type: "box",
+                  layout: "vertical",
+                  contents: [
+                    {
+                      type: "text",
+                      text: `⭐ ${tier.name}`,
+                      size: "sm",
+                      color: "#ffffff",
+                      weight: "bold",
+                      align: "center"
+                    }
+                  ],
+                  backgroundColor: "#dd6e53",
+                  cornerRadius: "15px",
+                  paddingAll: "8px",
+                  paddingStart: "15px",
+                  paddingEnd: "15px"
+                }
+              ],
+              justifyContent: "center",
+              margin: "md"
+            },
+            // Streak
+            {
+              type: "text",
+              text: `🔥 ${streakDays} Day Streak`,
+              size: "sm",
+              color: "#aaaaaa",
+              align: "center",
+              margin: "sm"
+            },
+            // Separator
+            {
+              type: "separator",
+              margin: "xl",
+              color: "#333333"
+            },
+            // Stats Row
+            {
+              type: "box",
+              layout: "horizontal",
+              contents: [
+                {
+                  type: "box",
+                  layout: "vertical",
+                  contents: [
+                    {
+                      type: "text",
+                      text: String(userPoints),
+                      size: "lg",
+                      weight: "bold",
+                      color: "#dd6e53",
+                      align: "center"
+                    },
+                    {
+                      type: "text",
+                      text: "Points",
+                      size: "xxs",
+                      color: "#888888",
+                      align: "center"
+                    }
+                  ],
+                  flex: 1
+                },
+                {
+                  type: "separator",
+                  color: "#444444"
+                },
+                {
+                  type: "box",
+                  layout: "vertical",
+                  contents: [
+                    {
+                      type: "text",
+                      text: String(stats?.totalWorkouts || 0),
+                      size: "lg",
+                      weight: "bold",
+                      color: "#dd6e53",
+                      align: "center"
+                    },
+                    {
+                      type: "text",
+                      text: "Workouts",
+                      size: "xxs",
+                      color: "#888888",
+                      align: "center"
+                    }
+                  ],
+                  flex: 1
+                },
+                {
+                  type: "separator",
+                  color: "#444444"
+                },
+                {
+                  type: "box",
+                  layout: "vertical",
+                  contents: [
+                    {
+                      type: "text",
+                      text: String(stats?.totalCalories || 0),
+                      size: "lg",
+                      weight: "bold",
+                      color: "#dd6e53",
+                      align: "center"
+                    },
+                    {
+                      type: "text",
+                      text: "Calories",
+                      size: "xxs",
+                      color: "#888888",
+                      align: "center"
+                    }
+                  ],
+                  flex: 1
+                }
+              ],
+              margin: "lg",
+              paddingTop: "md",
+              paddingBottom: "md"
+            },
+            // Invite Text
+            {
+              type: "text",
+              text: "🏋️ มาออกกำลังกายด้วยกัน!",
+              size: "md",
+              color: "#ffffff",
+              align: "center",
+              margin: "lg",
+              weight: "bold"
+            },
+            {
+              type: "text",
+              text: "AI-Powered Fitness App",
+              size: "xs",
+              color: "#888888",
+              align: "center",
+              margin: "sm"
+            }
+          ],
+          backgroundColor: "#1a1a2e",
+          paddingAll: "25px",
+          alignItems: "center"
+        },
+        footer: {
+          type: "box",
+          layout: "vertical",
+          contents: [
+            {
+              type: "button",
+              action: {
+                type: "uri",
+                label: "เข้าใช้งาน KAYA",
+                uri: appUrl
+              },
+              style: "primary",
+              color: "#dd6e53",
+              height: "sm"
+            }
+          ],
+          backgroundColor: "#1a1a2e",
+          paddingAll: "15px",
+          paddingTop: "0px"
+        }
+      }
+    };
+
+    try {
+      const result = await liff.shareTargetPicker([flexMessage]);
+      if (result) {
+        console.log('Share success:', result);
+      } else {
+        console.log('Share was cancelled or closed');
+      }
+    } catch (error) {
+      console.error('Failed to share:', error);
+      alert('เกิดข้อผิดพลาดในการแชร์: ' + (error as Error).message);
+    }
+  };
+
   const bmi = userData.weight && userData.height 
     ? (userData.weight / Math.pow(userData.height / 100, 2)).toFixed(1) 
     : "0";
@@ -301,6 +542,15 @@ export default function Profile() {
             
             {/* Content */}
             <div className="relative p-6">
+              {/* Share Button - Top Right */}
+              <button
+                onClick={handleShareProfile}
+                className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center hover:bg-white/30 transition-all hover:scale-110 z-10"
+                title="แชร์โปรไฟล์ไปยัง LINE"
+              >
+                <Share2 className="w-5 h-5 text-white" />
+              </button>
+              
               {/* Profile Section */}
               <div className="flex items-center gap-4 mb-6">
                 <div className="relative">

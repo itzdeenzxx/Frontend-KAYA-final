@@ -7,6 +7,7 @@ import { Loader2 } from "lucide-react";
 
 import Dashboard from "./pages/Dashboard";
 import WorkoutSelection from "./pages/WorkoutSelection";
+import WorkoutIntro from "./pages/WorkoutIntro";
 import WorkoutMode from "./pages/WorkoutMode";
 import WorkoutUI from "./pages/WorkoutUI";
 import WorkoutRemote from "./pages/WorkoutRemote";
@@ -19,6 +20,7 @@ import Profile from "./pages/Profile";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import Onboarding from "./pages/Onboarding";
+import GameMode from "./pages/GameMode";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
@@ -82,11 +84,13 @@ const AppRoutes = () => {
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/workout-selection" element={<WorkoutSelection />} />
+          <Route path="/workout-intro" element={<WorkoutIntro />} />
           <Route path="/workout-mode" element={<WorkoutMode />} />
           <Route path="/nutrition" element={<Nutrition />} />
           <Route path="/ai-coach" element={<AICoach />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/game-mode" element={<GameMode />} />
         </Route>
         
         {/* Full Screen Routes */}

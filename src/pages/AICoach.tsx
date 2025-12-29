@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect } from "react";
-import { ArrowLeft, Mic, Send, Volume2, VolumeX } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, Camera, Mic, Send, Volume2, VolumeX, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import aiCoach from "@/assets/ai-coach.png";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -11,6 +12,11 @@ interface Message {
   id: number;
   type: "user" | "coach";
   text: string;
+  imageUrl?: string;
+  meta?: {
+    kind: "text" | "vision" | "voice";
+    transcript?: string;
+  };
   timestamp: Date;
 }
 
@@ -18,31 +24,147 @@ const initialMessages: Message[] = [
   {
     id: 1,
     type: "coach",
-    text: "Hey there! I'm your AI fitness coach. I'm here to help you with workout tips, nutrition advice, and motivation. What would you like to work on today?",
+    text: "สวัสดี! ฉันคือ AI Coach ของคุณ 🙂 อยากให้ช่วยเรื่องโปรแกรมออกกำลังกาย โภชนาการ หรือแรงบันดาลใจแบบไหนบอกได้เลย",
     timestamp: new Date(),
   },
 ];
 
-const coachResponses = [
-  "That's a great goal! Let me help you create a plan to achieve it.",
-  "Consistency is key! Try to workout at least 3-4 times per week.",
-  "Remember, nutrition is 80% of the game. Are you tracking your meals?",
-  "Great question! For weight loss, focus on a caloric deficit combined with strength training.",
-  "I recommend starting with compound exercises like squats, deadlifts, and bench press.",
-  "Don't forget to warm up before your workouts and stretch afterwards!",
-  "Sleep is crucial for recovery. Aim for 7-9 hours per night.",
-  "Hydration matters! Drink at least 8 glasses of water daily.",
-];
+const DEFAULT_CONTEXT =
+  "คุณคือโค้ชฟิตเนสที่ช่วยผู้ใช้แบบสุภาพ กระชับ และปลอดภัย ให้คำแนะนำทั่วไป ไม่อ้างว่าแทนแพทย์ หากมีอาการเจ็บ/เวียนหัวให้แนะนำหยุดและพบแพทย์";
+
+function formatTime(ts: Date) {
+  return ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+async function aiftTextChat(params: { prompt: string; sessionId: string; context?: string }) {
+  const res = await fetch("/api/aift/text-chat", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      prompt: params.prompt,
+      sessionId: params.sessionId,
+      context: params.context ?? "",
+      temperature: 0.4,
+    }),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json?.error || "AIFT text chat failed");
+  return String(json?.response || "");
+}
+
+async function aiftVqa(params: { file: File; query: string }) {
+  const form = new FormData();
+  form.append("file", params.file);
+  form.append("query", params.query);
+  const res = await fetch("/api/aift/vqa", { method: "POST", body: form });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json?.error || "AIFT VQA failed");
+  return json;
+}
+
+async function aiftAudioQa(params: { file: File; instruction: string }) {
+  const form = new FormData();
+  form.append("file", params.file);
+  form.append("instruction", params.instruction);
+  const res = await fetch("/api/aift/audioqa", { method: "POST", body: form });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json?.error || "AIFT AudioQA failed");
+  return json;
+}
+
+async function aiftTts(text: string) {
+  const res = await fetch("/api/aift/tts", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ text, speaker: 0, phrase_break: 0, audiovisual: 0 }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error || "AIFT TTS failed");
+  }
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
+function encodeWavFromAudioBuffer(audioBuffer: AudioBuffer) {
+  const numChannels = 1;
+  const sampleRate = audioBuffer.sampleRate;
+  const samples = audioBuffer.getChannelData(0);
+
+  const bytesPerSample = 2;
+  const blockAlign = numChannels * bytesPerSample;
+  const byteRate = sampleRate * blockAlign;
+  const dataSize = samples.length * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  const writeString = (offset: number, str: string) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+  };
+
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeString(36, "data");
+  view.setUint32(40, dataSize, true);
+
+  let offset = 44;
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    offset += 2;
+  }
+
+  return buffer;
+}
+
+async function webmBlobToWavFile(blob: Blob) {
+  const arrayBuffer = await blob.arrayBuffer();
+  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const decoded = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+  const wavBuffer = encodeWavFromAudioBuffer(decoded);
+  return new File([wavBuffer], "voice.wav", { type: "audio/wav" });
+}
 
 export default function AICoach() {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
+  const [activeTab, setActiveTab] = useState<"text" | "vision" | "voice">("text");
   const [inputText, setInputText] = useState("");
-  const [isListening, setIsListening] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const [error, setError] = useState<string>("");
+
+  // Vision state
+  const [visionFile, setVisionFile] = useState<File | null>(null);
+  const [visionPreviewUrl, setVisionPreviewUrl] = useState<string>("");
+  const [visionQuery, setVisionQuery] = useState<string>("");
+
+  // Voice state
+  const [isRecording, setIsRecording] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState<"idle" | "recording" | "transcribing" | "thinking" | "speaking">("idle");
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaChunksRef = useRef<BlobPart[]>([]);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
   const isDark = theme === 'dark';
+
+  const sessionId = useMemo(() => {
+    const existing = localStorage.getItem("kaya_ai_sessionid");
+    if (existing) return existing;
+    const next = (crypto as any)?.randomUUID ? crypto.randomUUID() : String(Date.now());
+    localStorage.setItem("kaya_ai_sessionid", next);
+    return next;
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -52,42 +174,180 @@ export default function AICoach() {
     scrollToBottom();
   }, [messages]);
 
-  const handleSend = () => {
-    if (!inputText.trim()) return;
-
-    const userMessage: Message = {
-      id: messages.length + 1,
-      type: "user",
-      text: inputText,
-      timestamp: new Date(),
+  useEffect(() => {
+    return () => {
+      if (visionPreviewUrl) URL.revokeObjectURL(visionPreviewUrl);
     };
+  }, [visionPreviewUrl]);
 
-    setMessages((prev) => [...prev, userMessage]);
-    setInputText("");
-    setIsTyping(true);
-
-    // Simulate coach response
-    setTimeout(() => {
-      const coachMessage: Message = {
-        id: messages.length + 2,
-        type: "coach",
-        text: coachResponses[Math.floor(Math.random() * coachResponses.length)],
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, coachMessage]);
-      setIsTyping(false);
-    }, 1500);
+  const pushMessage = (msg: Omit<Message, "id">) => {
+    setMessages((prev) => [...prev, { ...msg, id: prev.length ? prev[prev.length - 1].id + 1 : 1 }]);
   };
 
-  const handleVoiceInput = () => {
-    setIsListening(!isListening);
-    // Mock voice input
-    if (!isListening) {
-      setTimeout(() => {
-        setInputText("How can I lose weight effectively?");
-        setIsListening(false);
-      }, 2000);
+  const sendText = async (text: string, kind: Message["meta"]["kind"] = "text") => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    setError("");
+    pushMessage({
+      type: "user",
+      text: trimmed,
+      meta: { kind },
+      timestamp: new Date(),
+    });
+
+    setIsTyping(true);
+    try {
+      const reply = await aiftTextChat({ prompt: trimmed, sessionId, context: DEFAULT_CONTEXT });
+      pushMessage({
+        type: "coach",
+        text: reply || "(ไม่มีข้อความตอบกลับ)",
+        meta: { kind: "text" },
+        timestamp: new Date(),
+      });
+
+      if (!isMuted) {
+        try {
+          const audioUrl = await aiftTts(reply);
+          if (audioRef.current) {
+            audioRef.current.src = audioUrl;
+            await audioRef.current.play();
+            setTimeout(() => URL.revokeObjectURL(audioUrl), 60_000);
+          }
+        } catch {
+          // ignore TTS errors; chat should still work
+        }
+      }
+    } catch (e: any) {
+      setError(e?.message || "เกิดข้อผิดพลาด");
+    } finally {
+      setIsTyping(false);
     }
+  };
+
+  const handleSend = () => {
+    void sendText(inputText, "text");
+    setInputText("");
+  };
+
+  const handleVisionSend = async () => {
+    if (!visionFile) {
+      setError("กรุณาเลือกรูปก่อน");
+      return;
+    }
+    if (!visionQuery.trim()) {
+      setError("กรุณาพิมพ์คำถามเกี่ยวกับรูป");
+      return;
+    }
+
+    setError("");
+
+    const preview = visionPreviewUrl;
+    pushMessage({
+      type: "user",
+      text: visionQuery.trim(),
+      imageUrl: preview,
+      meta: { kind: "vision" },
+      timestamp: new Date(),
+    });
+
+    setIsTyping(true);
+    try {
+      const res = await aiftVqa({ file: visionFile, query: visionQuery.trim() });
+      const answer = String(res?.content || res?.response || res?.result || "");
+      pushMessage({
+        type: "coach",
+        text: answer || "(ไม่มีข้อความตอบกลับ)",
+        meta: { kind: "vision" },
+        timestamp: new Date(),
+      });
+    } catch (e: any) {
+      setError(e?.message || "เกิดข้อผิดพลาด");
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  const startRecording = async () => {
+    setError("");
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError("อุปกรณ์นี้ไม่รองรับไมโครโฟน");
+      return;
+    }
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const recorder = new MediaRecorder(stream);
+    mediaRecorderRef.current = recorder;
+    mediaChunksRef.current = [];
+
+    recorder.ondataavailable = (ev) => {
+      if (ev.data.size > 0) mediaChunksRef.current.push(ev.data);
+    };
+
+    recorder.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      const blob = new Blob(mediaChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+
+      try {
+        setVoiceStatus("transcribing");
+        const wavFile = await webmBlobToWavFile(blob);
+        const sttRes = await aiftAudioQa({ file: wavFile, instruction: "ถอดเสียงข้อความ" });
+        const content = sttRes?.content;
+        const transcript = Array.isArray(content) ? content.join(" ") : String(content || "");
+        const cleaned = transcript.trim();
+
+        if (!cleaned) {
+          setError("ถอดเสียงไม่สำเร็จ ลองพูดใหม่อีกครั้ง");
+          setVoiceStatus("idle");
+          return;
+        }
+
+        pushMessage({
+          type: "user",
+          text: cleaned,
+          meta: { kind: "voice", transcript: cleaned },
+          timestamp: new Date(),
+        });
+
+        setVoiceStatus("thinking");
+        const reply = await aiftTextChat({ prompt: cleaned, sessionId, context: DEFAULT_CONTEXT });
+        pushMessage({
+          type: "coach",
+          text: reply || "(ไม่มีข้อความตอบกลับ)",
+          meta: { kind: "voice" },
+          timestamp: new Date(),
+        });
+
+        if (!isMuted) {
+          setVoiceStatus("speaking");
+          const audioUrl = await aiftTts(reply);
+          if (audioRef.current) {
+            audioRef.current.src = audioUrl;
+            await audioRef.current.play();
+            setTimeout(() => URL.revokeObjectURL(audioUrl), 60_000);
+          }
+        }
+      } catch (e: any) {
+        setError(e?.message || "เกิดข้อผิดพลาด");
+      } finally {
+        setVoiceStatus("idle");
+      }
+    };
+
+    recorder.start();
+    setIsRecording(true);
+    setVoiceStatus("recording");
+  };
+
+  const stopRecording = () => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder) return;
+    try {
+      recorder.stop();
+    } catch {
+      // ignore
+    }
+    setIsRecording(false);
   };
 
   return (
@@ -139,8 +399,37 @@ export default function AICoach() {
         </button>
       </div>
 
+      {/* Hidden audio element for TTS playback */}
+      <audio ref={audioRef} />
+
+      {/* Mode Tabs */}
+      <div className={cn(
+        "fixed top-20 left-0 right-0 z-10 px-6 py-3 border-b backdrop-blur-md",
+        isDark ? "bg-black/85 border-white/10" : "bg-white/85 border-gray-200"
+      )}>
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
+          <TabsList className={cn("w-full", isDark ? "bg-white/10 text-gray-300" : "bg-gray-100")}> 
+            <TabsTrigger value="text" className="flex-1">Text</TabsTrigger>
+            <TabsTrigger value="vision" className="flex-1">Vision</TabsTrigger>
+            <TabsTrigger value="voice" className="flex-1">Voice</TabsTrigger>
+          </TabsList>
+          <TabsContent value="text" />
+          <TabsContent value="vision" />
+          <TabsContent value="voice" />
+        </Tabs>
+      </div>
+
       {/* Messages - Scrollable area with padding for fixed header and input */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 mt-20 mb-32">
+      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 mt-32 mb-40">
+        {error && (
+          <div className={cn(
+            "rounded-xl px-4 py-3 text-sm border",
+            isDark ? "bg-red-500/10 border-red-500/20 text-red-200" : "bg-red-50 border-red-200 text-red-700"
+          )}>
+            {error}
+          </div>
+        )}
+
         {messages.map((message) => (
           <div
             key={message.id}
@@ -166,6 +455,15 @@ export default function AICoach() {
                     : "bg-white text-gray-900 rounded-bl-md shadow-sm"
               )}
             >
+              {message.imageUrl && (
+                <div className="mb-2">
+                  <img
+                    src={message.imageUrl}
+                    alt="uploaded"
+                    className="w-full max-w-[260px] rounded-xl border border-white/10"
+                  />
+                </div>
+              )}
               <p className="text-sm">{message.text}</p>
               <p
                 className={cn(
@@ -175,7 +473,7 @@ export default function AICoach() {
                     : isDark ? "text-gray-400" : "text-gray-500"
                 )}
               >
-                {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                {formatTime(message.timestamp)}
               </p>
             </div>
           </div>
@@ -216,42 +514,136 @@ export default function AICoach() {
           ? "border-white/10 bg-black/95" 
           : "border-gray-200 bg-white/95"
       )}>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleVoiceInput}
-            className={cn(
-              "w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200",
-              isListening
-                ? "bg-gradient-to-r from-primary to-orange-500 text-white shadow-lg shadow-primary/30 animate-pulse"
-                : isDark 
-                  ? "bg-white/10 text-gray-400 hover:text-white"
-                  : "bg-gray-100 text-gray-500 hover:text-gray-700"
+        {activeTab === "text" && (
+          <div className="flex items-center gap-3">
+            <Input
+              placeholder="ถาม AI Coach ได้เลย..."
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSend()}
+              className={cn(
+                "flex-1",
+                isDark ? "bg-white/5 border-white/10 text-white placeholder:text-gray-500" : ""
+              )}
+            />
+            <Button
+              variant="hero"
+              size="icon"
+              className="w-12 h-12 rounded-full"
+              onClick={handleSend}
+              disabled={!inputText.trim() || isTyping}
+            >
+              <Send className="w-5 h-5" />
+            </Button>
+          </div>
+        )}
+
+        {activeTab === "vision" && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <label
+                className={cn(
+                  "h-12 px-4 rounded-xl inline-flex items-center gap-2 cursor-pointer border transition-colors",
+                  isDark ? "bg-white/5 border-white/10 text-gray-200 hover:bg-white/10" : "bg-gray-100 border-gray-200 hover:bg-gray-200"
+                )}
+              >
+                <Camera className="w-4 h-4" />
+                <span className="text-sm font-semibold">เลือกรูป</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] || null;
+                    setVisionFile(f);
+                    if (visionPreviewUrl) URL.revokeObjectURL(visionPreviewUrl);
+                    setVisionPreviewUrl(f ? URL.createObjectURL(f) : "");
+                  }}
+                />
+              </label>
+
+              {visionFile && (
+                <button
+                  onClick={() => {
+                    setVisionFile(null);
+                    if (visionPreviewUrl) URL.revokeObjectURL(visionPreviewUrl);
+                    setVisionPreviewUrl("");
+                  }}
+                  className={cn(
+                    "w-12 h-12 rounded-xl flex items-center justify-center border",
+                    isDark ? "bg-white/5 border-white/10 hover:bg-white/10" : "bg-gray-100 border-gray-200 hover:bg-gray-200"
+                  )}
+                  aria-label="remove image"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
+
+              <Button
+                variant="hero"
+                className="h-12 px-5"
+                onClick={handleVisionSend}
+                disabled={!visionFile || !visionQuery.trim() || isTyping}
+              >
+                <Send className="w-4 h-4" />
+                ส่ง
+              </Button>
+            </div>
+
+            {visionPreviewUrl && (
+              <img
+                src={visionPreviewUrl}
+                alt="preview"
+                className={cn(
+                  "w-full max-h-40 object-cover rounded-xl border",
+                  isDark ? "border-white/10" : "border-gray-200"
+                )}
+              />
             )}
-          >
-            <Mic className="w-5 h-5" />
-          </button>
-          <Input
-            placeholder="Ask your coach..."
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSend()}
-            className={cn(
-              "flex-1",
-              isDark 
-                ? "bg-white/5 border-white/10 text-white placeholder:text-gray-500" 
-                : ""
-            )}
-          />
-          <Button
-            variant="hero"
-            size="icon"
-            className="w-12 h-12 rounded-full"
-            onClick={handleSend}
-            disabled={!inputText.trim()}
-          >
-            <Send className="w-5 h-5" />
-          </Button>
-        </div>
+
+            <Input
+              placeholder="ถามอะไรเกี่ยวกับรูปนี้? (เช่น รูปนี้คืออะไร / มีท่าอะไรเหมาะกับคนในรูป)"
+              value={visionQuery}
+              onChange={(e) => setVisionQuery(e.target.value)}
+              className={cn(
+                "w-full",
+                isDark ? "bg-white/5 border-white/10 text-white placeholder:text-gray-500" : ""
+              )}
+            />
+          </div>
+        )}
+
+        {activeTab === "voice" && (
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => (isRecording ? stopRecording() : void startRecording())}
+              className={cn(
+                "w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200",
+                isRecording
+                  ? "bg-gradient-to-r from-primary to-orange-500 text-white shadow-lg shadow-primary/30 animate-pulse"
+                  : isDark
+                    ? "bg-white/10 text-gray-200 hover:bg-white/20"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              )}
+              aria-label={isRecording ? "stop recording" : "start recording"}
+            >
+              <Mic className="w-5 h-5" />
+            </button>
+
+            <div className="flex-1">
+              <p className={cn("text-sm font-semibold", isDark ? "text-white" : "text-gray-900")}>
+                {voiceStatus === "recording" && "กำลังอัดเสียง... กดอีกครั้งเพื่อส่ง"}
+                {voiceStatus === "transcribing" && "กำลังถอดเสียง..."}
+                {voiceStatus === "thinking" && "กำลังคิดคำตอบ..."}
+                {voiceStatus === "speaking" && "กำลังพูดตอบ..."}
+                {voiceStatus === "idle" && "กดไมค์เพื่อคุยกับ AI Coach"}
+              </p>
+              <p className={cn("text-xs", isDark ? "text-gray-400" : "text-gray-500")}>
+                Voice จะถอดเสียง → แชท → พูดตอบกลับ
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

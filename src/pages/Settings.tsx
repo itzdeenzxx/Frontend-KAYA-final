@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, Bell, Sun, Moon, Smartphone, Monitor, ChevronRight, LogOut, Check, Palette } from "lucide-react";
+import { ArrowLeft, Bell, Sun, Moon, ChevronRight, LogOut, Check, Palette } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
@@ -18,10 +18,6 @@ export default function Settings() {
     progressUpdates: true,
     coachTips: true,
   });
-  const [connectedDevices] = useState([
-    { name: "Living Room TV", type: "tv", connected: true },
-    { name: "iPhone 15 Pro", type: "phone", connected: true },
-  ]);
   const [showThemePreview, setShowThemePreview] = useState(false);
   const [previewTheme, setPreviewTheme] = useState<ThemeMode>(theme);
 
@@ -270,57 +266,6 @@ export default function Settings() {
                   }
                 />
               </div>
-            </div>
-          </div>
-
-          {/* Connected Devices */}
-          <div className={cn(
-            "rounded-2xl overflow-hidden border",
-            isDark 
-              ? "bg-white/5 border-white/10" 
-              : "bg-white border-gray-200 shadow-sm"
-          )}>
-            <div className={cn(
-              "p-4 border-b flex items-center gap-3",
-              isDark ? "border-white/10" : "border-gray-100"
-            )}>
-              <div className={cn(
-                "w-10 h-10 rounded-xl flex items-center justify-center",
-                isDark ? "bg-green-500/20" : "bg-nature/10"
-              )}>
-                <Monitor className={cn("w-5 h-5", isDark ? "text-green-400" : "text-nature")} />
-              </div>
-              <h2 className={cn("font-semibold", isDark ? "text-white" : "text-gray-900")}>
-                อุปกรณ์ที่เชื่อมต่อ
-              </h2>
-            </div>
-            <div className={cn("divide-y", isDark ? "divide-white/10" : "divide-gray-100")}>
-              {connectedDevices.map((device, index) => (
-                <div key={index} className="p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    {device.type === "tv" ? (
-                      <Monitor className={cn("w-5 h-5", isDark ? "text-gray-400" : "text-gray-500")} />
-                    ) : (
-                      <Smartphone className={cn("w-5 h-5", isDark ? "text-gray-400" : "text-gray-500")} />
-                    )}
-                    <div>
-                      <p className={cn("font-medium", isDark ? "text-white" : "text-gray-900")}>
-                        {device.name}
-                      </p>
-                      <p className={cn("text-sm", isDark ? "text-green-400" : "text-nature")}>
-                        เชื่อมต่อแล้ว
-                      </p>
-                    </div>
-                  </div>
-                  <ChevronRight className={cn("w-5 h-5", isDark ? "text-gray-600" : "text-gray-400")} />
-                </div>
-              ))}
-              <button className={cn(
-                "w-full p-4 font-medium text-left",
-                isDark ? "text-primary hover:bg-white/5" : "text-primary hover:bg-gray-50"
-              )}>
-                + เพิ่มอุปกรณ์ใหม่
-              </button>
             </div>
           </div>
 
