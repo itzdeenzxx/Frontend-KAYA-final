@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import aiCoach from "@/assets/ai-coach.png";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface Message {
   id: number;
@@ -157,6 +158,7 @@ export default function AICoach() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
   const isDark = theme === 'dark';
+  const isMobile = useIsMobile();
 
   const sessionId = useMemo(() => {
     const existing = localStorage.getItem("kaya_ai_sessionid");
@@ -357,22 +359,25 @@ export default function AICoach() {
     )}>
       {/* Header - Fixed */}
       <div className={cn(
-        "fixed top-0 left-0 right-0 z-10 backdrop-blur-md border-b px-6 py-4 flex items-center gap-4",
+        "fixed top-0 z-10 backdrop-blur-md border-b px-6 py-4 flex items-center gap-4",
+        isMobile ? "left-0 right-0" : "left-72 right-0",
         isDark 
           ? "bg-black/95 border-white/10" 
           : "bg-white/95 border-gray-200"
       )}>
-        <Link
-          to="/dashboard"
-          className={cn(
-            "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
-            isDark 
-              ? "bg-white/10 hover:bg-white/20" 
-              : "bg-gray-100 hover:bg-gray-200"
-          )}
-        >
-          <ArrowLeft className={cn("w-5 h-5", !isDark && "text-gray-700")} />
-        </Link>
+        {isMobile && (
+          <Link
+            to="/dashboard"
+            className={cn(
+              "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
+              isDark 
+                ? "bg-white/10 hover:bg-white/20" 
+                : "bg-gray-100 hover:bg-gray-200"
+            )}
+          >
+            <ArrowLeft className={cn("w-5 h-5", !isDark && "text-gray-700")} />
+          </Link>
+        )}
         <div className="flex items-center gap-3 flex-1">
           <div className="relative">
             <img src={aiCoach} alt="AI Coach" className="w-12 h-12 rounded-full object-cover" />
@@ -404,7 +409,8 @@ export default function AICoach() {
 
       {/* Mode Tabs */}
       <div className={cn(
-        "fixed top-20 left-0 right-0 z-10 px-6 py-3 border-b backdrop-blur-md",
+        "fixed top-20 right-0 z-10 px-6 py-3 border-b backdrop-blur-md",
+        isMobile ? "left-0" : "left-72",
         isDark ? "bg-black/85 border-white/10" : "bg-white/85 border-gray-200"
       )}>
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
@@ -509,7 +515,8 @@ export default function AICoach() {
 
       {/* Input - Fixed */}
       <div className={cn(
-        "fixed bottom-16 left-0 right-0 z-10 border-t px-6 py-4 backdrop-blur-md safe-area-inset-bottom",
+        "fixed z-10 border-t px-6 py-4 backdrop-blur-md safe-area-inset-bottom right-0",
+        isMobile ? "bottom-16 left-0" : "bottom-0 left-72",
         isDark 
           ? "border-white/10 bg-black/95" 
           : "border-gray-200 bg-white/95"

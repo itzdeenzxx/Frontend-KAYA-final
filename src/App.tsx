@@ -21,6 +21,7 @@ import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import Onboarding from "./pages/Onboarding";
 import GameMode from "./pages/GameMode";
+import MouseRunningGame from "./pages/MouseRunningGame";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
@@ -99,6 +100,7 @@ const AppRoutes = () => {
         <Route path="/workout-bigscreen" element={<WorkoutBigScreen />} />
         <Route path="/bigscreen-setup" element={<BigScreenSetup />} />
         <Route path="/ai-workout-quiz" element={<AIWorkoutQuiz />} />
+        <Route path="/mouse-running-game" element={<MouseRunningGame />} />
         
         {/* Catch-all */}
         <Route path="*" element={<NotFound />} />
