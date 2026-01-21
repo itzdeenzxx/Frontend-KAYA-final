@@ -116,18 +116,24 @@ export function useGameState(options: UseGameStateOptions = {}): UseGameStateRet
     return clearAllTimers;
   }, [gameState, scheduleStateChange, clearAllTimers]);
 
-  // Handle HIT state recovery
+  // Handle HIT callback (แยกออกจาก timer เพื่อไม่ให้ onHit reference เปลี่ยนแล้ว clear timer)
   useEffect(() => {
     if (gameState === 'HIT') {
       onHit?.();
+    }
+  }, [gameState, onHit]);
+
+  // Handle HIT state recovery timer (ไม่มี onHit ใน dependency)
+  useEffect(() => {
+    if (gameState === 'HIT') {
       const hitTimer = setTimeout(() => {
         setGameState('RED_LIGHT');
         hitCooldownRef.current = false;
-      }, 1500);
+      }, 2000);
       
       return () => clearTimeout(hitTimer);
     }
-  }, [gameState, onHit]);
+  }, [gameState]);
 
   // Handle WIN state
   useEffect(() => {

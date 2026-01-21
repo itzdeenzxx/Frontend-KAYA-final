@@ -166,12 +166,14 @@ export function GameBoard({
 
     const checkHands = () => {
       // ต้องตรวจจับได้ + กำมือ + กำลังทุบ (เคลื่อนที่ลงเร็ว) ถึงจะนับว่าตี
-      if (leftHand?.isDetected && leftHand.isFist && leftHand.isSmashing) {
+      // if (leftHand?.isDetected && leftHand.isFist && leftHand.isSmashing) {
+      if (leftHand?.isDetected && leftHand.isFist) {
         if (checkHit(activeMole, leftHand.x, leftHand.y)) {
           handleMoleHit(activeMole);
         }
       }
-      if (rightHand?.isDetected && rightHand.isFist && rightHand.isSmashing) {
+      // if (rightHand?.isDetected && rightHand.isFist && rightHand.isSmashing) {
+      if (rightHand?.isDetected && rightHand.isFist) {
         if (checkHit(activeMole, rightHand.x, rightHand.y)) {
           handleMoleHit(activeMole);
         }

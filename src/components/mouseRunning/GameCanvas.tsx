@@ -218,7 +218,7 @@ export function GameCanvas() {
     <>
       <LandscapePrompt />
       
-      <ScreenShake trigger={hitTrigger > 0} intensity="heavy" key={hitTrigger}>
+      <ScreenShake trigger={hitTrigger > 0} intensity="heavy">
       <div className="relative w-full h-screen overflow-hidden bg-background" style={{ background: screen === 'PLAYING' ? selectedLevel.theme.bgGradient : undefined }}>
         {/* Hidden video element */}
         <video ref={videoRef} className="hidden" playsInline muted />
@@ -347,6 +347,7 @@ export function GameCanvas() {
               hitCount={player1State.hitCount}
               onStart={handleStart}
               onRestart={handleRestart}
+              onBack={handleBackToMenu}
               gameMode={gameMode}
             />
 
