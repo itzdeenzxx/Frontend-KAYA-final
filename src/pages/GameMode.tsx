@@ -15,7 +15,8 @@ import {
   Medal,
   Flame,
   Users,
-  TrendingUp
+  TrendingUp,
+  Fish
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -65,9 +66,25 @@ const games: Game[] = [
     duration: '60 วินาที',
     difficulty: 'ง่าย',
     features: ['Reflex Test', 'Time Attack'],
-    image: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&q=80',
+    image: 'https://plus.unsplash.com/premium_photo-1725408008366-390dfe32d0a6?q=80&w=1120&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
     accentColor: 'green',
-    highScore: 45
+    highScore: 26
+  },
+  {
+    id: 'fishing',
+    name: 'ตกปลา',
+    nameEn: 'Fishing Game',
+    description: 'ตกปลาสุดสนุก! ใช้ท่าทางจริงในการตกปลา',
+    icon: <Fish className="w-8 h-8" />,
+    color: 'text-cyan-400',
+    bgGradient: 'from-cyan-600/90 via-blue-600/80 to-indigo-800/90',
+    duration: 'ไม่จำกัด',
+    difficulty: 'ปานกลาง',
+    features: ['Motion Control', 'Collect Fish'],
+    image: 'https://plus.unsplash.com/premium_photo-1723575688585-d9bf8959f7f7?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
+    // image: 'https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=800&q=80',
+    accentColor: 'cyan',
+    highScore: 20
   }
 ];
 
@@ -97,6 +114,10 @@ export default function GameMode() {
   const handleGameSelect = (gameId: string) => {
     if (gameId === 'mouse-running') {
       navigate('/mouse-running-game');
+    } else if (gameId === 'whack-a-mole') {
+      navigate('/whack-a-mole-game');
+    } else if (gameId === 'fishing') {
+      navigate('/fishing-game');
     } else {
       console.log('Selected game:', gameId);
     }
