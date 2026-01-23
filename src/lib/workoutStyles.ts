@@ -8,7 +8,8 @@ import {
   PersonStanding,
   Waves,
   Footprints,
-  Wind
+  Wind,
+  Target
 } from 'lucide-react';
 import React from 'react';
 
@@ -34,6 +35,7 @@ export interface WorkoutExercise {
   reps: number | null;
   icon: string;
   description?: string;
+  kayaExercise?: 'arm_raise' | 'torso_twist' | 'knee_raise'; // For AI-powered KAYA exercises
 }
 
 // Workout styles data
@@ -76,6 +78,19 @@ export const workoutStyles: WorkoutStyle[] = [
     calories: '50-100 kcal',
     level: 'ง่าย',
     features: ['ยืดหยุ่น', 'ลดเกร็ง', 'Recovery']
+  },
+  {
+    id: 'kaya-stretch',
+    name: 'KAYA ยืดเหยียดอัจฉริยะ',
+    nameEn: 'KAYA AI Stretching',
+    description: '3 ท่ายืดเหยียด พร้อม AI Coach วิเคราะห์ท่าทาง, Visual Guide และ TTS',
+    icon: React.createElement(Target, { className: "w-8 h-8" }),
+    color: 'text-primary',
+    bgGradient: 'from-primary/20 to-orange-500/20',
+    duration: '5-10 นาที',
+    calories: '30-60 kcal',
+    level: 'ง่าย',
+    features: ['AI Coach', 'Visual Guide', 'TTS', 'นับเซ็ต']
   },
   {
     id: 'hiit',
@@ -194,6 +209,11 @@ export const workoutExercises: Record<string, WorkoutExercise[]> = {
     { name: 'Calf Stretch', nameTh: 'ยืดน่อง', duration: 30, reps: null, icon: 'leg', description: 'ยืนดันผนัง ยืดน่อง' },
     { name: 'Spinal Twist', nameTh: 'บิดกระดูกสันหลัง', duration: 40, reps: null, icon: 'yoga', description: 'นั่งบิดลำตัว' },
     { name: 'Full Body Stretch', nameTh: 'ยืดทั้งตัว', duration: 45, reps: null, icon: 'yoga', description: 'ยืดแขนขาพร้อมกัน' },
+  ],
+  'kaya-stretch': [
+    { name: 'Arm Raise', nameTh: 'ยกแขน', duration: null, reps: 10, icon: 'kaya-arm', description: 'ยกแขนขึ้น-ลง ยืดกล้ามเนื้อไหล่และแขน', kayaExercise: 'arm_raise' },
+    { name: 'Torso Twist', nameTh: 'บิดลำตัว', duration: null, reps: 10, icon: 'kaya-torso', description: 'บิดลำตัวซ้าย-ขวา ยืดกล้ามเนื้อแกนกลาง', kayaExercise: 'torso_twist' },
+    { name: 'Knee Raise', nameTh: 'ยกเข่า', duration: null, reps: 10, icon: 'kaya-knee', description: 'ยกเข่าขึ้น-ลง ยืดกล้ามเนื้อขาและสะโพก', kayaExercise: 'knee_raise' },
   ],
   hiit: [
     { name: 'Jumping Jacks', nameTh: 'กระโดดตบ', duration: 30, reps: null, icon: 'run', description: 'กระโดดกางขา-แขน' },

@@ -1,12 +1,16 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Play, Pause, SkipForward, SkipBack, X, Volume2, MessageCircle, Dumbbell, Flame, PersonStanding, Heart, Brain, Sparkles, Target, Zap, Camera, CameraOff, Activity, Bone, EyeOff, Music, Wind, Waves, Footprints } from "lucide-react";
+import { Play, Pause, SkipForward, SkipBack, X, Volume2, MessageCircle, Dumbbell, Flame, PersonStanding, Heart, Brain, Sparkles, Target, Zap, Camera, CameraOff, Activity, Bone, EyeOff, Music, Wind, Waves, Footprints, ArrowUp, RotateCcw, ArrowUpFromLine } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMediaPipePose } from "@/hooks/useMediaPipePose";
 import { SkeletonOverlay } from "@/components/shared/SkeletonOverlay";
 import { getWorkoutStyle, getExercisesForStyle, WorkoutExercise } from "@/lib/workoutStyles";
 import MusicPlayer from "@/components/music/MusicPlayer";
+import { useExerciseAnalysis } from "@/hooks/useExerciseAnalysis";
+import { VisualPoseGuide, StageIndicator, BeatCounter } from "@/components/workout/VisualPoseGuide";
+import { AICoachPopup } from "@/components/workout/AICoachPopup";
+import { ExerciseType } from "@/lib/exerciseConfig";
 
 // Map icon names to components
 const exerciseIcons: Record<string, React.ReactNode> = {
@@ -16,6 +20,9 @@ const exerciseIcons: Record<string, React.ReactNode> = {
   weight: <Dumbbell className="w-16 h-16" />,
   fire: <Flame className="w-16 h-16" />,
   yoga: <Heart className="w-16 h-16" />,
+  'kaya-arm': <ArrowUp className="w-16 h-16" />,
+  'kaya-torso': <RotateCcw className="w-16 h-16" />,
+  'kaya-knee': <ArrowUpFromLine className="w-16 h-16" />,
 };
 
 // Larger icons for big screen
@@ -26,6 +33,9 @@ const exerciseIconsLarge: Record<string, React.ReactNode> = {
   weight: <Dumbbell className="w-20 h-20" />,
   fire: <Flame className="w-20 h-20" />,
   yoga: <Heart className="w-20 h-20" />,
+  'kaya-arm': <ArrowUp className="w-20 h-20" />,
+  'kaya-torso': <RotateCcw className="w-20 h-20" />,
+  'kaya-knee': <ArrowUpFromLine className="w-20 h-20" />,
 };
 
 // Style icons for header
@@ -33,6 +43,7 @@ const styleIcons: Record<string, React.ReactNode> = {
   rhythm: <Music className="w-5 h-5" />,
   slow: <Wind className="w-5 h-5" />,
   stretch: <PersonStanding className="w-5 h-5" />,
+  'kaya-stretch': <Target className="w-5 h-5" />,
   hiit: <Flame className="w-5 h-5" />,
   strength: <Dumbbell className="w-5 h-5" />,
   cardio: <Heart className="w-5 h-5" />,
@@ -58,6 +69,9 @@ export default function WorkoutUI() {
   const selectedStyle = getWorkoutStyle(selectedStyleId);
   const exercises = getExercisesForStyle(selectedStyleId);
   
+  // Check if this is a KAYA workout
+  const isKayaWorkout = selectedStyleId === 'kaya-stretch';
+  
   const [currentExercise, setCurrentExercise] = useState(0);
   const [timeLeft, setTimeLeft] = useState(exercises[0]?.duration || 0);
   const [isPaused, setIsPaused] = useState(false);
@@ -79,10 +93,26 @@ export default function WorkoutUI() {
   // Music player state
   const [showMusicPlayer, setShowMusicPlayer] = useState(false);
   
+  // Visual guide state for KAYA
+  const [showVisualGuide, setShowVisualGuide] = useState(true);
+  
   // MediaPipe pose detection
   const { landmarks, opticalFlowPoints, getFlowHistory } = useMediaPipePose(
     videoRef,
-    { enabled: cameraEnabled && (showSkeleton || showOpticalFlow) }
+    { enabled: cameraEnabled && (showSkeleton || showOpticalFlow || isKayaWorkout) }
+  );
+  
+  // Current KAYA exercise type
+  const currentKayaExercise = exercises[currentExercise]?.kayaExercise as ExerciseType | undefined;
+  
+  // KAYA exercise analysis hook
+  const kayaAnalysis = useExerciseAnalysis(
+    isKayaWorkout ? landmarks : [],
+    {
+      enabled: isKayaWorkout && !!currentKayaExercise,
+      difficulty: 'beginner',
+      exerciseType: currentKayaExercise,
+    }
   );
 
   // Detect mobile
@@ -186,23 +216,45 @@ export default function WorkoutUI() {
     return () => clearInterval(messageInterval);
   }, []);
 
-  const handleNext = () => {
+  // Auto-advance when KAYA exercise reps are complete
+  useEffect(() => {
+    if (isKayaWorkout && kayaAnalysis.reps >= (exercises[currentExercise]?.reps || 10)) {
+      // Wait a moment before advancing
+      const timeout = setTimeout(() => {
+        if (currentExercise < exercises.length - 1) {
+          kayaAnalysis.nextExercise();
+          setCurrentExercise((prev) => prev + 1);
+        } else {
+          navigate("/dashboard");
+        }
+      }, 1500);
+      return () => clearTimeout(timeout);
+    }
+  }, [isKayaWorkout, kayaAnalysis.reps, currentExercise, exercises]);
+
+  const handleNext = useCallback(() => {
     if (currentExercise < exercises.length - 1) {
+      if (isKayaWorkout) {
+        kayaAnalysis.nextExercise();
+      }
       setCurrentExercise((prev) => prev + 1);
       const nextExercise = exercises[currentExercise + 1];
       setTimeLeft(nextExercise.duration || 0);
     } else {
       navigate("/dashboard");
     }
-  };
+  }, [currentExercise, exercises, isKayaWorkout, kayaAnalysis, navigate]);
 
-  const handlePrevious = () => {
+  const handlePrevious = useCallback(() => {
     if (currentExercise > 0) {
+      if (isKayaWorkout) {
+        kayaAnalysis.previousExercise();
+      }
       setCurrentExercise((prev) => prev - 1);
       const prevExercise = exercises[currentExercise - 1];
       setTimeLeft(prevExercise.duration || 0);
     }
-  };
+  }, [currentExercise, exercises, isKayaWorkout, kayaAnalysis]);
 
   const handleStop = () => {
     navigate("/dashboard");
@@ -269,9 +321,53 @@ export default function WorkoutUI() {
                   mirrored={true}
                 />
               )}
+              {/* KAYA Visual Pose Guide */}
+              {isKayaWorkout && cameraEnabled && showVisualGuide && currentKayaExercise && (
+                <VisualPoseGuide
+                  exerciseType={currentKayaExercise}
+                  landmarks={landmarks}
+                  currentStage={kayaAnalysis.stage}
+                  targetStage={kayaAnalysis.targetStage}
+                  corrections={kayaAnalysis.corrections}
+                  formScore={kayaAnalysis.formScore}
+                  width={videoDimensions.width}
+                  height={videoDimensions.height}
+                  mirrored={true}
+                />
+              )}
             </>
           )}
         </div>
+
+        {/* KAYA AI Coach Popup */}
+        {isKayaWorkout && (
+          <AICoachPopup
+            currentMessage={kayaAnalysis.coachMessage}
+          />
+        )}
+
+        {/* KAYA Stage Indicator */}
+        {isKayaWorkout && currentKayaExercise && (
+          <div className="absolute top-24 left-6 z-20">
+            <StageIndicator 
+              exerciseType={currentKayaExercise}
+              currentStage={kayaAnalysis.stage}
+              targetStage={kayaAnalysis.targetStage}
+              formScore={kayaAnalysis.formScore}
+              reps={kayaAnalysis.reps}
+            />
+          </div>
+        )}
+
+        {/* KAYA Beat Counter */}
+        {isKayaWorkout && kayaAnalysis.tempoAnalysis && (
+          <div className="absolute top-24 right-6 z-20">
+            <BeatCounter
+              beatCount={kayaAnalysis.tempoAnalysis.beatCount}
+              tempoQuality={kayaAnalysis.tempoAnalysis.tempoQuality}
+            />
+          </div>
+        )}
 
         {/* Overlay gradient */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40 pointer-events-none" />
@@ -332,6 +428,19 @@ export default function WorkoutUI() {
             >
               <Music className="w-5 h-5" />
             </button>
+            {/* Visual Guide Toggle (KAYA only) */}
+            {isKayaWorkout && (
+              <button
+                onClick={() => setShowVisualGuide(!showVisualGuide)}
+                className={cn(
+                  "w-12 h-12 rounded-xl backdrop-blur-sm flex items-center justify-center transition-colors",
+                  showVisualGuide ? "bg-primary/80 text-white hover:bg-primary" : "bg-white/10 text-white/60 hover:bg-white/20"
+                )}
+                title={showVisualGuide ? "ซ่อน Visual Guide" : "แสดง Visual Guide"}
+              >
+                <Target className="w-5 h-5" />
+              </button>
+            )}
             {/* Skeleton Toggle */}
             <button
               onClick={() => setShowSkeleton(!showSkeleton)}
@@ -398,8 +507,8 @@ export default function WorkoutUI() {
                 </div>
               </div>
 
-              {/* Coach Message */}
-              {showCoach && (
+              {/* Coach Message - Show KAYA coach message if KAYA workout, else regular */}
+              {showCoach && !isKayaWorkout && (
                 <div className="bg-gradient-to-r from-white/10 to-primary/10 backdrop-blur-sm rounded-2xl p-4 max-w-md border border-white/10">
                   <div className="flex items-center gap-2 mb-2">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-orange-400 flex items-center justify-center">
@@ -409,6 +518,40 @@ export default function WorkoutUI() {
                     <Sparkles className="w-4 h-4 text-primary" />
                   </div>
                   <p className="text-white/90 text-lg">{coachMessage}</p>
+                </div>
+              )}
+              
+              {/* KAYA Form Quality Indicator */}
+              {isKayaWorkout && (
+                <div className="flex items-center gap-4 mt-2">
+                  <div className={cn(
+                    "px-4 py-2 rounded-full backdrop-blur-sm border",
+                    kayaAnalysis.formQuality === 'perfect' ? 'bg-green-500/20 border-green-500/50 text-green-400' :
+                    kayaAnalysis.formQuality === 'good' ? 'bg-blue-500/20 border-blue-500/50 text-blue-400' :
+                    kayaAnalysis.formQuality === 'needs_work' ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400' :
+                    'bg-red-500/20 border-red-500/50 text-red-400'
+                  )}>
+                    <span className="font-medium">
+                      {kayaAnalysis.formQuality === 'perfect' ? '✨ สมบูรณ์แบบ' :
+                       kayaAnalysis.formQuality === 'good' ? '👍 ดี' :
+                       kayaAnalysis.formQuality === 'needs_work' ? '💪 ปรับปรุงได้' :
+                       '⚠️ ต้องแก้ไข'}
+                    </span>
+                  </div>
+                  {kayaAnalysis.tempoAnalysis && (
+                    <div className={cn(
+                      "px-4 py-2 rounded-full backdrop-blur-sm border",
+                      kayaAnalysis.tempoAnalysis.tempoQuality === 'perfect' ? 'bg-green-500/20 border-green-500/50 text-green-400' :
+                      kayaAnalysis.tempoAnalysis.tempoQuality === 'good' ? 'bg-blue-500/20 border-blue-500/50 text-blue-400' :
+                      'bg-yellow-500/20 border-yellow-500/50 text-yellow-400'
+                    )}>
+                      <span className="font-medium">
+                        จังหวะ: {kayaAnalysis.tempoAnalysis.tempoQuality === 'perfect' ? 'สมบูรณ์' :
+                                 kayaAnalysis.tempoAnalysis.tempoQuality === 'good' ? 'ดี' :
+                                 kayaAnalysis.tempoAnalysis.tempoQuality === 'too_fast' ? 'เร็วไป' : 'ช้าไป'}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -450,6 +593,39 @@ export default function WorkoutUI() {
                     <span className="text-6xl font-bold text-white font-mono">
                       {timeLeft}
                     </span>
+                  </div>
+                </div>
+              ) : isKayaWorkout ? (
+                // KAYA Rep Counter with progress ring
+                <div className="relative">
+                  <svg className="w-48 h-48 -rotate-90">
+                    <circle
+                      cx="96"
+                      cy="96"
+                      r="88"
+                      stroke="white"
+                      strokeOpacity="0.2"
+                      strokeWidth="8"
+                      fill="none"
+                    />
+                    <circle
+                      cx="96"
+                      cy="96"
+                      r="88"
+                      stroke="url(#gradient)"
+                      strokeWidth="8"
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeDasharray={2 * Math.PI * 88}
+                      strokeDashoffset={2 * Math.PI * 88 * (1 - kayaAnalysis.reps / (exercise.reps || 10))}
+                      className="transition-all duration-300"
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-6xl font-bold text-white">
+                      {kayaAnalysis.reps}
+                    </span>
+                    <p className="text-white/60 text-lg">/ {exercise.reps} reps</p>
                   </div>
                 </div>
               ) : (

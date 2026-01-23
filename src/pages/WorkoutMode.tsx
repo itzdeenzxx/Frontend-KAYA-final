@@ -461,7 +461,7 @@ export default function WorkoutMode() {
           <button
             onClick={() => handleDesktopModeSelect('computer')}
             className={cn(
-              'relative rounded-2xl overflow-hidden group border-2 transition-all',
+              'w-full relative rounded-2xl overflow-hidden group border-2 transition-all',
               desktopMode === 'computer' ? 'border-primary' : 'border-transparent'
             )}
           >

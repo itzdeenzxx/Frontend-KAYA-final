@@ -24,7 +24,9 @@ import {
   Target,
   Users,
   Star,
-  Clock
+  Clock,
+  Volume2,
+  Eye
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isMobileDevice } from '@/lib/session';
@@ -125,19 +127,19 @@ const workoutStyles: WorkoutStyle[] = [
     accentColor: 'red'
   },
   {
-    id: 'stretch',
-    name: 'FLEX & STRETCH',
-    nameEn: 'Improve Flexibility',
-    description: 'ยืดกล้ามเนื้อทุกส่วน เพิ่มความยืดหยุ่น',
-    icon: <PersonStanding className="w-8 h-8" />,
-    color: 'text-cyan-400',
-    bgGradient: 'from-cyan-600/90 via-blue-600/80 to-indigo-800/90',
+    id: 'kaya-stretch',
+    name: 'KAYA AI COACH',
+    nameEn: 'Smart Stretch with AI',
+    description: 'AI วิเคราะห์ท่าทาง + เสียงโค้ชแนะนำแบบ Real-time',
+    icon: <Brain className="w-8 h-8" />,
+    color: 'text-violet-400',
+    bgGradient: 'from-violet-600/90 via-purple-600/80 to-indigo-800/90',
     duration: '10-20 นาที',
-    calories: '50-100',
+    calories: '80-150',
     level: 'ง่าย',
-    features: ['Recovery', 'Flexibility'],
-    image: 'https://images.unsplash.com/photo-1575052814086-f385e2e2ad1b?w=800&q=80',
-    accentColor: 'cyan'
+    features: ['AI Coach', 'TTS Voice', 'Pose Guide'],
+    image: 'https://images.unsplash.com/photo-1518611012118-696072aa579a?w=800&q=80',
+    accentColor: 'violet'
   },
   {
     id: 'dance',
@@ -168,6 +170,21 @@ const workoutStyles: WorkoutStyle[] = [
     features: ['Relax', 'Breathing'],
     image: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=800&q=80',
     accentColor: 'green'
+  },
+  {
+    id: 'kaya-stretch',
+    name: 'KAYA AI COACH',
+    nameEn: 'Smart Stretch with AI',
+    description: 'AI วิเคราะห์ท่าทาง + เสียงโค้ชแนะนำแบบ Real-time',
+    icon: <Brain className="w-8 h-8" />,
+    color: 'text-violet-400',
+    bgGradient: 'from-violet-600/90 via-purple-600/80 to-indigo-800/90',
+    duration: '10-20 นาที',
+    calories: '80-150',
+    level: 'ง่าย',
+    features: ['AI Coach', 'TTS Voice', 'Pose Guide'],
+    image: 'https://images.unsplash.com/photo-1518611012118-696072aa579a?w=800&q=80',
+    accentColor: 'violet'
   }
 ];
 
@@ -304,6 +321,7 @@ export default function WorkoutSelection() {
               </div>
             </div>
           </button>
+
         </div>
 
         {/* Section Header */}
@@ -372,12 +390,25 @@ export default function WorkoutSelection() {
                   )}>
                     {style.icon}
                   </div>
-                  <span className={cn(
-                    "px-3 py-1 rounded-full text-xs font-bold border",
-                    levelColors[style.level]
-                  )}>
-                    {style.level}
-                  </span>
+                  <div className="flex flex-col items-end gap-2">
+                    <span className={cn(
+                      "px-3 py-1 rounded-full text-xs font-bold border",
+                      levelColors[style.level]
+                    )}>
+                      {style.level}
+                    </span>
+                    {/* KAYA AI Coach badges */}
+                    {style.id === 'kaya-stretch' && (
+                      <div className="flex flex-wrap gap-1 justify-end">
+                        <span className="px-2 py-0.5 rounded-full bg-violet-500/40 border border-violet-500/60 text-violet-200 text-[10px] font-bold flex items-center gap-1">
+                          <Brain className="w-3 h-3" /> AI
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full bg-pink-500/40 border border-pink-500/60 text-pink-200 text-[10px] font-bold flex items-center gap-1">
+                          <Volume2 className="w-3 h-3" /> TTS
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 
                 {/* Bottom - Text */}
@@ -585,11 +616,18 @@ export default function WorkoutSelection() {
                 </div>
                 
                 <div className="flex-1 text-left">
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <h3 className="text-lg font-black tracking-wide text-white">{style.name}</h3>
                     <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold border", levelColors[style.level])}>
                       {style.level}
                     </span>
+                    {/* KAYA AI badges in mobile list */}
+                    {style.id === 'kaya-stretch' && (
+                      <>
+                        <span className="px-2 py-0.5 rounded-full bg-violet-500/40 border border-violet-500/60 text-violet-200 text-[10px] font-bold">AI</span>
+                        <span className="px-2 py-0.5 rounded-full bg-pink-500/40 border border-pink-500/60 text-pink-200 text-[10px] font-bold">TTS</span>
+                      </>
+                    )}
                   </div>
                   <p className="text-white/70 text-xs mb-2">{style.description}</p>
                   <div className="flex items-center gap-3 text-xs">

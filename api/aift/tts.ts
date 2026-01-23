@@ -6,9 +6,7 @@ declare const process: {
 
 type TTSRequest = {
   text: string;
-  speaker?: number;
-  phrase_break?: number;
-  audiovisual?: number;
+  speaker?: string;  // "nana", "nara", etc.
 };
 
 export default async function handler(req: Request): Promise<Response> {
@@ -45,69 +43,111 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
-  const speaker = typeof body.speaker === 'number' ? body.speaker : 0;
-  const phrase_break = typeof body.phrase_break === 'number' ? body.phrase_break : 0;
-  const audiovisual = typeof body.audiovisual === 'number' ? body.audiovisual : 0;
+  // Use VAJA API (same as KAYA) - speaker name like "nana"
+  const speaker = body.speaker || 'nana';
+  const vajaUrl = 'https://api.aiforthai.in.th/vaja';
 
-  const synthUrl = 'https://api.aiforthai.in.th/vaja9/synth_audiovisual';
+  // Add timeout with AbortController
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
 
-  const synthRes = await fetch(synthUrl, {
-    method: 'POST',
-    headers: {
-      Apikey: apiKey,
-      'content-type': 'application/json',
-      accept: 'application/json',
-    },
-    body: JSON.stringify({
-      speaker,
-      phrase_break,
-      audiovisual,
-      input_text: text,
-    }),
-  });
-
-  const synthText = await synthRes.text();
-  if (!synthRes.ok) {
-    return new Response(JSON.stringify({ error: 'Upstream error', status: synthRes.status, details: synthText }), {
-      status: 502,
-      headers: { 'content-type': 'application/json' },
-    });
-  }
-
-  let wavUrl = '';
   try {
-    const json = JSON.parse(synthText) as any;
-    wavUrl = json?.wav_url || '';
-  } catch {
-    // ignore
-  }
+    // Step 1: Request TTS synthesis
+    const synthRes = await fetch(vajaUrl, {
+      method: 'POST',
+      headers: {
+        'Apikey': apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text,
+        speaker,
+      }),
+      signal: controller.signal,
+    });
 
-  if (!wavUrl) {
-    return new Response(JSON.stringify({ error: 'Missing wav_url from upstream', details: synthText }), {
-      status: 502,
+    clearTimeout(timeoutId);
+
+    if (!synthRes.ok) {
+      const errText = await synthRes.text();
+      console.error('VAJA API error:', synthRes.status, errText);
+      return new Response(JSON.stringify({ 
+        error: 'VAJA API error', 
+        status: synthRes.status, 
+        details: errText 
+      }), {
+        status: 502,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    const result = await synthRes.json() as any;
+    const audioUrl = result?.audio_url || '';
+
+    if (!audioUrl) {
+      return new Response(JSON.stringify({ 
+        error: 'Missing audio_url from VAJA', 
+        details: JSON.stringify(result) 
+      }), {
+        status: 502,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    // Step 2: Download audio file
+    const controller2 = new AbortController();
+    const timeoutId2 = setTimeout(() => controller2.abort(), 10000);
+
+    const audioRes = await fetch(audioUrl, {
+      headers: {
+        'Apikey': apiKey,
+      },
+      signal: controller2.signal,
+    });
+
+    clearTimeout(timeoutId2);
+
+    if (!audioRes.ok) {
+      const audioErr = await audioRes.text();
+      return new Response(JSON.stringify({ 
+        error: 'Failed to download audio', 
+        status: audioRes.status, 
+        details: audioErr 
+      }), {
+        status: 502,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    // Convert to base64 for easier handling in frontend
+    const audioBuffer = await audioRes.arrayBuffer();
+    const base64Audio = btoa(
+      new Uint8Array(audioBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+    );
+
+    return new Response(JSON.stringify({ 
+      success: true, 
+      audio_base64: base64Audio,
+      audio_url: audioUrl 
+    }), {
+      status: 200,
+      headers: { 
+        'content-type': 'application/json',
+        'cache-control': 'no-store',
+      },
+    });
+
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      return new Response(JSON.stringify({ error: 'TTS request timeout' }), {
+        status: 504,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    return new Response(JSON.stringify({ error: 'TTS request failed', details: err.message }), {
+      status: 500,
       headers: { 'content-type': 'application/json' },
     });
   }
-
-  const wavRes = await fetch(wavUrl, {
-    headers: {
-      Apikey: apiKey,
-    },
-  });
-
-  if (!wavRes.ok) {
-    const wavErr = await wavRes.text();
-    return new Response(JSON.stringify({ error: 'Failed to fetch wav', status: wavRes.status, details: wavErr }), {
-      status: 502,
-      headers: { 'content-type': 'application/json' },
-    });
-  }
-
-  return new Response(wavRes.body, {
-    status: 200,
-    headers: {
-      'content-type': wavRes.headers.get('content-type') || 'audio/wav',
-      'cache-control': 'no-store',
-    },
-  });
 }
