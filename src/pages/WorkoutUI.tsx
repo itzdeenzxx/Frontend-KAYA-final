@@ -11,6 +11,7 @@ import { useExerciseAnalysis } from "@/hooks/useExerciseAnalysis";
 import { VisualPoseGuide, StageIndicator, BeatCounter } from "@/components/workout/VisualPoseGuide";
 import { AICoachPopup } from "@/components/workout/AICoachPopup";
 import { ExerciseType } from "@/lib/exerciseConfig";
+import { WorkoutLoader } from "@/components/shared/WorkoutLoader";
 
 // Map icon names to components
 const exerciseIcons: Record<string, React.ReactNode> = {
@@ -79,6 +80,9 @@ export default function WorkoutUI() {
   const [coachMessage, setCoachMessage] = useState(coachMessages[0]);
   const [totalTime, setTotalTime] = useState(0);
   
+  // Simple loading state - just show loader on mount
+  const [showLoader, setShowLoader] = useState(true);
+  
   // Camera states
   const videoRef = useRef<HTMLVideoElement>(null);
   const [cameraError, setCameraError] = useState<string>('');
@@ -99,7 +103,7 @@ export default function WorkoutUI() {
   // MediaPipe pose detection
   const { landmarks, opticalFlowPoints, getFlowHistory } = useMediaPipePose(
     videoRef,
-    { enabled: cameraEnabled && (showSkeleton || showOpticalFlow || isKayaWorkout) }
+    { enabled: !showLoader && cameraEnabled && (showSkeleton || showOpticalFlow || isKayaWorkout) }
   );
   
   // Current KAYA exercise type
@@ -109,7 +113,7 @@ export default function WorkoutUI() {
   const kayaAnalysis = useExerciseAnalysis(
     isKayaWorkout ? landmarks : [],
     {
-      enabled: isKayaWorkout && !!currentKayaExercise,
+      enabled: isKayaWorkout && !!currentKayaExercise && !showLoader,
       difficulty: 'beginner',
       exerciseType: currentKayaExercise,
     }
@@ -272,6 +276,11 @@ export default function WorkoutUI() {
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
+
+  // Show loading screen while resources load
+  if (showLoader) {
+    return <WorkoutLoader onComplete={() => setShowLoader(false)} />;
+  }
 
   // Desktop/Tablet View with Camera
   if (!isMobile) {

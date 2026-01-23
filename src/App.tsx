@@ -3,7 +3,6 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { Loader2 } from "lucide-react";
 
 import Dashboard from "./pages/Dashboard";
 import WorkoutSelection from "./pages/WorkoutSelection";
@@ -28,6 +27,7 @@ import { AppLayout } from "./components/layout/AppLayout";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
 import { ThemeSelectorModal } from "./components/shared/ThemeSelectorModal";
+import { RunningLoader } from "./components/shared/RunningLoader";
 
 const queryClient = new QueryClient();
 
@@ -38,14 +38,7 @@ const AppRoutes = () => {
 
   // Show loading while initializing
   if (!isInitialized || isLoading || !isThemeLoaded) {
-    return (
-      <div className={`min-h-screen flex items-center justify-center ${theme === 'dark' ? 'bg-black' : 'bg-gray-50'}`}>
-        <div className="text-center">
-          <Loader2 className={`w-8 h-8 animate-spin mx-auto mb-4 ${theme === 'dark' ? 'text-orange-500' : 'text-primary'}`} />
-          <p className={theme === 'dark' ? 'text-gray-400' : 'text-muted-foreground'}>กำลังเชื่อมต่อ...</p>
-        </div>
-      </div>
-    );
+    return <RunningLoader message="กำลังเตรียมแอพพลิเคชัน..." />;
   }
 
   // Show onboarding for new users
@@ -60,14 +53,7 @@ const AppRoutes = () => {
 
   // Not authenticated - handled by AuthContext (auto login)
   if (!isAuthenticated) {
-    return (
-      <div className={`min-h-screen flex items-center justify-center ${theme === 'dark' ? 'bg-black' : 'bg-gray-50'}`}>
-        <div className="text-center">
-          <Loader2 className={`w-8 h-8 animate-spin mx-auto mb-4 ${theme === 'dark' ? 'text-orange-500' : 'text-primary'}`} />
-          <p className={theme === 'dark' ? 'text-gray-400' : 'text-muted-foreground'}>กำลังเข้าสู่ระบบ LINE...</p>
-        </div>
-      </div>
-    );
+    return <RunningLoader message="กำลังเข้าสู่ระบบ LINE..." />;
   }
 
   return (
