@@ -1,55 +1,97 @@
 // Workout Loader Component
-// Shows loading screen while MediaPipe model is being loaded
+// Shows loading screen while resources (camera, MediaPipe) are being loaded
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { cn } from '@/lib/utils';
-import { Camera, Cpu, CheckCircle2 } from 'lucide-react';
+import { Camera, Cpu, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+
+export interface LoadingStatus {
+  cameraReady: boolean;
+  mediaPipeReady: boolean;
+  cameraError?: string;
+}
 
 interface WorkoutLoaderProps {
+  status: LoadingStatus;
   onComplete: () => void;
   className?: string;
 }
 
-export function WorkoutLoader({ onComplete, className }: WorkoutLoaderProps) {
-  const [progress, setProgress] = useState(0);
+// Timeout after 15 seconds
+const LOADING_TIMEOUT = 15000;
+
+export function WorkoutLoader({ status, onComplete, className }: WorkoutLoaderProps) {
+  const [displayProgress, setDisplayProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState(0);
   const [message, setMessage] = useState('กำลังเตรียมกล้อง...');
+  const [isComplete, setIsComplete] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
+  const animationRef = useRef<number>();
+  const timeoutRef = useRef<NodeJS.Timeout>();
 
   const steps = [
-    { label: 'เตรียมกล้อง', icon: Camera },
-    { label: 'โหลด AI Model', icon: Cpu },
+    { id: 'camera', label: 'เตรียมกล้อง', icon: Camera, isReady: status.cameraReady },
+    { id: 'mediapipe', label: 'โหลด AI Model', icon: Cpu, isReady: status.mediaPipeReady },
   ];
 
-  // Simulate fast loading progress
+  // Timeout fallback - allow skipping after 5 seconds (reduced from 15)
   useEffect(() => {
-    const duration = 1500; // 1.5 seconds total
-    const interval = 30; // Update every 30ms
-    const increment = 100 / (duration / interval);
-    
-    const timer = setInterval(() => {
-      setProgress(prev => {
-        const next = prev + increment + Math.random() * 2; // Add some randomness
-        
-        // Update step based on progress
-        if (next > 30 && currentStep === 0) {
-          setCurrentStep(1);
-          setMessage('กำลังโหลด AI Model...');
-        }
-        
-        if (next >= 100) {
-          clearInterval(timer);
-          setMessage('พร้อมแล้ว!');
-          // Small delay then complete
-          setTimeout(onComplete, 300);
-          return 100;
-        }
-        
-        return next;
-      });
-    }, interval);
+    timeoutRef.current = setTimeout(() => {
+      if (!isComplete) {
+        setTimedOut(true);
+        setMessage('กดข้ามเพื่อเริ่มออกกำลังกาย');
+      }
+    }, 5000); // 5 seconds
 
-    return () => clearInterval(timer);
-  }, [onComplete, currentStep]);
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, [isComplete]);
+
+  // Smooth progress animation based on actual status
+  useEffect(() => {
+    // If camera ready, complete immediately (don't wait for MediaPipe)
+    if (status.cameraReady && !isComplete) {
+      setCurrentStep(1);
+      setIsComplete(true);
+      setMessage('พร้อมแล้ว!');
+      setTimeout(onComplete, 500);
+      return;
+    }
+
+    // Smooth animation to target
+    const animate = () => {
+      setDisplayProgress(prev => {
+        // If not camera ready yet, slowly creep to 90%
+        if (!status.cameraReady) {
+          const next = prev + 0.5;
+          return Math.min(next, 90);
+        }
+        
+        // If camera ready, go to 100
+        if (status.cameraReady) {
+          const diff = 100 - prev;
+          if (diff < 0.5) return 100;
+          return prev + diff * 0.2;
+        }
+        
+        return prev;
+      });
+      
+      animationRef.current = requestAnimationFrame(animate);
+    };
+    
+    animationRef.current = requestAnimationFrame(animate);
+    
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [status.cameraReady, status.mediaPipeReady, currentStep, isComplete, onComplete]);
 
   return (
     <div className={cn(
@@ -80,9 +122,8 @@ export function WorkoutLoader({ onComplete, className }: WorkoutLoaderProps) {
             className="stroke-primary"
             strokeWidth="4"
             strokeLinecap="round"
-            strokeDasharray={`${progress * 3.14} 314`}
+            strokeDasharray={`${displayProgress * 3.14} 314`}
             transform="rotate(-90 60 60)"
-            style={{ transition: 'stroke-dasharray 0.1s ease-out' }}
           />
           
           {/* Running Person in Center */}
@@ -110,52 +151,88 @@ export function WorkoutLoader({ onComplete, className }: WorkoutLoaderProps) {
       {/* Loading Steps */}
       <div className="w-72 space-y-3 mb-6">
         {steps.map((step, idx) => {
-          const isDone = idx < currentStep || (idx === currentStep && progress >= 100);
-          const isActive = idx === currentStep && progress < 100;
+          const isDone = step.isReady;
+          const isActive = idx === currentStep && !step.isReady;
+          const isPending = idx > currentStep;
           
           return (
             <div 
-              key={idx}
+              key={step.id}
               className={cn(
-                "flex items-center gap-3 p-3 rounded-lg transition-all duration-300",
+                "flex items-center gap-3 p-3 rounded-lg transition-all duration-500",
                 isActive && "bg-primary/10 scale-105",
                 isDone && "bg-green-500/10",
-                !isActive && !isDone && "opacity-50"
+                isPending && "opacity-40"
               )}
             >
               <div className={cn(
-                "w-8 h-8 rounded-full flex items-center justify-center transition-all",
+                "w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300",
                 isActive && "bg-primary/20",
                 isDone && "bg-green-500/20",
-                !isActive && !isDone && "bg-muted"
+                isPending && "bg-muted"
               )}>
                 {isDone ? (
-                  <CheckCircle2 className="w-5 h-5 text-green-500" />
+                  <CheckCircle2 className="w-6 h-6 text-green-500" />
                 ) : (
                   <step.icon className={cn(
-                    "w-5 h-5",
+                    "w-6 h-6 transition-all",
                     isActive ? "text-primary animate-pulse" : "text-muted-foreground"
                   )} />
                 )}
               </div>
-              <span className={cn(
-                "text-sm font-medium",
-                isDone && "text-green-600 dark:text-green-400"
-              )}>
-                {step.label}
-              </span>
+              <div className="flex-1">
+                <span className={cn(
+                  "text-sm font-medium block",
+                  isDone && "text-green-600 dark:text-green-400",
+                  isActive && "text-primary"
+                )}>
+                  {step.label}
+                </span>
+                {isActive && (
+                  <span className="text-xs text-muted-foreground">กำลังดำเนินการ...</span>
+                )}
+              </div>
             </div>
           );
         })}
       </div>
 
       {/* Current Message */}
-      <p className="text-sm text-muted-foreground">{message}</p>
+      <p className={cn(
+        "text-sm transition-all duration-300",
+        isComplete ? "text-green-500 font-medium" : "text-muted-foreground"
+      )}>
+        {message}
+      </p>
 
       {/* Progress Percentage */}
-      <div className="mt-4 text-2xl font-bold text-primary">
-        {Math.round(progress)}%
+      <div className="mt-4 text-3xl font-bold text-primary tabular-nums">
+        {Math.round(displayProgress)}%
       </div>
+
+      {/* Skip Button (shows after timeout or error) */}
+      {(timedOut || status.cameraError) && (
+        <Button 
+          onClick={onComplete}
+          className="mt-4"
+          variant="outline"
+        >
+          {status.cameraError ? 'ดำเนินการต่อโดยไม่ใช้กล้อง' : 'ข้ามและเริ่มออกกำลังกาย'}
+        </Button>
+      )}
+
+      {/* Error message */}
+      {status.cameraError && (
+        <div className="mt-4 flex items-center gap-2 text-yellow-500 text-sm">
+          <AlertCircle className="w-4 h-4" />
+          <span>{status.cameraError}</span>
+        </div>
+      )}
+
+      {/* Tip */}
+      <p className="mt-6 text-xs text-muted-foreground/60 max-w-xs text-center">
+        💡 ยืนให้ห่างจากกล้องประมาณ 1.5-2 เมตร เพื่อให้ AI มองเห็นท่าทางได้ชัดเจน
+      </p>
 
       {/* CSS Animations */}
       <style>{`

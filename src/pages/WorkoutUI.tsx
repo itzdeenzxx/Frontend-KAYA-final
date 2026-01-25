@@ -12,6 +12,7 @@ import { VisualPoseGuide, StageIndicator, BeatCounter } from "@/components/worko
 import { AICoachPopup } from "@/components/workout/AICoachPopup";
 import { ExerciseType } from "@/lib/exerciseConfig";
 import { WorkoutLoader } from "@/components/shared/WorkoutLoader";
+import { useAuth } from "@/contexts/AuthContext";
 
 // Map icon names to components
 const exerciseIcons: Record<string, React.ReactNode> = {
@@ -62,8 +63,11 @@ const coachMessages = [
   "ท่าทางดีมาก! AI กำลังวิเคราะห์!",
 ];
 
+const REST_DURATION = 30; // 30 seconds rest
+
 export default function WorkoutUI() {
   const navigate = useNavigate();
+  const { userProfile } = useAuth();
   
   // Get selected workout style from localStorage
   const [selectedStyleId] = useState(() => localStorage.getItem('kaya_workout_style'));
@@ -80,30 +84,68 @@ export default function WorkoutUI() {
   const [coachMessage, setCoachMessage] = useState(coachMessages[0]);
   const [totalTime, setTotalTime] = useState(0);
   
-  // Simple loading state - just show loader on mount
+  // Rest period state
+  const [showRestScreen, setShowRestScreen] = useState(false);
+  const [restTimeLeft, setRestTimeLeft] = useState(REST_DURATION);
+  const [exerciseCompleted, setExerciseCompleted] = useState(false);
+  
+  // Rep counter animation state
+  const [showRepCounter, setShowRepCounter] = useState(false);
+  const [displayRep, setDisplayRep] = useState(0);
+  const lastRepRef = useRef(0);
+  
+  // TTS audio ref
+  const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+  const lastSpokenExerciseRef = useRef(-1);
+  const coachIntroSpokenRef = useRef(false);
+  
+  // Track exercise results for summary
+  const exerciseResultsRef = useRef<Array<{
+    name: string;
+    nameTh: string;
+    reps: number;
+    targetReps: number;
+    formScore: number;
+    duration: number;
+  }>>([]);
+  const exerciseStartTimeRef = useRef(Date.now());
+  const screenshotsRef = useRef<string[]>([]);
+  
+  // Simple loading state - auto skip after 3 seconds
   const [showLoader, setShowLoader] = useState(true);
+  const [showScreenshotFlash, setShowScreenshotFlash] = useState(false);
+  
+  // Auto-skip loader after 3 seconds regardless of status
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowLoader(false);
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, []);
   
   // Camera states
   const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [cameraError, setCameraError] = useState<string>('');
   const [cameraEnabled, setCameraEnabled] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
   
-  // Skeleton overlay state
-  const [showSkeleton, setShowSkeleton] = useState(true);
-  const [showOpticalFlow, setShowOpticalFlow] = useState(true);
+  // Skeleton overlay state - hidden by default for clean UI
+  const [showSkeleton, setShowSkeleton] = useState(false);
+  const [showOpticalFlow, setShowOpticalFlow] = useState(false);
   const [videoDimensions, setVideoDimensions] = useState({ width: 1920, height: 1080 });
   
   // Music player state
   const [showMusicPlayer, setShowMusicPlayer] = useState(false);
   
-  // Visual guide state for KAYA
-  const [showVisualGuide, setShowVisualGuide] = useState(true);
+  // Visual guide state for KAYA - hidden by default for clean UI
+  const [showVisualGuide, setShowVisualGuide] = useState(false);
   
-  // MediaPipe pose detection
-  const { landmarks, opticalFlowPoints, getFlowHistory } = useMediaPipePose(
+  // MediaPipe pose detection - always enabled for KAYA workouts
+  const { landmarks, opticalFlowPoints, getFlowHistory, isLoading: mediaPipeLoading } = useMediaPipePose(
     videoRef,
-    { enabled: !showLoader && cameraEnabled && (showSkeleton || showOpticalFlow || isKayaWorkout) }
+    { enabled: cameraReady && cameraEnabled && isKayaWorkout }
   );
   
   // Current KAYA exercise type
@@ -129,8 +171,11 @@ export default function WorkoutUI() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Initialize webcam
+  // Initialize webcam - wait until loader is hidden
   useEffect(() => {
+    // Don't start camera while loader is showing (videoRef won't be mounted)
+    if (showLoader) return;
+    
     if (!cameraEnabled) {
       if (videoRef.current?.srcObject) {
         const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
@@ -142,31 +187,46 @@ export default function WorkoutUI() {
 
     const startCamera = async () => {
       try {
+        console.log('Requesting camera access...');
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
             facingMode: 'user',
           },
           audio: false,
         });
+        console.log('Camera stream obtained:', stream);
+        
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
+          
+          // Ensure video plays
+          try {
+            await videoRef.current.play();
+            console.log('Video playing');
+          } catch (playError) {
+            console.log('Auto-play blocked, user interaction needed');
+          }
+          
+          // Mark camera as ready
+          setCameraReady(true);
           
           // Track video dimensions when metadata loads
           videoRef.current.onloadedmetadata = () => {
             if (videoRef.current) {
               setVideoDimensions({
-                width: videoRef.current.videoWidth || 1920,
-                height: videoRef.current.videoHeight || 1080,
+                width: videoRef.current.videoWidth || 1280,
+                height: videoRef.current.videoHeight || 720,
               });
+              console.log('Video dimensions:', videoRef.current.videoWidth, videoRef.current.videoHeight);
             }
           };
         }
         setCameraError('');
       } catch (error) {
         console.error('Camera error:', error);
-        setCameraError('ไม่สามารถเข้าถึงกล้องได้');
+        setCameraError('ไม่สามารถเข้าถึงกล้องได้ - กรุณาอนุญาตการใช้กล้อง');
       }
     };
 
@@ -190,7 +250,7 @@ export default function WorkoutUI() {
         tracks.forEach((track) => track.stop());
       }
     };
-  }, [cameraEnabled]);
+  }, [cameraEnabled, showLoader]);
 
   useEffect(() => {
     if (isPaused) return;
@@ -220,23 +280,330 @@ export default function WorkoutUI() {
     return () => clearInterval(messageInterval);
   }, []);
 
-  // Auto-advance when KAYA exercise reps are complete
-  useEffect(() => {
-    if (isKayaWorkout && kayaAnalysis.reps >= (exercises[currentExercise]?.reps || 10)) {
-      // Wait a moment before advancing
-      const timeout = setTimeout(() => {
-        if (currentExercise < exercises.length - 1) {
-          kayaAnalysis.nextExercise();
-          setCurrentExercise((prev) => prev + 1);
-        } else {
-          navigate("/dashboard");
+  // Save exercise result when moving to next exercise
+  const saveCurrentExerciseResult = useCallback(() => {
+    const exerciseData = exercises[currentExercise];
+    if (!exerciseData) return;
+
+    const duration = Math.floor((Date.now() - exerciseStartTimeRef.current) / 1000);
+    
+    exerciseResultsRef.current[currentExercise] = {
+      name: exerciseData.name,
+      nameTh: exerciseData.nameTh,
+      reps: isKayaWorkout ? kayaAnalysis.reps : (exerciseData.reps || 0),
+      targetReps: exerciseData.reps || 10,
+      formScore: isKayaWorkout ? kayaAnalysis.formScore : 80,
+      duration,
+    };
+    
+    // Reset timer for next exercise
+    exerciseStartTimeRef.current = Date.now();
+  }, [currentExercise, exercises, isKayaWorkout, kayaAnalysis]);
+
+  // Navigate to workout complete with results
+  const finishWorkout = useCallback(() => {
+    // Save last exercise
+    saveCurrentExerciseResult();
+    
+    // Calculate totals
+    const results = exerciseResultsRef.current;
+    const totalReps = results.reduce((sum, e) => sum + (e?.reps || 0), 0);
+    const avgFormScore = results.length > 0 
+      ? Math.round(results.reduce((sum, e) => sum + (e?.formScore || 0), 0) / results.length)
+      : 80;
+    const completionPct = Math.round(
+      (results.reduce((sum, e) => sum + Math.min(e?.reps || 0, e?.targetReps || 10), 0) /
+       results.reduce((sum, e) => sum + (e?.targetReps || 10), 0)) * 100
+    );
+
+    navigate('/workout-complete', {
+      state: {
+        results: {
+          styleName: selectedStyle?.name || 'Workout',
+          styleNameTh: selectedStyle?.nameTh || 'ออกกำลังกาย',
+          exercises: results.filter(Boolean),
+          totalTime,
+          totalReps,
+          averageFormScore: avgFormScore,
+          caloriesBurned: 0, // Will be calculated in WorkoutComplete
+          completionPercentage: completionPct,
+          screenshots: screenshotsRef.current,
         }
-      }, 1500);
+      }
+    });
+  }, [navigate, saveCurrentExerciseResult, selectedStyle, totalTime]);
+
+  // Show rest screen between exercises
+  const showRestPeriod = useCallback(() => {
+    setShowRestScreen(true);
+    setRestTimeLeft(REST_DURATION);
+    setIsPaused(true);
+  }, []);
+
+  // Skip rest and go to next exercise
+  const skipRest = useCallback(() => {
+    setShowRestScreen(false);
+    setIsPaused(false);
+    if (currentExercise < exercises.length - 1) {
+      kayaAnalysis.nextExercise();
+      setCurrentExercise((prev) => prev + 1);
+      setExerciseCompleted(false);
+    } else {
+      finishWorkout();
+    }
+  }, [currentExercise, exercises.length, kayaAnalysis, finishWorkout]);
+
+  // Rest timer countdown
+  useEffect(() => {
+    if (!showRestScreen) return;
+    
+    if (restTimeLeft <= 0) {
+      skipRest();
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setRestTimeLeft((prev) => prev - 1);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [showRestScreen, restTimeLeft, skipRest]);
+
+  // Show rep counter animation when rep increases (only up to target)
+  useEffect(() => {
+    const targetReps = exercises[currentExercise]?.reps || 10;
+    
+    // Only show animation if we haven't reached target yet
+    if (isKayaWorkout && kayaAnalysis.reps > lastRepRef.current && kayaAnalysis.reps > 0 && kayaAnalysis.reps <= targetReps) {
+      setDisplayRep(kayaAnalysis.reps);
+      setShowRepCounter(true);
+      
+      // Hide after animation
+      const timeout = setTimeout(() => {
+        setShowRepCounter(false);
+      }, 800);
+      
+      lastRepRef.current = kayaAnalysis.reps;
       return () => clearTimeout(timeout);
     }
   }, [isKayaWorkout, kayaAnalysis.reps, currentExercise, exercises]);
 
+  // Reset lastRepRef when exercise changes
+  useEffect(() => {
+    lastRepRef.current = 0;
+  }, [currentExercise]);
+
+  // Speak exercise instruction when exercise changes
+  const speakExerciseInstruction = useCallback(async (exercise: WorkoutExercise) => {
+    if (!exercise) return;
+    
+    // Build instruction text
+    const instruction = `ท่า${exercise.nameTh || exercise.name}. ${exercise.description || 'ทำตามท่าที่แสดง'}`;
+    
+    console.log('TTS: Calling API with text:', instruction);
+    
+    try {
+      const response = await fetch('/api/aift/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: instruction, speaker: 'nana' }),
+      });
+      
+      console.log('TTS: Response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('TTS API error:', response.status, errorText);
+        return;
+      }
+      
+      // API returns JSON with base64 audio
+      const result = await response.json();
+      console.log('TTS: Got response, has audio_base64:', !!result.audio_base64);
+      
+      if (!result.audio_base64) {
+        console.error('TTS: No audio_base64 in response');
+        return;
+      }
+      
+      // Convert base64 to audio blob
+      const audioData = atob(result.audio_base64);
+      const audioArray = new Uint8Array(audioData.length);
+      for (let i = 0; i < audioData.length; i++) {
+        audioArray[i] = audioData.charCodeAt(i);
+      }
+      const audioBlob = new Blob([audioArray], { type: 'audio/wav' });
+      const audioUrl = URL.createObjectURL(audioBlob);
+      
+      console.log('TTS: Created audio blob, size:', audioBlob.size);
+      
+      // Stop previous audio if playing
+      if (ttsAudioRef.current) {
+        ttsAudioRef.current.pause();
+        ttsAudioRef.current = null;
+      }
+      
+      const audio = new Audio(audioUrl);
+      ttsAudioRef.current = audio;
+      
+      audio.oncanplaythrough = () => {
+        console.log('TTS: Audio ready to play');
+      };
+      
+      audio.onerror = (e) => {
+        console.error('TTS: Audio error:', e);
+      };
+      
+      audio.play().then(() => {
+        console.log('TTS: Audio playing');
+      }).catch((err) => {
+        console.error('TTS: Play error:', err);
+      });
+      
+      // Cleanup URL after audio ends
+      audio.onended = () => {
+        console.log('TTS: Audio ended');
+        URL.revokeObjectURL(audioUrl);
+        ttsAudioRef.current = null;
+      };
+    } catch (error) {
+      console.error('TTS error:', error);
+    }
+  }, []);
+
+  // Speak coach introduction
+  const speakCoachIntroduction = useCallback(async () => {
+    const userName = userProfile?.nickname || userProfile?.displayName || 'คุณ';
+    const introText = `สวัสดีครับ ผมชื่อน้องกาย วันนี้จะมาเป็นโค้ชให้คุณ${userName}นะครับ พร้อมออกกำลังกายไปด้วยกันไหมครับ เริ่มกันเลย!`;
+    
+    console.log('TTS Coach Intro: Calling API with text:', introText);
+    
+    try {
+      const response = await fetch('/api/aift/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: introText, speaker: 'nana' }),
+      });
+      
+      if (!response.ok) {
+        console.error('TTS Coach Intro API error:', response.status);
+        return;
+      }
+      
+      const result = await response.json();
+      if (!result.audio_base64) {
+        console.error('TTS Coach Intro: No audio_base64');
+        return;
+      }
+      
+      const audioData = atob(result.audio_base64);
+      const audioArray = new Uint8Array(audioData.length);
+      for (let i = 0; i < audioData.length; i++) {
+        audioArray[i] = audioData.charCodeAt(i);
+      }
+      const audioBlob = new Blob([audioArray], { type: 'audio/wav' });
+      const audioUrl = URL.createObjectURL(audioBlob);
+      
+      if (ttsAudioRef.current) {
+        ttsAudioRef.current.pause();
+        ttsAudioRef.current = null;
+      }
+      
+      const audio = new Audio(audioUrl);
+      ttsAudioRef.current = audio;
+      
+      audio.play().then(() => {
+        console.log('TTS Coach Intro: Playing');
+      }).catch(console.error);
+      
+      audio.onended = () => {
+        console.log('TTS Coach Intro: Ended');
+        URL.revokeObjectURL(audioUrl);
+        ttsAudioRef.current = null;
+        
+        // After intro ends, speak first exercise instruction
+        const exercise = exercises[0];
+        if (exercise) {
+          setTimeout(() => {
+            speakExerciseInstruction(exercise);
+          }, 500);
+        }
+      };
+    } catch (error) {
+      console.error('TTS Coach Intro error:', error);
+    }
+  }, [userProfile, exercises, speakExerciseInstruction]);
+
+  // Speak coach introduction when workout starts
+  useEffect(() => {
+    if (showLoader) return;
+    if (coachIntroSpokenRef.current) return;
+    
+    coachIntroSpokenRef.current = true;
+    
+    // Speak introduction first
+    const timeout = setTimeout(() => {
+      speakCoachIntroduction();
+    }, 500);
+    
+    return () => clearTimeout(timeout);
+  }, [showLoader, speakCoachIntroduction]);
+
+  // Speak instruction when exercise changes (after first exercise)
+  useEffect(() => {
+    // Don't speak while loader is showing
+    if (showLoader) return;
+    
+    // Skip first exercise (handled by coach intro)
+    if (currentExercise === 0) return;
+    
+    // Skip if already spoken for this exercise
+    if (lastSpokenExerciseRef.current === currentExercise) return;
+    
+    const exercise = exercises[currentExercise];
+    if (exercise) {
+      console.log('Speaking instruction for exercise:', currentExercise, exercise.nameTh);
+      lastSpokenExerciseRef.current = currentExercise;
+      
+      // Small delay to ensure UI is ready
+      const timeout = setTimeout(() => {
+        speakExerciseInstruction(exercise);
+      }, 500);
+      
+      return () => clearTimeout(timeout);
+    }
+  }, [currentExercise, showLoader, exercises, speakExerciseInstruction]);
+
+  // Auto-advance when KAYA exercise reps are complete
+  useEffect(() => {
+    if (!isKayaWorkout || exerciseCompleted || showRestScreen) return;
+    
+    const targetReps = exercises[currentExercise]?.reps || 10;
+    
+    if (kayaAnalysis.reps >= targetReps) {
+      setExerciseCompleted(true);
+      saveCurrentExerciseResult();
+      
+      // Go directly to next exercise after short delay
+      const timeout = setTimeout(() => {
+        if (currentExercise < exercises.length - 1) {
+          // Reset for next exercise
+          kayaAnalysis.nextExercise();
+          setCurrentExercise((prev) => prev + 1);
+          setExerciseCompleted(false);
+          lastRepRef.current = 0;
+          // Reset spoken ref to trigger TTS for new exercise
+          lastSpokenExerciseRef.current = -1;
+        } else {
+          finishWorkout();
+        }
+      }, 1500);
+      return () => clearTimeout(timeout);
+    }
+  }, [isKayaWorkout, kayaAnalysis.reps, currentExercise, exercises, exerciseCompleted, showRestScreen, saveCurrentExerciseResult, kayaAnalysis, finishWorkout]);
+
   const handleNext = useCallback(() => {
+    saveCurrentExerciseResult();
     if (currentExercise < exercises.length - 1) {
       if (isKayaWorkout) {
         kayaAnalysis.nextExercise();
@@ -245,9 +612,9 @@ export default function WorkoutUI() {
       const nextExercise = exercises[currentExercise + 1];
       setTimeLeft(nextExercise.duration || 0);
     } else {
-      navigate("/dashboard");
+      finishWorkout();
     }
-  }, [currentExercise, exercises, isKayaWorkout, kayaAnalysis, navigate]);
+  }, [currentExercise, exercises, isKayaWorkout, kayaAnalysis, saveCurrentExerciseResult, finishWorkout]);
 
   const handlePrevious = useCallback(() => {
     if (currentExercise > 0) {
@@ -268,6 +635,59 @@ export default function WorkoutUI() {
     setCameraEnabled(!cameraEnabled);
   };
 
+  // Capture screenshot function
+  const captureScreenshot = useCallback(() => {
+    if (!videoRef.current) return;
+    
+    try {
+      const video = videoRef.current;
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      
+      // Mirror the video like it's displayed
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      // Add overlay text
+      ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+      ctx.font = 'bold 24px sans-serif';
+      ctx.fillStyle = 'white';
+      ctx.strokeStyle = 'black';
+      ctx.lineWidth = 3;
+      ctx.textAlign = 'left';
+      
+      // Exercise name - use exercises[currentExercise] directly
+      const currentEx = exercises[currentExercise];
+      const text = `${currentEx?.nameTh || 'ออกกำลังกาย'}`;
+      ctx.strokeText(text, 20, 40);
+      ctx.fillText(text, 20, 40);
+      
+      // Reps if KAYA workout
+      if (isKayaWorkout) {
+        const repsText = `${kayaAnalysis.reps} ครั้ง`;
+        ctx.strokeText(repsText, 20, 70);
+        ctx.fillText(repsText, 20, 70);
+      }
+      
+      // Add to screenshots (max 5)
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      if (screenshotsRef.current.length < 5) {
+        screenshotsRef.current.push(dataUrl);
+      }
+      
+      // Show flash effect
+      setShowScreenshotFlash(true);
+      setTimeout(() => setShowScreenshotFlash(false), 200);
+    } catch (error) {
+      console.error('Screenshot failed:', error);
+    }
+  }, [exercises, currentExercise, isKayaWorkout, kayaAnalysis.reps]);
+
   const exercise = exercises[currentExercise];
   const progress = ((currentExercise + 1) / exercises.length) * 100;
 
@@ -279,13 +699,128 @@ export default function WorkoutUI() {
 
   // Show loading screen while resources load
   if (showLoader) {
-    return <WorkoutLoader onComplete={() => setShowLoader(false)} />;
+    return (
+      <WorkoutLoader 
+        status={{ 
+          cameraReady, 
+          mediaPipeReady: !mediaPipeLoading,
+          cameraError: cameraError || undefined
+        }} 
+        onComplete={() => setShowLoader(false)} 
+      />
+    );
+  }
+
+  // Rest Period Screen
+  if (showRestScreen) {
+    const nextExercise = exercises[currentExercise + 1];
+    return (
+      <div className="fixed inset-0 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex flex-col items-center justify-center p-6">
+        {/* Rest Timer Circle */}
+        <div className="relative w-48 h-48 mb-8">
+          <svg className="w-full h-full -rotate-90">
+            <circle
+              cx="96"
+              cy="96"
+              r="88"
+              stroke="white"
+              strokeOpacity="0.2"
+              strokeWidth="8"
+              fill="none"
+            />
+            <circle
+              cx="96"
+              cy="96"
+              r="88"
+              stroke="url(#restGradient)"
+              strokeWidth="8"
+              fill="none"
+              strokeLinecap="round"
+              strokeDasharray={2 * Math.PI * 88}
+              strokeDashoffset={2 * Math.PI * 88 * (1 - restTimeLeft / REST_DURATION)}
+              className="transition-all duration-1000"
+            />
+            <defs>
+              <linearGradient id="restGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#22c55e" />
+                <stop offset="100%" stopColor="#16a34a" />
+              </linearGradient>
+            </defs>
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="text-5xl font-bold text-white">{restTimeLeft}</span>
+            <span className="text-white/60 text-sm">วินาที</span>
+          </div>
+        </div>
+
+        {/* Rest Message */}
+        <div className="text-center mb-8">
+          <h2 className="text-2xl font-bold text-white mb-2">🎉 เยี่ยมมาก!</h2>
+          <p className="text-white/70">พักสักครู่แล้วไปท่าต่อไปกัน</p>
+        </div>
+
+        {/* Next Exercise Preview */}
+        {nextExercise && (
+          <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 mb-8 w-full max-w-sm">
+            <p className="text-white/60 text-sm mb-2">ท่าถัดไป</p>
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 rounded-xl bg-primary/20 flex items-center justify-center text-3xl">
+                {nextExercise.icon || "🏃"}
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-white">{nextExercise.nameTh || nextExercise.name}</h3>
+                <p className="text-white/60">{nextExercise.reps} ครั้ง</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Music Player during rest */}
+        <div className="w-full max-w-sm mb-8">
+          <MusicPlayer className="text-white" autoPlay={true} />
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex gap-4">
+          <button
+            onClick={skipRest}
+            className="px-8 py-4 bg-primary rounded-xl text-white font-semibold text-lg hover:bg-primary/90 transition-colors"
+          >
+            ข้ามพัก →
+          </button>
+          <button
+            onClick={finishWorkout}
+            className="px-8 py-4 bg-white/10 backdrop-blur-sm rounded-xl text-white font-medium hover:bg-white/20 transition-colors"
+          >
+            จบการออกกำลังกาย
+          </button>
+        </div>
+
+        {/* Progress */}
+        <div className="absolute bottom-6 left-6 right-6">
+          <div className="flex justify-between text-white/60 text-sm mb-2">
+            <span>ความคืบหน้า</span>
+            <span>{currentExercise + 1} / {exercises.length}</span>
+          </div>
+          <div className="h-2 bg-white/20 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-green-500 rounded-full transition-all duration-500"
+              style={{ width: `${((currentExercise + 1) / exercises.length) * 100}%` }}
+            />
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // Desktop/Tablet View with Camera
   if (!isMobile) {
     return (
-      <div className="fixed inset-0 bg-black overflow-hidden">
+      <div ref={containerRef} className="fixed inset-0 bg-black overflow-hidden">
+        {/* Screenshot Flash Effect */}
+        {showScreenshotFlash && (
+          <div className="absolute inset-0 bg-white z-50 animate-flash" />
+        )}
         {/* Fullscreen Camera View */}
         <div className="absolute inset-0">
           {!cameraEnabled ? (
@@ -315,7 +850,13 @@ export default function WorkoutUI() {
                 autoPlay
                 playsInline
                 muted
+                onCanPlay={() => {
+                  console.log('Video can play');
+                  setCameraReady(true);
+                }}
+                onLoadedData={() => console.log('Video data loaded')}
                 className="w-full h-full object-cover scale-x-[-1]"
+                style={{ backgroundColor: '#000' }}
               />
               {/* Skeleton Overlay */}
               {cameraEnabled && (showSkeleton || showOpticalFlow) && (
@@ -368,315 +909,135 @@ export default function WorkoutUI() {
           </div>
         )}
 
-        {/* KAYA Beat Counter */}
-        {isKayaWorkout && kayaAnalysis.tempoAnalysis && (
-          <div className="absolute top-24 right-6 z-20">
-            <BeatCounter
-              beatCount={kayaAnalysis.tempoAnalysis.beatCount}
-              tempoQuality={kayaAnalysis.tempoAnalysis.tempoQuality}
-            />
+        {/* Rep Counter Animation - Big number popup */}
+        {showRepCounter && (
+          <div className="absolute inset-0 flex items-center justify-center z-30 pointer-events-none">
+            <div className="animate-rep-popup">
+              <span className="text-[150px] font-black text-primary drop-shadow-2xl" style={{
+                textShadow: '0 0 60px rgba(221, 110, 83, 0.8), 0 0 120px rgba(221, 110, 83, 0.4)'
+              }}>
+                {displayRep}
+              </span>
+            </div>
           </div>
         )}
 
-        {/* Overlay gradient */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40 pointer-events-none" />
+        {/* Overlay gradient - lighter for clean look */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
 
-        {/* AI Powered Badge */}
-        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20">
-          <div className="flex items-center gap-3">
-            {/* Workout Style Badge */}
-            {selectedStyle && (
-              <div className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md border",
-                `bg-gradient-to-r ${selectedStyle.bgGradient} border-white/20`
-              )}>
-                {styleIcons[selectedStyle.id] || <Dumbbell className="w-4 h-4" />}
-                <span className="text-sm font-medium text-white">{selectedStyle.name}</span>
-              </div>
-            )}
-            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-primary/20 to-orange-400/20 backdrop-blur-md border border-primary/30">
-              <Brain className="w-4 h-4 text-primary" />
-              <span className="text-sm font-medium text-white">AI Pose Detection Active</span>
-              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-            </div>
-          </div>
-        </div>
-
-        {/* Top Bar */}
-        <div className="absolute top-0 left-0 right-0 p-6 flex items-center justify-between z-10">
+        {/* Top Bar - Simplified */}
+        <div className="absolute top-0 left-0 right-0 p-4 flex items-center justify-between z-10">
           {/* Close Button */}
           <button
             onClick={handleStop}
-            className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur-sm flex items-center justify-center text-white hover:bg-white/20 transition-colors"
+            className="w-10 h-10 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center text-white hover:bg-black/50 transition-colors"
           >
-            <X className="w-6 h-6" />
+            <X className="w-5 h-5" />
           </button>
 
-          {/* AI Features Indicator */}
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2">
-              <Target className="w-4 h-4 text-primary" />
-              <span className="text-white/80 text-sm">Pose Tracking</span>
+          {/* Center - Workout Style (small) */}
+          {selectedStyle && (
+            <div className={cn(
+              "flex items-center gap-2 px-3 py-1.5 rounded-full backdrop-blur-md border text-xs",
+              `bg-gradient-to-r ${selectedStyle.bgGradient} border-white/20`
+            )}>
+              {styleIcons[selectedStyle.id] || <Dumbbell className="w-3 h-3" />}
+              <span className="font-medium text-white">{selectedStyle.name}</span>
             </div>
-            <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2">
-              <Activity className="w-4 h-4 text-green-400" />
-              <span className="text-white/80 text-sm">Rep Counter</span>
-            </div>
-          </div>
+          )}
 
-          {/* Total Time & Camera Toggle */}
-          <div className="flex items-center gap-3">
-            {/* Music Toggle */}
+          {/* Right side - Time & Controls */}
+          <div className="flex items-center gap-2">
+            {/* Time */}
+            <div className="text-white text-lg font-mono bg-black/30 backdrop-blur-sm rounded-full px-3 py-1">
+              {formatTime(totalTime)}
+            </div>
+            {/* Settings Menu */}
             <button
               onClick={() => setShowMusicPlayer(!showMusicPlayer)}
               className={cn(
-                "w-12 h-12 rounded-xl backdrop-blur-sm flex items-center justify-center transition-colors",
-                showMusicPlayer ? "bg-primary/80 text-white hover:bg-primary" : "bg-white/10 text-white/60 hover:bg-white/20"
+                "w-10 h-10 rounded-full backdrop-blur-sm flex items-center justify-center transition-colors",
+                showMusicPlayer ? "bg-primary text-white" : "bg-black/30 text-white/70 hover:bg-black/50"
               )}
-              title={showMusicPlayer ? "ซ่อนเพลง" : "เปิดเพลง"}
             >
-              <Music className="w-5 h-5" />
-            </button>
-            {/* Visual Guide Toggle (KAYA only) */}
-            {isKayaWorkout && (
-              <button
-                onClick={() => setShowVisualGuide(!showVisualGuide)}
-                className={cn(
-                  "w-12 h-12 rounded-xl backdrop-blur-sm flex items-center justify-center transition-colors",
-                  showVisualGuide ? "bg-primary/80 text-white hover:bg-primary" : "bg-white/10 text-white/60 hover:bg-white/20"
-                )}
-                title={showVisualGuide ? "ซ่อน Visual Guide" : "แสดง Visual Guide"}
-              >
-                <Target className="w-5 h-5" />
-              </button>
-            )}
-            {/* Skeleton Toggle */}
-            <button
-              onClick={() => setShowSkeleton(!showSkeleton)}
-              className={cn(
-                "w-12 h-12 rounded-xl backdrop-blur-sm flex items-center justify-center transition-colors",
-                showSkeleton ? "bg-primary/80 text-white hover:bg-primary" : "bg-white/10 text-white/60 hover:bg-white/20"
-              )}
-              title={showSkeleton ? "ซ่อนโครงกระดูก" : "แสดงโครงกระดูก"}
-            >
-              {showSkeleton ? <Bone className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
+              <Music className="w-4 h-4" />
             </button>
             <button
-              onClick={toggleCamera}
-              className={cn(
-                "w-12 h-12 rounded-xl backdrop-blur-sm flex items-center justify-center transition-colors",
-                cameraEnabled ? "bg-white/10 text-white hover:bg-white/20" : "bg-red-500/20 text-red-400 hover:bg-red-500/30"
-              )}
+              onClick={captureScreenshot}
+              className="w-10 h-10 rounded-full bg-black/30 text-white/70 hover:bg-black/50 backdrop-blur-sm flex items-center justify-center transition-colors"
             >
-              {cameraEnabled ? <Camera className="w-5 h-5" /> : <CameraOff className="w-5 h-5" />}
+              <Camera className="w-4 h-4" />
             </button>
-            <div className="text-white text-2xl font-mono bg-white/10 backdrop-blur-sm rounded-xl px-4 py-2">
-              {formatTime(totalTime)}
-            </div>
           </div>
         </div>
 
         {/* Music Player Panel */}
         {showMusicPlayer && (
-          <div className="absolute top-24 right-6 z-20 w-80">
+          <div className="absolute top-16 right-4 z-20 w-72">
             <MusicPlayer className="text-white" />
           </div>
         )}
 
-        {/* Current Exercise Display */}
-        <div className="absolute bottom-0 left-0 right-0 p-8 z-10">
+        {/* Current Exercise Display - Simplified */}
+        <div className="absolute bottom-0 left-0 right-0 p-6 z-10">
           {/* Progress Bar */}
-          <div className="mb-6">
-            <div className="flex justify-between text-white/80 text-sm mb-2">
-              <span>Progress</span>
+          <div className="mb-4">
+            <div className="flex justify-between text-white/60 text-xs mb-1">
               <span>{currentExercise + 1} / {exercises.length}</span>
+              <span>{Math.round(progress)}%</span>
             </div>
-            <div className="h-2 bg-white/20 rounded-full overflow-hidden">
+            <div className="h-1 bg-white/20 rounded-full overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-primary to-orange-400 rounded-full transition-all duration-500"
+                className="h-full bg-primary rounded-full transition-all duration-500"
                 style={{ width: `${progress}%` }}
               />
             </div>
           </div>
 
-          <div className="flex items-end justify-between gap-8">
+          <div className="flex items-end justify-between gap-4">
             {/* Exercise Info */}
             <div className="flex-1">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-primary/30 to-orange-400/30 backdrop-blur-sm flex items-center justify-center text-primary border border-primary/20">
-                  {exerciseIconsLarge[exercise.icon]}
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-16 h-16 rounded-xl bg-primary/20 backdrop-blur-sm flex items-center justify-center border border-primary/30">
+                  <Activity className="w-8 h-8 text-primary" />
                 </div>
                 <div>
-                  <p className="text-white/60 text-lg mb-1">Now Playing</p>
-                  <h1 className="text-5xl font-bold text-white mb-2">{exercise.name}</h1>
-                  <p className="text-white/60 text-xl mb-1">{exercise.nameTh}</p>
-                  <p className="text-white/80 text-xl">
-                    {exercise.duration ? `${exercise.duration} seconds` : `${exercise.reps ?? 0} reps`}
-                  </p>
-                </div>
-              </div>
-
-              {/* Coach Message - Show KAYA coach message if KAYA workout, else regular */}
-              {showCoach && !isKayaWorkout && (
-                <div className="bg-gradient-to-r from-white/10 to-primary/10 backdrop-blur-sm rounded-2xl p-4 max-w-md border border-white/10">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-orange-400 flex items-center justify-center">
-                      <Brain className="w-4 h-4 text-white" />
+                  <h2 className="text-xl font-bold text-white">{exercise?.nameTh || exercise?.name}</h2>
+                  {isKayaWorkout ? (
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-2xl font-bold text-primary">{Math.min(kayaAnalysis.reps, exercise?.reps || 10)}</span>
+                      <span className="text-white/60 text-sm">/ {exercise?.reps || 10} ครั้ง</span>
                     </div>
-                    <span className="text-white font-medium">AI Coach</span>
-                    <Sparkles className="w-4 h-4 text-primary" />
-                  </div>
-                  <p className="text-white/90 text-lg">{coachMessage}</p>
-                </div>
-              )}
-              
-              {/* KAYA Form Quality Indicator */}
-              {isKayaWorkout && (
-                <div className="flex items-center gap-4 mt-2">
-                  <div className={cn(
-                    "px-4 py-2 rounded-full backdrop-blur-sm border",
-                    kayaAnalysis.formQuality === 'perfect' ? 'bg-green-500/20 border-green-500/50 text-green-400' :
-                    kayaAnalysis.formQuality === 'good' ? 'bg-blue-500/20 border-blue-500/50 text-blue-400' :
-                    kayaAnalysis.formQuality === 'needs_work' ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400' :
-                    'bg-red-500/20 border-red-500/50 text-red-400'
-                  )}>
-                    <span className="font-medium">
-                      {kayaAnalysis.formQuality === 'perfect' ? '✨ สมบูรณ์แบบ' :
-                       kayaAnalysis.formQuality === 'good' ? '👍 ดี' :
-                       kayaAnalysis.formQuality === 'needs_work' ? '💪 ปรับปรุงได้' :
-                       '⚠️ ต้องแก้ไข'}
-                    </span>
-                  </div>
-                  {kayaAnalysis.tempoAnalysis && (
-                    <div className={cn(
-                      "px-4 py-2 rounded-full backdrop-blur-sm border",
-                      kayaAnalysis.tempoAnalysis.tempoQuality === 'perfect' ? 'bg-green-500/20 border-green-500/50 text-green-400' :
-                      kayaAnalysis.tempoAnalysis.tempoQuality === 'good' ? 'bg-blue-500/20 border-blue-500/50 text-blue-400' :
-                      'bg-yellow-500/20 border-yellow-500/50 text-yellow-400'
-                    )}>
-                      <span className="font-medium">
-                        จังหวะ: {kayaAnalysis.tempoAnalysis.tempoQuality === 'perfect' ? 'สมบูรณ์' :
-                                 kayaAnalysis.tempoAnalysis.tempoQuality === 'good' ? 'ดี' :
-                                 kayaAnalysis.tempoAnalysis.tempoQuality === 'too_fast' ? 'เร็วไป' : 'ช้าไป'}
-                      </span>
-                    </div>
+                  ) : (
+                    <p className="text-white/60 text-sm">
+                      {exercise?.duration ? `${formatTime(timeLeft)} เหลือ` : `${exercise?.reps} ครั้ง`}
+                    </p>
                   )}
                 </div>
-              )}
+              </div>
             </div>
 
-            {/* Timer/Rep Counter */}
-            <div className="text-center">
-              {exercise.duration ? (
-                <div className="relative">
-                  <svg className="w-48 h-48 -rotate-90">
-                    <circle
-                      cx="96"
-                      cy="96"
-                      r="88"
-                      stroke="white"
-                      strokeOpacity="0.2"
-                      strokeWidth="8"
-                      fill="none"
-                    />
-                    <circle
-                      cx="96"
-                      cy="96"
-                      r="88"
-                      stroke="url(#gradient)"
-                      strokeWidth="8"
-                      fill="none"
-                      strokeLinecap="round"
-                      strokeDasharray={2 * Math.PI * 88}
-                      strokeDashoffset={2 * Math.PI * 88 * (1 - timeLeft / (exercise.duration || 1))}
-                      className="transition-all duration-1000"
-                    />
-                    <defs>
-                      <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                        <stop offset="0%" stopColor="#dd6e53" />
-                        <stop offset="100%" stopColor="#ef8b6c" />
-                      </linearGradient>
-                    </defs>
-                  </svg>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-6xl font-bold text-white font-mono">
-                      {timeLeft}
-                    </span>
-                  </div>
-                </div>
-              ) : isKayaWorkout ? (
-                // KAYA Rep Counter with progress ring
-                <div className="relative">
-                  <svg className="w-48 h-48 -rotate-90">
-                    <circle
-                      cx="96"
-                      cy="96"
-                      r="88"
-                      stroke="white"
-                      strokeOpacity="0.2"
-                      strokeWidth="8"
-                      fill="none"
-                    />
-                    <circle
-                      cx="96"
-                      cy="96"
-                      r="88"
-                      stroke="url(#gradient)"
-                      strokeWidth="8"
-                      fill="none"
-                      strokeLinecap="round"
-                      strokeDasharray={2 * Math.PI * 88}
-                      strokeDashoffset={2 * Math.PI * 88 * (1 - kayaAnalysis.reps / (exercise.reps || 10))}
-                      className="transition-all duration-300"
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-6xl font-bold text-white">
-                      {kayaAnalysis.reps}
-                    </span>
-                    <p className="text-white/60 text-lg">/ {exercise.reps} reps</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="w-48 h-48 rounded-full bg-gradient-to-br from-white/10 to-primary/10 backdrop-blur-sm flex items-center justify-center border border-white/10">
-                  <div className="text-center">
-                    <span className="text-6xl font-bold text-white">
-                      {exercise.reps}
-                    </span>
-                    <p className="text-white/60 text-xl">reps</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Controls */}
-              <div className="flex items-center justify-center gap-4 mt-6">
-                <button
-                  onClick={handlePrevious}
-                  className="w-14 h-14 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center text-white hover:bg-white/20 transition-colors disabled:opacity-50"
-                  disabled={currentExercise === 0}
-                >
-                  <SkipBack className="w-6 h-6" />
-                </button>
-                <button
-                  onClick={() => setIsPaused(!isPaused)}
-                  className="w-20 h-20 rounded-full bg-gradient-to-r from-primary to-orange-400 flex items-center justify-center text-white shadow-lg shadow-primary/30 hover:shadow-primary/50 transition-all hover:scale-105"
-                >
-                  {isPaused ? <Play className="w-10 h-10 ml-1" /> : <Pause className="w-10 h-10" />}
-                </button>
-                <button
-                  onClick={handleNext}
-                  className="w-14 h-14 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center text-white hover:bg-white/20 transition-colors"
-                >
-                  <SkipForward className="w-6 h-6" />
-                </button>
-              </div>
-
-              {/* Pause Status */}
-              {isPaused && (
-                <div className="mt-4 text-2xl text-yellow-400 font-semibold animate-pulse">
-                  PAUSED
-                </div>
-              )}
+            {/* Controls */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handlePrevious}
+                disabled={currentExercise === 0}
+                className="w-12 h-12 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center text-white disabled:opacity-30 hover:bg-white/20 transition-colors"
+              >
+                <SkipBack className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setIsPaused(!isPaused)}
+                className="w-14 h-14 rounded-full bg-primary flex items-center justify-center text-white hover:bg-primary/90 transition-colors"
+              >
+                {isPaused ? <Play className="w-6 h-6 ml-1" /> : <Pause className="w-6 h-6" />}
+              </button>
+              <button
+                onClick={handleNext}
+                className="w-12 h-12 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center text-white hover:bg-white/20 transition-colors"
+              >
+                <SkipForward className="w-5 h-5" />
+              </button>
             </div>
           </div>
         </div>
@@ -687,6 +1048,10 @@ export default function WorkoutUI() {
   // Mobile View with Camera
   return (
     <div className="min-h-screen bg-black flex flex-col relative overflow-hidden">
+      {/* Screenshot Flash Effect */}
+      {showScreenshotFlash && (
+        <div className="absolute inset-0 bg-white z-50 animate-flash" />
+      )}
       {/* Camera Background */}
       <div className="absolute inset-0">
         {!cameraEnabled ? (
@@ -766,6 +1131,14 @@ export default function WorkoutUI() {
                 title={showSkeleton ? "ซ่อนโครงกระดูก" : "แสดงโครงกระดูก"}
               >
                 {showSkeleton ? <Bone className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
+              </button>
+              {/* Screenshot Button for Mobile */}
+              <button
+                onClick={captureScreenshot}
+                className="w-10 h-10 rounded-xl bg-pink-500/80 text-white backdrop-blur-sm flex items-center justify-center transition-colors"
+                title="ถ่ายรูป"
+              >
+                <Camera className="w-5 h-5" />
               </button>
               <button 
                 onClick={toggleCamera}
@@ -905,6 +1278,17 @@ export default function WorkoutUI() {
           )}
         </div>
       </div>
+      
+      {/* CSS for flash animation */}
+      <style>{`
+        @keyframes flash {
+          0% { opacity: 0.9; }
+          100% { opacity: 0; }
+        }
+        .animate-flash {
+          animation: flash 0.2s ease-out forwards;
+        }
+      `}</style>
     </div>
   );
 }

@@ -8,6 +8,15 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
   },
+  build: {
+    sourcemap: true,
+    commonjsOptions: {
+      transformMixedEsModules: true,
+    },
+  },
+  optimizeDeps: {
+    include: ['firebase/app', 'firebase/firestore', 'firebase/auth', 'firebase/analytics', '@line/liff'],
+  },
   plugins: [react()].filter(Boolean),
   resolve: {
     alias: {

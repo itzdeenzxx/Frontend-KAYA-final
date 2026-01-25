@@ -26,9 +26,10 @@ import {
 interface MusicPlayerProps {
   className?: string;
   compact?: boolean;
+  autoPlay?: boolean;
 }
 
-export default function MusicPlayer({ className, compact = false }: MusicPlayerProps) {
+export default function MusicPlayer({ className, compact = false, autoPlay = false }: MusicPlayerProps) {
   const [isExpanded, setIsExpanded] = useState(!compact);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
@@ -77,6 +78,24 @@ export default function MusicPlayer({ className, compact = false }: MusicPlayerP
       audio.src = '';
     };
   }, []);
+
+  // Auto-play first track when autoPlay is true and tracks are loaded
+  useEffect(() => {
+    if (autoPlay && tracks.length > 0 && !currentTrack) {
+      // Pick a random track
+      const randomIndex = Math.floor(Math.random() * tracks.length);
+      const track = tracks[randomIndex];
+      setCurrentTrack(track);
+      setCurrentIndex(randomIndex);
+      setPlaylist(tracks);
+      
+      // Start playing
+      if (audioRef.current) {
+        audioRef.current.src = track.audio;
+        audioRef.current.play().catch(console.error);
+      }
+    }
+  }, [autoPlay, tracks, currentTrack]);
 
   // Update playlist when tracks change
   useEffect(() => {

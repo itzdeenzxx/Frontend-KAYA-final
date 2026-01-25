@@ -6,7 +6,6 @@ import { Landmark } from '@/hooks/useMediaPipePose';
 import {
   ExerciseType,
   ExerciseStage,
-  TARGET_POSES,
   VISUAL_GUIDE_CONFIG,
   LANDMARK_INDICES as LM,
 } from '@/lib/exerciseConfig';
@@ -59,6 +58,194 @@ const TARGET_CONNECTIONS: [string, string][] = [
   ['right_knee', 'right_ankle'],
 ];
 
+// Calculate dynamic target pose based on user's actual body proportions
+function calculateDynamicTargetPose(
+  landmarks: Landmark[],
+  exerciseType: ExerciseType,
+  targetStage: ExerciseStage
+): Record<string, { x: number; y: number }> | null {
+  // Need at least shoulders and hips to calculate
+  const leftShoulder = landmarks[LM.LEFT_SHOULDER];
+  const rightShoulder = landmarks[LM.RIGHT_SHOULDER];
+  const leftHip = landmarks[LM.LEFT_HIP];
+  const rightHip = landmarks[LM.RIGHT_HIP];
+  const leftElbow = landmarks[LM.LEFT_ELBOW];
+  const rightElbow = landmarks[LM.RIGHT_ELBOW];
+  const leftWrist = landmarks[LM.LEFT_WRIST];
+  const rightWrist = landmarks[LM.RIGHT_WRIST];
+  const leftKnee = landmarks[LM.LEFT_KNEE];
+  const rightKnee = landmarks[LM.RIGHT_KNEE];
+  const leftAnkle = landmarks[LM.LEFT_ANKLE];
+  const rightAnkle = landmarks[LM.RIGHT_ANKLE];
+
+  if (!leftShoulder || !rightShoulder || !leftHip || !rightHip) return null;
+
+  // Calculate arm and leg lengths from current pose
+  const leftArmLength = leftElbow && leftWrist 
+    ? Math.hypot(leftShoulder.x - leftElbow.x, leftShoulder.y - leftElbow.y) +
+      Math.hypot(leftElbow.x - leftWrist.x, leftElbow.y - leftWrist.y)
+    : 0.25;
+  
+  const rightArmLength = rightElbow && rightWrist
+    ? Math.hypot(rightShoulder.x - rightElbow.x, rightShoulder.y - rightElbow.y) +
+      Math.hypot(rightElbow.x - rightWrist.x, rightElbow.y - rightWrist.y)
+    : 0.25;
+
+  const leftUpperArm = leftElbow 
+    ? Math.hypot(leftShoulder.x - leftElbow.x, leftShoulder.y - leftElbow.y) 
+    : 0.12;
+  const rightUpperArm = rightElbow 
+    ? Math.hypot(rightShoulder.x - rightElbow.x, rightShoulder.y - rightElbow.y) 
+    : 0.12;
+  const leftForearm = leftElbow && leftWrist 
+    ? Math.hypot(leftElbow.x - leftWrist.x, leftElbow.y - leftWrist.y) 
+    : 0.13;
+  const rightForearm = rightElbow && rightWrist 
+    ? Math.hypot(rightElbow.x - rightWrist.x, rightElbow.y - rightWrist.y) 
+    : 0.13;
+
+  const leftThigh = leftKnee 
+    ? Math.hypot(leftHip.x - leftKnee.x, leftHip.y - leftKnee.y) 
+    : 0.2;
+  const rightThigh = rightKnee 
+    ? Math.hypot(rightHip.x - rightKnee.x, rightHip.y - rightKnee.y) 
+    : 0.2;
+  const leftShin = leftKnee && leftAnkle 
+    ? Math.hypot(leftKnee.x - leftAnkle.x, leftKnee.y - leftAnkle.y) 
+    : 0.2;
+  const rightShin = rightKnee && rightAnkle 
+    ? Math.hypot(rightKnee.x - rightAnkle.x, rightKnee.y - rightAnkle.y) 
+    : 0.2;
+
+  // Base pose from current landmarks (keep body position)
+  const basePose: Record<string, { x: number; y: number }> = {
+    left_shoulder: { x: leftShoulder.x, y: leftShoulder.y },
+    right_shoulder: { x: rightShoulder.x, y: rightShoulder.y },
+    left_hip: { x: leftHip.x, y: leftHip.y },
+    right_hip: { x: rightHip.x, y: rightHip.y },
+  };
+
+  // Calculate target positions based on exercise type and stage
+  switch (exerciseType) {
+    case 'arm_raise':
+      if (targetStage === 'up') {
+        // Arms raised overhead - maintain body proportions
+        const leftElbowTarget = {
+          x: leftShoulder.x + leftUpperArm * 0.3, // Slightly outward
+          y: leftShoulder.y - leftUpperArm * 0.9, // Up
+        };
+        const rightElbowTarget = {
+          x: rightShoulder.x - rightUpperArm * 0.3,
+          y: rightShoulder.y - rightUpperArm * 0.9,
+        };
+        return {
+          ...basePose,
+          left_elbow: leftElbowTarget,
+          right_elbow: rightElbowTarget,
+          left_wrist: {
+            x: leftElbowTarget.x + leftForearm * 0.2,
+            y: leftElbowTarget.y - leftForearm * 0.95,
+          },
+          right_wrist: {
+            x: rightElbowTarget.x - rightForearm * 0.2,
+            y: rightElbowTarget.y - rightForearm * 0.95,
+          },
+        };
+      } else {
+        // Arms down by sides
+        const leftElbowTarget = {
+          x: leftShoulder.x + leftUpperArm * 0.15,
+          y: leftShoulder.y + leftUpperArm * 0.95,
+        };
+        const rightElbowTarget = {
+          x: rightShoulder.x - rightUpperArm * 0.15,
+          y: rightShoulder.y + rightUpperArm * 0.95,
+        };
+        return {
+          ...basePose,
+          left_elbow: leftElbowTarget,
+          right_elbow: rightElbowTarget,
+          left_wrist: {
+            x: leftElbowTarget.x + leftForearm * 0.1,
+            y: leftElbowTarget.y + leftForearm * 0.95,
+          },
+          right_wrist: {
+            x: rightElbowTarget.x - rightForearm * 0.1,
+            y: rightElbowTarget.y + rightForearm * 0.95,
+          },
+        };
+      }
+
+    case 'torso_twist':
+      // For torso twist, show shoulder rotation based on current position
+      const shoulderWidth = Math.abs(rightShoulder.x - leftShoulder.x);
+      if (targetStage === 'left') {
+        return {
+          ...basePose,
+          left_shoulder: { x: leftShoulder.x - shoulderWidth * 0.15, y: leftShoulder.y },
+          right_shoulder: { x: rightShoulder.x - shoulderWidth * 0.1, y: rightShoulder.y + 0.02 },
+        };
+      } else if (targetStage === 'right') {
+        return {
+          ...basePose,
+          left_shoulder: { x: leftShoulder.x + shoulderWidth * 0.1, y: leftShoulder.y + 0.02 },
+          right_shoulder: { x: rightShoulder.x + shoulderWidth * 0.15, y: rightShoulder.y },
+        };
+      }
+      return basePose;
+
+    case 'knee_raise':
+      if (targetStage === 'up') {
+        // One knee raised high
+        return {
+          ...basePose,
+          left_hip: { x: leftHip.x, y: leftHip.y },
+          left_knee: {
+            x: leftHip.x,
+            y: leftHip.y - leftThigh * 0.3, // Knee raised
+          },
+          left_ankle: {
+            x: leftHip.x - leftShin * 0.1,
+            y: leftHip.y + leftShin * 0.2,
+          },
+          right_hip: { x: rightHip.x, y: rightHip.y },
+          right_knee: {
+            x: rightHip.x,
+            y: rightHip.y + rightThigh,
+          },
+          right_ankle: {
+            x: rightHip.x,
+            y: rightHip.y + rightThigh + rightShin,
+          },
+        };
+      } else {
+        // Standing position
+        return {
+          ...basePose,
+          left_knee: {
+            x: leftHip.x,
+            y: leftHip.y + leftThigh,
+          },
+          left_ankle: {
+            x: leftHip.x,
+            y: leftHip.y + leftThigh + leftShin,
+          },
+          right_knee: {
+            x: rightHip.x,
+            y: rightHip.y + rightThigh,
+          },
+          right_ankle: {
+            x: rightHip.x,
+            y: rightHip.y + rightThigh + rightShin,
+          },
+        };
+      }
+
+    default:
+      return null;
+  }
+}
+
 export const VisualPoseGuide = memo(function VisualPoseGuide({
   landmarks,
   exerciseType,
@@ -85,8 +272,9 @@ export const VisualPoseGuide = memo(function VisualPoseGuide({
     // Clear canvas
     ctx.clearRect(0, 0, width, height);
 
-    const targetPose = TARGET_POSES[exerciseType]?.[targetStage];
-    if (!targetPose) return;
+    // Calculate dynamic target pose from actual landmarks
+    const targetPose = calculateDynamicTargetPose(landmarks, exerciseType, targetStage);
+    if (!targetPose || !landmarks.length) return;
 
     // Helper to convert normalized coords to canvas coords
     const toCanvasCoords = (x: number, y: number): [number, number] => {

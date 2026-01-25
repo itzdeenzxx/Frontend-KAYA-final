@@ -23,6 +23,7 @@ import GameMode from "./pages/GameMode";
 import MouseRunningGame from "./pages/MouseRunningGame";
 import WhackAMoleGame from "./pages/WhackAMoleGame";
 import FishingGame from "./pages/FishingGame";
+import WorkoutComplete from "./pages/WorkoutComplete";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
@@ -84,6 +85,7 @@ const AppRoutes = () => {
         
         {/* Full Screen Routes */}
         <Route path="/workout" element={<WorkoutUI />} />
+        <Route path="/workout-complete" element={<WorkoutComplete />} />
         <Route path="/workout-remote" element={<WorkoutRemote />} />
         <Route path="/workout-bigscreen" element={<WorkoutBigScreen />} />
         <Route path="/bigscreen-setup" element={<BigScreenSetup />} />
