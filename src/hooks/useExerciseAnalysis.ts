@@ -197,11 +197,7 @@ export function useExerciseAnalysis(
           // Exercise time complete
           const repCount = analysisResult.reps;
           onExerciseComplete?.(currentExercise, repCount);
-          
-          // Show completion message
-          const message = coachServiceRef.current?.getExerciseCompleteMessage(repCount);
-          if (message) setCoachMessage(message);
-          
+          // TTS messages handled separately in WorkoutUI via speakRepCount
           return 0;
         }
         return prev - 1;
@@ -298,20 +294,8 @@ export function useExerciseAnalysis(
       if (motionMessage) setCoachMessage(motionMessage);
     }
 
-    // Halfway message
-    const progress = (difficultySettings.duration - exerciseTimeLeft) / difficultySettings.duration;
-    if (progress >= 0.5 && !halfwayShownRef.current) {
-      halfwayShownRef.current = true;
-      const halfwayMessage = coach.getHalfwayMessage();
-      setCoachMessage(halfwayMessage);
-    }
-
-    // Almost done message
-    if (progress >= 0.8 && !almostDoneShownRef.current) {
-      almostDoneShownRef.current = true;
-      const almostMessage = coach.getAlmostDoneMessage();
-      setCoachMessage(almostMessage);
-    }
+    // Progress messages disabled - TTS handled in WorkoutUI via speakRepCount for reps 1, 5, 9, 10 only
+    // const progress = (difficultySettings.duration - exerciseTimeLeft) / difficultySettings.duration;
 
     prevStageRef.current = result.stage;
   }, [landmarks, enabled, isPaused, currentExercise, exerciseTimeLeft, difficulty, onRepComplete, onFormFeedback]);

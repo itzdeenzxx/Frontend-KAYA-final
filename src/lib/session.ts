@@ -21,11 +21,20 @@ export interface WorkoutSession {
   workoutStyle?: string; // The workout style selected by mobile
   currentExercise: number;
   isPaused: boolean;
+  reps?: number; // Current rep count for KAYA workout
   showSkeleton?: boolean;
   remoteAction?: RemoteAction;
   musicState?: MusicState;
+  ttsState?: TTSState; // TTS state for voice interaction
   createdAt: Timestamp;
   lastActivity: Timestamp;
+}
+
+export interface TTSState {
+  audioBase64?: string; // Base64 audio to play on BigScreen
+  text?: string; // Text being spoken
+  status: 'idle' | 'processing' | 'speaking';
+  timestamp: number;
 }
 
 export interface MusicState {
@@ -252,4 +261,31 @@ export function isMobileDevice(): boolean {
 // Check if running in LINE app
 export function isInLineApp(): boolean {
   return /Line/i.test(navigator.userAgent);
+}
+
+// Update TTS state (from Remote to BigScreen)
+export async function updateTTSState(pairingCode: string, ttsState: TTSState): Promise<void> {
+  const upperCode = pairingCode.toUpperCase();
+  await updateDoc(doc(db, 'workout_sessions', upperCode), {
+    ttsState: ttsState,
+    lastActivity: serverTimestamp(),
+  });
+}
+
+// Clear TTS state after playing
+export async function clearTTSState(pairingCode: string): Promise<void> {
+  const upperCode = pairingCode.toUpperCase();
+  await updateDoc(doc(db, 'workout_sessions', upperCode), {
+    ttsState: null,
+    lastActivity: serverTimestamp(),
+  });
+}
+
+// Update reps count (from BigScreen to Remote)
+export async function updateRepsCount(pairingCode: string, reps: number): Promise<void> {
+  const upperCode = pairingCode.toUpperCase();
+  await updateDoc(doc(db, 'workout_sessions', upperCode), {
+    reps: reps,
+    lastActivity: serverTimestamp(),
+  });
 }

@@ -22,13 +22,17 @@ import {
   Target,
   ArrowUp,
   RotateCcw,
-  ArrowUpFromLine
+  ArrowUpFromLine,
+  Activity,
+  Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   subscribeToSession,
   updateSessionState,
   clearRemoteAction,
+  clearTTSState,
+  updateRepsCount,
   endSession,
   WorkoutSession,
   RemoteAction,
@@ -77,6 +81,9 @@ const coachMessages = [
   'อย่าลืมหายใจให้สม่ำเสมอ!',
 ];
 
+// Voice status type for display
+type VoiceStatus = "idle" | "processing" | "thinking" | "speaking";
+
 export default function WorkoutBigScreen() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -102,8 +109,18 @@ export default function WorkoutBigScreen() {
   const [totalTime, setTotalTime] = useState(0);
   const [coachMessage, setCoachMessage] = useState(coachMessages[0]);
   
-  // Visual guide state for KAYA
-  const [showVisualGuide, setShowVisualGuide] = useState(true);
+  // Visual guide state for KAYA - hidden by default for clean UI
+  const [showVisualGuide, setShowVisualGuide] = useState(false);
+  
+  // Voice/TTS state
+  const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
+  const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+  const lastTtsTimestampRef = useRef<number>(0);
+  
+  // Rep counter animation state
+  const [showRepCounter, setShowRepCounter] = useState(false);
+  const [displayRep, setDisplayRep] = useState(0);
+  const lastRepRef = useRef(0);
   
   // Initialize timeLeft when exercises change
   useEffect(() => {
@@ -116,9 +133,9 @@ export default function WorkoutBigScreen() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [cameraError, setCameraError] = useState<string>('');
   
-  // Skeleton overlay state
-  const [showSkeleton, setShowSkeleton] = useState(true);
-  const [showOpticalFlow, setShowOpticalFlow] = useState(true);
+  // Skeleton overlay state - hidden by default for clean UI
+  const [showSkeleton, setShowSkeleton] = useState(false);
+  const [showOpticalFlow, setShowOpticalFlow] = useState(false);
   const [videoDimensions, setVideoDimensions] = useState({ width: 1920, height: 1080 });
   
   // MediaPipe pose detection
@@ -214,6 +231,15 @@ export default function WorkoutBigScreen() {
         if (updatedSession.status === 'ended') {
           navigate('/dashboard');
         }
+        
+        // Handle TTS from remote
+        if (updatedSession.ttsState && 
+            updatedSession.ttsState.timestamp !== lastTtsTimestampRef.current &&
+            updatedSession.ttsState.audioBase64) {
+          console.log('BigScreen: Received TTS from remote, timestamp:', updatedSession.ttsState.timestamp);
+          lastTtsTimestampRef.current = updatedSession.ttsState.timestamp;
+          playTTSAudio(updatedSession.ttsState.audioBase64);
+        }
       }
     });
 
@@ -222,6 +248,57 @@ export default function WorkoutBigScreen() {
 
     return () => unsubscribe();
   }, [pairingCode, lastAction, navigate]);
+
+  // Play TTS audio from base64
+  const playTTSAudio = useCallback(async (audioBase64: string) => {
+    console.log('BigScreen playTTSAudio: audio length=', audioBase64.length);
+    try {
+      setVoiceStatus("speaking");
+      
+      // Stop any existing audio
+      if (ttsAudioRef.current) {
+        ttsAudioRef.current.pause();
+        ttsAudioRef.current = null;
+      }
+      
+      // Convert base64 to audio
+      console.log('BigScreen: Converting base64 to audio...');
+      const audioData = atob(audioBase64);
+      const audioArray = new Uint8Array(audioData.length);
+      for (let i = 0; i < audioData.length; i++) {
+        audioArray[i] = audioData.charCodeAt(i);
+      }
+      const audioBlob = new Blob([audioArray], { type: 'audio/wav' });
+      const audioUrl = URL.createObjectURL(audioBlob);
+      console.log('BigScreen: Audio blob created, size:', audioBlob.size);
+      
+      const audio = new Audio(audioUrl);
+      ttsAudioRef.current = audio;
+      
+      audio.onended = async () => {
+        URL.revokeObjectURL(audioUrl);
+        ttsAudioRef.current = null;
+        setVoiceStatus("idle");
+        
+        // Clear TTS state after playing
+        if (pairingCode) {
+          await clearTTSState(pairingCode);
+        }
+      };
+      
+      audio.onerror = (e) => {
+        console.error('BigScreen: Audio play error:', e);
+        setVoiceStatus("idle");
+      };
+      
+      console.log('BigScreen: Playing audio...');
+      await audio.play();
+      console.log('BigScreen: Audio started playing');
+    } catch (error) {
+      console.error('Failed to play TTS audio:', error);
+      setVoiceStatus("idle");
+    }
+  }, [pairingCode]);
 
   // Handle remote actions
   const handleRemoteAction = useCallback(async (action: RemoteAction) => {
@@ -295,6 +372,36 @@ export default function WorkoutBigScreen() {
     }
   }, [currentExercise, isPaused, pairingCode]);
 
+  // Update reps count to session for Remote to display
+  useEffect(() => {
+    if (isKayaWorkout && pairingCode && kayaAnalysis.reps > 0) {
+      updateRepsCount(pairingCode, kayaAnalysis.reps);
+    }
+  }, [isKayaWorkout, pairingCode, kayaAnalysis.reps]);
+
+  // Show rep counter animation when rep increases
+  useEffect(() => {
+    const targetReps = exercises[currentExercise]?.reps || 10;
+    
+    if (isKayaWorkout && kayaAnalysis.reps > lastRepRef.current && kayaAnalysis.reps > 0 && kayaAnalysis.reps <= targetReps) {
+      setDisplayRep(kayaAnalysis.reps);
+      setShowRepCounter(true);
+      
+      // Hide after animation
+      const timeout = setTimeout(() => {
+        setShowRepCounter(false);
+      }, 800);
+      
+      lastRepRef.current = kayaAnalysis.reps;
+      return () => clearTimeout(timeout);
+    }
+  }, [isKayaWorkout, kayaAnalysis.reps, currentExercise, exercises]);
+
+  // Reset lastRepRef when exercise changes
+  useEffect(() => {
+    lastRepRef.current = 0;
+  }, [currentExercise]);
+
   // Auto-advance when KAYA exercise reps are complete
   useEffect(() => {
     if (isKayaWorkout && kayaAnalysis.reps >= (exercises[currentExercise]?.reps || 10)) {
@@ -355,7 +462,7 @@ export default function WorkoutBigScreen() {
       {/* Fullscreen Camera View */}
       <div className="absolute inset-0">
         {cameraError ? (
-          <div className="w-full h-full flex items-center justify-center bg-gray-900">
+          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
             <p className="text-white text-xl">{cameraError}</p>
           </div>
         ) : (
@@ -428,66 +535,127 @@ export default function WorkoutBigScreen() {
         </div>
       )}
 
-      {/* Overlay gradient */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40 pointer-events-none" />
+      {/* Rep Counter Animation - Big number popup */}
+      {showRepCounter && (
+        <div className="absolute inset-0 flex items-center justify-center z-30 pointer-events-none">
+          <div className="animate-rep-popup">
+            <span className="text-[200px] font-black text-primary drop-shadow-2xl" style={{
+              textShadow: '0 0 80px rgba(221, 110, 83, 0.8), 0 0 160px rgba(221, 110, 83, 0.4)'
+            }}>
+              {displayRep}
+            </span>
+          </div>
+        </div>
+      )}
 
-      {/* Top Bar */}
-      <div className="absolute top-0 left-0 right-0 p-6 flex items-center justify-between z-10">
+      {/* Overlay gradient - lighter for clean look */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
+
+      {/* Top Bar - Simplified */}
+      <div className="absolute top-0 left-0 right-0 p-4 flex items-center justify-between z-10">
         {/* Close Button */}
         <button
           onClick={handleStop}
-          className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur-sm flex items-center justify-center text-white hover:bg-white/20 transition-colors"
+          className="w-10 h-10 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center text-white hover:bg-black/50 transition-colors"
         >
-          <X className="w-6 h-6" />
+          <X className="w-5 h-5" />
         </button>
-        
-        {/* Visual Guide Toggle (KAYA only) */}
-        {isKayaWorkout && (
-          <button
-            onClick={() => setShowVisualGuide(!showVisualGuide)}
-            className={cn(
-              "w-12 h-12 rounded-xl backdrop-blur-sm flex items-center justify-center text-white transition-colors",
-              showVisualGuide ? "bg-primary/80 hover:bg-primary" : "bg-white/10 hover:bg-white/20"
-            )}
-            title={showVisualGuide ? "ซ่อน Visual Guide" : "แสดง Visual Guide"}
-          >
-            <Target className="w-6 h-6" />
-          </button>
+
+        {/* Center - Workout Style (small) */}
+        {selectedStyle && (
+          <div className={cn(
+            "flex items-center gap-2 px-3 py-1.5 rounded-full backdrop-blur-md border text-xs",
+            `bg-gradient-to-r ${selectedStyle.bgGradient} border-white/20`
+          )}>
+            {styleIcons[selectedStyle.id] || <Dumbbell className="w-3 h-3" />}
+            <span className="font-medium text-white">{selectedStyle.name}</span>
+          </div>
         )}
-        
-        {/* Skeleton Toggle */}
-        <button
-          onClick={() => setShowSkeleton(!showSkeleton)}
-          className={cn(
-            "w-12 h-12 rounded-xl backdrop-blur-sm flex items-center justify-center text-white transition-colors",
-            showSkeleton ? "bg-primary/80 hover:bg-primary" : "bg-white/10 hover:bg-white/20"
-          )}
-          title={showSkeleton ? "ซ่อนโครงกระดูก" : "แสดงโครงกระดูก"}
-        >
-          {showSkeleton ? <Bone className="w-6 h-6" /> : <EyeOff className="w-6 h-6" />}
-        </button>
 
-        {/* Connection Status */}
-        <div className="flex items-center gap-3 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2">
-          {session?.status === 'active' ? (
-            <>
-              <Smartphone className="w-5 h-5 text-green-400" />
-              <span className="text-white text-sm">Remote Connected</span>
-              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-            </>
-          ) : (
-            <>
-              <Wifi className="w-5 h-5 text-yellow-400" />
-              <span className="text-white text-sm">Waiting for remote...</span>
-            </>
-          )}
-        </div>
+        {/* Right side - Connection & Controls */}
+        <div className="flex items-center gap-2">
+          {/* Connection Status */}
+          <div className="flex items-center gap-2 bg-black/30 backdrop-blur-sm rounded-full px-3 py-1.5">
+            {session?.status === 'active' || session?.status === 'connected' ? (
+              <>
+                <Smartphone className="w-4 h-4 text-green-400" />
+                <span className="text-white text-xs">Connected</span>
+                <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+              </>
+            ) : (
+              <>
+                <Wifi className="w-4 h-4 text-yellow-400" />
+                <span className="text-white text-xs">Waiting...</span>
+              </>
+            )}
+          </div>
+          
+          {/* Session Code */}
+          <div className="bg-black/30 backdrop-blur-sm rounded-full px-3 py-1.5">
+            <span className="text-white font-mono text-xs tracking-widest">{pairingCode}</span>
+          </div>
 
-        {/* Total Time */}
-        <div className="text-white text-2xl font-mono bg-white/10 backdrop-blur-sm rounded-xl px-4 py-2">
-          {formatTime(totalTime)}
+          {/* Time */}
+          <div className="text-white text-lg font-mono bg-black/30 backdrop-blur-sm rounded-full px-3 py-1">
+            {formatTime(totalTime)}
+          </div>
+          
+          {/* Skeleton Toggle */}
+          <button
+            onClick={() => setShowSkeleton(!showSkeleton)}
+            className={cn(
+              "w-10 h-10 rounded-full backdrop-blur-sm flex items-center justify-center transition-colors",
+              showSkeleton ? "bg-primary text-white" : "bg-black/30 text-white/70 hover:bg-black/50"
+            )}
+          >
+            {showSkeleton ? <Bone className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+          </button>
+          
+          {/* Visual Guide Toggle (KAYA only) */}
+          {isKayaWorkout && (
+            <button
+              onClick={() => setShowVisualGuide(!showVisualGuide)}
+              className={cn(
+                "w-10 h-10 rounded-full backdrop-blur-sm flex items-center justify-center transition-colors",
+                showVisualGuide ? "bg-primary text-white" : "bg-black/30 text-white/70 hover:bg-black/50"
+              )}
+            >
+              <Target className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Voice Status Indicator - Top Center */}
+      {voiceStatus !== "idle" && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20">
+          <div className={cn(
+            "px-6 py-3 rounded-full backdrop-blur-md text-lg font-medium inline-flex items-center gap-3",
+            voiceStatus === "processing" && "bg-yellow-500/80 text-white",
+            voiceStatus === "thinking" && "bg-blue-500/80 text-white",
+            voiceStatus === "speaking" && "bg-green-500/80 text-white"
+          )}>
+            {voiceStatus === "processing" && (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                น้องกายกำลังวิเคราะห์...
+              </>
+            )}
+            {voiceStatus === "thinking" && (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                น้องกายกำลังคิด...
+              </>
+            )}
+            {voiceStatus === "speaking" && (
+              <>
+                <Volume2 className="w-5 h-5" />
+                น้องกายกำลังพูด...
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Remote Action Indicator */}
       {showActionIndicator && lastAction && (
@@ -500,15 +668,15 @@ export default function WorkoutBigScreen() {
         </div>
       )}
 
-      {/* Current Exercise Display */}
-      <div className="absolute bottom-0 left-0 right-0 p-8 z-10">
+      {/* Current Exercise Display - Simplified like WorkoutUI */}
+      <div className="absolute bottom-0 left-0 right-0 p-6 z-10">
         {/* Progress Bar */}
-        <div className="mb-6">
-          <div className="flex justify-between text-white/80 text-sm mb-2">
-            <span>Progress</span>
+        <div className="mb-4">
+          <div className="flex justify-between text-white/60 text-xs mb-1">
             <span>{currentExercise + 1} / {exercises.length}</span>
+            <span>{Math.round(progress)}%</span>
           </div>
-          <div className="h-2 bg-white/20 rounded-full overflow-hidden">
+          <div className="h-1 bg-white/20 rounded-full overflow-hidden">
             <div
               className="h-full bg-primary rounded-full transition-all duration-500"
               style={{ width: `${progress}%` }}
@@ -516,53 +684,53 @@ export default function WorkoutBigScreen() {
           </div>
         </div>
 
-        <div className="flex items-end justify-between gap-8">
+        <div className="flex items-end justify-between gap-4">
           {/* Exercise Info */}
           <div className="flex-1">
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-primary/30 to-orange-400/30 backdrop-blur-sm flex items-center justify-center text-primary border border-primary/20">
-                {exerciseIcons[exercise.icon]}
+            <div className="flex items-center gap-4 mb-3">
+              <div className="w-20 h-20 rounded-xl bg-primary/20 backdrop-blur-sm flex items-center justify-center border border-primary/30">
+                <Activity className="w-10 h-10 text-primary" />
               </div>
               <div>
-                <p className="text-white/60 text-lg mb-1">Now Playing</p>
-                <h1 className="text-5xl font-bold text-white mb-2">{exercise.name}</h1>
-                <p className="text-white/60 text-xl mb-1">{exercise.nameTh}</p>
-                <p className="text-white/80 text-xl">
-                  {exercise.duration ? `${exercise.duration} seconds` : `${exercise.reps ?? 0} reps`}
-                </p>
+                <h2 className="text-3xl font-bold text-white">{exercise?.nameTh || exercise?.name}</h2>
+                {isKayaWorkout ? (
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-4xl font-bold text-primary">{Math.min(kayaAnalysis.reps, exercise?.reps || 10)}</span>
+                    <span className="text-white/60 text-lg">/ {exercise?.reps || 10} ครั้ง</span>
+                  </div>
+                ) : (
+                  <p className="text-white/60 text-lg">
+                    {exercise?.duration ? `${formatTime(timeLeft)} เหลือ` : `${exercise?.reps} ครั้ง`}
+                  </p>
+                )}
               </div>
-            </div>
-
-            {/* Coach Message */}
-            <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 max-w-md">
-              <p className="text-white/90 text-lg">{coachMessage}</p>
             </div>
           </div>
 
-          {/* Timer/Rep Counter */}
+          {/* Timer/Rep Counter Ring */}
           <div className="text-center">
-            {exercise.duration ? (
+            {exercise?.duration ? (
               <div className="relative">
-                <svg className="w-48 h-48 -rotate-90">
+                <svg className="w-32 h-32 -rotate-90">
                   <circle
-                    cx="96"
-                    cy="96"
-                    r="88"
+                    cx="64"
+                    cy="64"
+                    r="56"
                     stroke="white"
                     strokeOpacity="0.2"
-                    strokeWidth="8"
+                    strokeWidth="6"
                     fill="none"
                   />
                   <circle
-                    cx="96"
-                    cy="96"
-                    r="88"
+                    cx="64"
+                    cy="64"
+                    r="56"
                     stroke="url(#gradient)"
-                    strokeWidth="8"
+                    strokeWidth="6"
                     fill="none"
                     strokeLinecap="round"
-                    strokeDasharray={2 * Math.PI * 88}
-                    strokeDashoffset={2 * Math.PI * 88 * (1 - timeLeft / (exercise.duration || 1))}
+                    strokeDasharray={2 * Math.PI * 56}
+                    strokeDashoffset={2 * Math.PI * 56 * (1 - timeLeft / (exercise.duration || 1))}
                     className="transition-all duration-1000"
                   />
                   <defs>
@@ -573,84 +741,51 @@ export default function WorkoutBigScreen() {
                   </defs>
                 </svg>
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-6xl font-bold text-white font-mono">
+                  <span className="text-4xl font-bold text-white font-mono">
                     {timeLeft}
                   </span>
                 </div>
               </div>
             ) : isKayaWorkout ? (
-              // KAYA Rep Counter with progress ring
               <div className="relative">
-                <svg className="w-48 h-48 -rotate-90">
+                <svg className="w-32 h-32 -rotate-90">
                   <circle
-                    cx="96"
-                    cy="96"
-                    r="88"
+                    cx="64"
+                    cy="64"
+                    r="56"
                     stroke="white"
                     strokeOpacity="0.2"
-                    strokeWidth="8"
+                    strokeWidth="6"
                     fill="none"
                   />
                   <circle
-                    cx="96"
-                    cy="96"
-                    r="88"
+                    cx="64"
+                    cy="64"
+                    r="56"
                     stroke="url(#gradient)"
-                    strokeWidth="8"
+                    strokeWidth="6"
                     fill="none"
                     strokeLinecap="round"
-                    strokeDasharray={2 * Math.PI * 88}
-                    strokeDashoffset={2 * Math.PI * 88 * (1 - kayaAnalysis.reps / (exercise.reps || 10))}
+                    strokeDasharray={2 * Math.PI * 56}
+                    strokeDashoffset={2 * Math.PI * 56 * (1 - kayaAnalysis.reps / (exercise?.reps || 10))}
                     className="transition-all duration-300"
                   />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-6xl font-bold text-white">
+                  <span className="text-4xl font-bold text-white">
                     {kayaAnalysis.reps}
                   </span>
-                  <p className="text-white/60 text-lg">/ {exercise.reps} reps</p>
+                  <p className="text-white/60 text-sm">/ {exercise?.reps}</p>
                 </div>
               </div>
-            ) : (
-              <div className="w-48 h-48 rounded-full bg-white/10 flex items-center justify-center">
-                <div className="text-center">
-                  <span className="text-6xl font-bold text-white">
-                    {exercise.reps}
-                  </span>
-                  <p className="text-white/60 text-xl">reps</p>
-                </div>
-              </div>
-            )}
+            ) : null}
 
-            {/* Play/Pause Status */}
+            {/* Pause Status */}
             {isPaused && (
-              <div className="mt-4 text-2xl text-yellow-400 font-semibold">
+              <div className="mt-2 text-lg text-yellow-400 font-semibold">
                 PAUSED
               </div>
             )}
-          </div>
-        </div>
-      </div>
-
-      {/* Workout Style & Pairing Code */}
-      <div className="absolute top-6 right-1/2 translate-x-1/2 z-10">
-        <div className="flex items-center gap-4">
-          {/* Workout Style Badge */}
-          {selectedStyle && (
-            <div className={cn(
-              "flex items-center gap-2 px-5 py-3 rounded-xl backdrop-blur-md border",
-              `bg-gradient-to-r ${selectedStyle.bgGradient} border-white/20`
-            )}>
-              {styleIcons[selectedStyle.id] || <Dumbbell className="w-5 h-5" />}
-              <span className="text-base font-semibold text-white">{selectedStyle.name}</span>
-            </div>
-          )}
-          {/* Session Code */}
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl px-4 py-2">
-            <p className="text-white/60 text-sm">Session Code</p>
-            <p className="text-white font-mono font-bold text-xl tracking-widest">
-              {pairingCode}
-            </p>
           </div>
         </div>
       </div>
@@ -660,6 +795,18 @@ export default function WorkoutBigScreen() {
         pairingCode={pairingCode}
         musicState={session?.musicState}
       />
+      
+      {/* CSS for rep counter animation */}
+      <style>{`
+        @keyframes rep-popup {
+          0% { transform: scale(0.5); opacity: 0; }
+          50% { transform: scale(1.2); opacity: 1; }
+          100% { transform: scale(1); opacity: 0; }
+        }
+        .animate-rep-popup {
+          animation: rep-popup 0.8s ease-out forwards;
+        }
+      `}</style>
     </div>
   );
 }

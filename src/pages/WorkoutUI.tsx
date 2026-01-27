@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Play, Pause, SkipForward, SkipBack, X, Volume2, MessageCircle, Dumbbell, Flame, PersonStanding, Heart, Brain, Sparkles, Target, Zap, Camera, CameraOff, Activity, Bone, EyeOff, Music, Wind, Waves, Footprints, ArrowUp, RotateCcw, ArrowUpFromLine } from "lucide-react";
+import { Play, Pause, SkipForward, SkipBack, X, Volume2, MessageCircle, Dumbbell, Flame, PersonStanding, Heart, Brain, Sparkles, Target, Zap, Camera, CameraOff, Activity, Bone, EyeOff, Music, Wind, Waves, Footprints, ArrowUp, RotateCcw, ArrowUpFromLine, Mic, MicOff, Send, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMediaPipePose } from "@/hooks/useMediaPipePose";
 import { SkeletonOverlay } from "@/components/shared/SkeletonOverlay";
@@ -13,6 +13,17 @@ import { AICoachPopup } from "@/components/workout/AICoachPopup";
 import { ExerciseType } from "@/lib/exerciseConfig";
 import { WorkoutLoader } from "@/components/shared/WorkoutLoader";
 import { useAuth } from "@/contexts/AuthContext";
+
+// Rep count messages - only speak at 1, 5, 9, 10
+const REP_MESSAGES: Record<number, string> = {
+  1: "หนึ่ง! เริ่มต้นดีครับ!",
+  5: "ห้า! ครึ่งทางแล้ว สู้ๆ ครับ!",
+  9: "เก้า! อีกครั้งสุดท้ายแล้วครับ!",
+  10: "สิบ! เสร็จสิ้นท่านี้แล้ว เก่งมากๆ ครับ!",
+};
+
+// Voice status type
+type VoiceStatus = "idle" | "recording" | "processing" | "thinking" | "speaking";
 
 // Map icon names to components
 const exerciseIcons: Record<string, React.ReactNode> = {
@@ -67,7 +78,7 @@ const REST_DURATION = 30; // 30 seconds rest
 
 export default function WorkoutUI() {
   const navigate = useNavigate();
-  const { userProfile } = useAuth();
+  const { userProfile, healthData } = useAuth();
   
   // Get selected workout style from localStorage
   const [selectedStyleId] = useState(() => localStorage.getItem('kaya_workout_style'));
@@ -93,11 +104,23 @@ export default function WorkoutUI() {
   const [showRepCounter, setShowRepCounter] = useState(false);
   const [displayRep, setDisplayRep] = useState(0);
   const lastRepRef = useRef(0);
+  const lastSpokenRepRef = useRef(0);
   
   // TTS audio ref
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
   const lastSpokenExerciseRef = useRef(-1);
   const coachIntroSpokenRef = useRef(false);
+  const isTtsSpeakingRef = useRef(false);
+  
+  // Voice Coach state
+  const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<BlobPart[]>([]);
+  // Raw PCM recording refs
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const pcmDataRef = useRef<Float32Array[]>([]);
   
   // Track exercise results for summary
   const exerciseResultsRef = useRef<Array<{
@@ -369,6 +392,123 @@ export default function WorkoutUI() {
     return () => clearInterval(timer);
   }, [showRestScreen, restTimeLeft, skipRest]);
 
+  // Stop all TTS immediately
+  const stopAllTTS = useCallback(() => {
+    if (ttsAudioRef.current) {
+      ttsAudioRef.current.pause();
+      ttsAudioRef.current.currentTime = 0;
+      ttsAudioRef.current = null;
+    }
+    isTtsSpeakingRef.current = false;
+  }, []);
+
+  // Speak text using TTS (returns Promise)
+  // forcePlay = true will play even if user is recording (used for LLM response)
+  const speakTTS = useCallback(async (text: string, forcePlay: boolean = false): Promise<void> => {
+    // Don't speak if user is recording (unless forced)
+    if (isRecording && !forcePlay) {
+      console.log('TTS skipped: user is recording');
+      return;
+    }
+    
+    // If forced, stop recording first (for raw PCM capture)
+    if (forcePlay && isRecording) {
+      console.log('TTS force play: stopping recording first');
+      // Stop audio stream
+      if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach(t => t.stop());
+        audioStreamRef.current = null;
+      }
+      // Close AudioContext
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
+      setIsRecording(false);
+    }
+    
+    console.log('TTS speaking:', text.substring(0, 50) + '...');
+    
+    try {
+      isTtsSpeakingRef.current = true;
+      
+      const response = await fetch('/api/aift/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, speaker: 'nana' }),
+      });
+      
+      if (!response.ok) {
+        console.error('TTS API error:', response.status);
+        isTtsSpeakingRef.current = false;
+        return;
+      }
+      
+      const result = await response.json();
+      console.log('TTS API response:', result.audio_base64 ? 'has audio' : 'no audio', result);
+      
+      if (!result.audio_base64) {
+        console.error('TTS API returned no audio');
+        isTtsSpeakingRef.current = false;
+        return;
+      }
+      
+      // Check again if user started recording (skip this check if forcePlay)
+      if (isRecording && !forcePlay) {
+        console.log('TTS cancelled: user started recording');
+        isTtsSpeakingRef.current = false;
+        return;
+      }
+      
+      const audioData = atob(result.audio_base64);
+      const audioArray = new Uint8Array(audioData.length);
+      for (let i = 0; i < audioData.length; i++) {
+        audioArray[i] = audioData.charCodeAt(i);
+      }
+      const audioBlob = new Blob([audioArray], { type: 'audio/wav' });
+      const audioUrl = URL.createObjectURL(audioBlob);
+      
+      console.log('TTS playing audio...');
+      
+      // Stop any existing audio
+      stopAllTTS();
+      
+      return new Promise((resolve) => {
+        const audio = new Audio(audioUrl);
+        ttsAudioRef.current = audio;
+        
+        audio.onended = () => {
+          URL.revokeObjectURL(audioUrl);
+          ttsAudioRef.current = null;
+          isTtsSpeakingRef.current = false;
+          resolve();
+        };
+        
+        audio.onerror = () => {
+          isTtsSpeakingRef.current = false;
+          resolve();
+        };
+        
+        audio.play().catch(() => {
+          isTtsSpeakingRef.current = false;
+          resolve();
+        });
+      });
+    } catch (error) {
+      isTtsSpeakingRef.current = false;
+      console.error('TTS error:', error);
+    }
+  }, [isRecording, stopAllTTS]);
+
+  // Speak rep count (only 1,3,5,7,9,10)
+  const speakRepCount = useCallback(async (rep: number) => {
+    const message = REP_MESSAGES[rep];
+    if (message && rep > lastSpokenRepRef.current) {
+      lastSpokenRepRef.current = rep;
+      await speakTTS(message);
+    }
+  }, [speakTTS]);
+
   // Show rep counter animation when rep increases (only up to target)
   useEffect(() => {
     const targetReps = exercises[currentExercise]?.reps || 10;
@@ -378,6 +518,11 @@ export default function WorkoutUI() {
       setDisplayRep(kayaAnalysis.reps);
       setShowRepCounter(true);
       
+      // Speak rep count (only 1,3,5,7,9,10)
+      if (REP_MESSAGES[kayaAnalysis.reps]) {
+        speakRepCount(kayaAnalysis.reps);
+      }
+      
       // Hide after animation
       const timeout = setTimeout(() => {
         setShowRepCounter(false);
@@ -386,12 +531,311 @@ export default function WorkoutUI() {
       lastRepRef.current = kayaAnalysis.reps;
       return () => clearTimeout(timeout);
     }
-  }, [isKayaWorkout, kayaAnalysis.reps, currentExercise, exercises]);
+  }, [isKayaWorkout, kayaAnalysis.reps, currentExercise, exercises, speakRepCount]);
 
-  // Reset lastRepRef when exercise changes
+  // Reset lastRepRef and lastSpokenRepRef when exercise changes
   useEffect(() => {
     lastRepRef.current = 0;
+    lastSpokenRepRef.current = 0;
   }, [currentExercise]);
+
+  // Capture screenshot for voice interaction
+  const captureScreenshotForVoice = useCallback((): string | null => {
+    const video = videoRef.current;
+    if (!video) return null;
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    
+    // Mirror the video
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    return canvas.toDataURL('image/jpeg', 0.7);
+  }, []);
+
+  // Convert raw PCM Float32Array to WAV File
+  const pcmToWav = useCallback((pcmData: Float32Array[], sampleRate: number): File => {
+    // Combine all chunks
+    const totalLength = pcmData.reduce((acc, chunk) => acc + chunk.length, 0);
+    const combined = new Float32Array(totalLength);
+    let offset = 0;
+    for (const chunk of pcmData) {
+      combined.set(chunk, offset);
+      offset += chunk.length;
+    }
+    
+    console.log('PCM to WAV: samples=', combined.length, 'sampleRate=', sampleRate);
+    
+    // Create WAV file
+    const numChannels = 1;
+    const format = 1; // PCM
+    const bitDepth = 16;
+    const bytesPerSample = bitDepth / 8;
+    const blockAlign = numChannels * bytesPerSample;
+    const dataSize = combined.length * blockAlign;
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
+    
+    // WAV header
+    const writeString = (pos: number, str: string) => {
+      for (let i = 0; i < str.length; i++) {
+        view.setUint8(pos + i, str.charCodeAt(i));
+      }
+    };
+    
+    writeString(0, 'RIFF');
+    view.setUint32(4, 36 + dataSize, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, format, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * blockAlign, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bitDepth, true);
+    writeString(36, 'data');
+    view.setUint32(40, dataSize, true);
+    
+    // Write audio samples
+    let pos = 44;
+    for (let i = 0; i < combined.length; i++) {
+      const sample = Math.max(-1, Math.min(1, combined[i]));
+      view.setInt16(pos, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+      pos += 2;
+    }
+    
+    return new File([buffer], 'voice.wav', { type: 'audio/wav' });
+  }, []);
+
+  // Start voice recording using raw PCM capture
+  const startVoiceRecording = useCallback(async () => {
+    // Prevent starting if already recording
+    if (isRecording) {
+      console.log('Already recording, ignoring start');
+      return;
+    }
+    
+    // Stop any TTS that's playing
+    stopAllTTS();
+    
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          sampleRate: 16000,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+        }
+      });
+      
+      // Store stream for cleanup
+      audioStreamRef.current = stream;
+      
+      // Create AudioContext for raw PCM capture
+      const audioCtx = new AudioContext({ sampleRate: 16000 });
+      audioContextRef.current = audioCtx;
+      
+      // Resume AudioContext if suspended (required for user gesture)
+      if (audioCtx.state === 'suspended') {
+        await audioCtx.resume();
+      }
+      
+      // Create source from stream
+      const source = audioCtx.createMediaStreamSource(stream);
+      
+      // Create ScriptProcessor to capture raw PCM
+      // Use smaller buffer for more responsive capture
+      const processor = audioCtx.createScriptProcessor(2048, 1, 1);
+      
+      // Reset PCM data array
+      const pcmChunks: Float32Array[] = [];
+      pcmDataRef.current = pcmChunks;
+      
+      processor.onaudioprocess = (e) => {
+        const inputData = e.inputBuffer.getChannelData(0);
+        // Copy and store the data
+        pcmChunks.push(new Float32Array(inputData));
+        if (pcmChunks.length === 1) {
+          console.log('First audio chunk captured');
+        }
+      };
+      
+      // Connect: source -> processor -> destination (needed for processor to work)
+      source.connect(processor);
+      processor.connect(audioCtx.destination);
+      
+      // Store refs for cleanup
+      mediaRecorderRef.current = { processor, source, pcmChunks } as unknown as MediaRecorder;
+      
+      setIsRecording(true);
+      setVoiceStatus("recording");
+      console.log('Voice recording started with raw PCM capture, sampleRate:', audioCtx.sampleRate, 'state:', audioCtx.state);
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+    }
+  }, [isRecording, stopAllTTS]);
+
+  // Stop voice recording and process
+  const stopVoiceRecording = useCallback(async () => {
+    if (!isRecording) return;
+    
+    setVoiceStatus("processing");
+    
+    // Small delay to capture remaining audio
+    await new Promise(r => setTimeout(r, 200));
+    
+    try {
+      // Get PCM data from refs before cleanup
+      const refs = mediaRecorderRef.current as unknown as { processor: ScriptProcessorNode; source: MediaStreamAudioSourceNode; pcmChunks: Float32Array[] } | null;
+      const pcmData = refs?.pcmChunks || pcmDataRef.current;
+      const sampleRate = audioContextRef.current?.sampleRate || 16000;
+      
+      // Stop and cleanup audio nodes
+      if (refs) {
+        refs.processor.disconnect();
+        refs.source.disconnect();
+      }
+      
+      // Stop stream tracks
+      if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach(t => t.stop());
+        audioStreamRef.current = null;
+      }
+      
+      // Close AudioContext
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
+      
+      // Clear refs
+      mediaRecorderRef.current = null;
+      pcmDataRef.current = [];
+      
+      if (pcmData.length === 0) {
+        console.log('No audio data captured');
+        setVoiceStatus("idle");
+        setIsRecording(false);
+        return;
+      }
+      
+      const totalSamples = pcmData.reduce((acc, chunk) => acc + chunk.length, 0);
+      console.log('Voice recording stopped, total samples:', totalSamples, 'chunks:', pcmData.length);
+      
+      // Check if audio is too short (less than 0.5 seconds = 8000 samples at 16kHz)
+      if (totalSamples < 8000) {
+        console.log('Audio too short (need 0.5s minimum), ignoring');
+        setVoiceStatus("idle");
+        setIsRecording(false);
+        return;
+      }
+        
+        // Convert to WAV
+        const audioFile = pcmToWav(pcmData, sampleRate);
+        console.log('Created WAV file, size:', audioFile.size);
+        
+        // Send to STT
+        const formData = new FormData();
+        formData.append('file', audioFile);
+        formData.append('instruction', 'ถอดเสียงเป็นข้อความภาษาไทย');
+        
+        const sttRes = await fetch('/api/aift/audioqa', {
+          method: 'POST',
+          body: formData,
+        });
+        
+        if (!sttRes.ok) {
+          const errText = await sttRes.text();
+          console.error('STT error:', errText);
+          throw new Error('STT failed');
+        }
+        
+        const sttResult = await sttRes.json();
+        // Handle different response formats
+        let transcript = '';
+        if (typeof sttResult === 'string') {
+          transcript = sttResult;
+        } else if (sttResult?.content) {
+          transcript = typeof sttResult.content === 'string' ? sttResult.content : String(sttResult.content || '');
+        } else if (sttResult?.text) {
+          transcript = typeof sttResult.text === 'string' ? sttResult.text : String(sttResult.text || '');
+        }
+        console.log('STT transcript:', transcript);
+        
+        if (!transcript || !transcript.trim()) {
+          console.log('Empty transcript, ignoring');
+          setVoiceStatus("idle");
+          setIsRecording(false);
+          return;
+        }
+        
+        // Capture screenshot
+        const screenshot = captureScreenshotForVoice();
+        
+        // Build user context
+        setVoiceStatus("thinking");
+        
+        const exercise = exercises[currentExercise];
+        
+        // Get next exercises list
+        const nextExercises = exercises
+          .slice(currentExercise + 1)
+          .map(e => e.nameTh || e.name);
+        
+        const userContext = {
+          name: userProfile?.nickname || userProfile?.displayName || 'ผู้ใช้',
+          weight: healthData?.weight,
+          height: healthData?.height,
+          age: healthData?.age,
+          gender: healthData?.gender,
+          bmi: healthData?.bmi,
+          activityLevel: healthData?.activityLevel,
+          healthGoals: healthData?.healthGoals,
+          currentExercise: exercise?.nameTh || exercise?.name,
+          reps: isKayaWorkout ? kayaAnalysis.reps : undefined,
+          targetReps: exercise?.reps || 10,
+          nextExercises,
+        };
+        
+        // Send to LLM
+        const llmRes = await fetch('/api/gemma/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: transcript,
+            imageBase64: screenshot,
+            userContext,
+          }),
+        });
+        
+        if (!llmRes.ok) {
+          throw new Error('LLM failed');
+        }
+        
+        const llmResult = await llmRes.json();
+        const response = llmResult?.response || 'ขอโทษครับ ผมไม่เข้าใจคำถาม';
+        console.log('LLM response:', response);
+        
+        // Speak response (force play)
+        setVoiceStatus("speaking");
+        await speakTTS(response, true);
+        
+        setVoiceStatus("idle");
+    } catch (error) {
+      console.error('Voice interaction error:', error);
+      setVoiceStatus("idle");
+    }
+    
+    setIsRecording(false);
+    mediaRecorderRef.current = null;
+  }, [isRecording, pcmToWav, captureScreenshotForVoice, exercises, currentExercise, userProfile, healthData, isKayaWorkout, kayaAnalysis.reps, speakTTS]);
 
   // Speak exercise instruction when exercise changes
   const speakExerciseInstruction = useCallback(async (exercise: WorkoutExercise) => {
@@ -978,6 +1422,44 @@ export default function WorkoutUI() {
           </div>
         )}
 
+        {/* Voice Status Indicator - Desktop */}
+        {voiceStatus !== "idle" && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20">
+            <div className={cn(
+              "px-4 py-2 rounded-full backdrop-blur-md text-sm font-medium inline-flex items-center gap-2",
+              voiceStatus === "recording" && "bg-red-500/80 text-white",
+              voiceStatus === "processing" && "bg-yellow-500/80 text-white",
+              voiceStatus === "thinking" && "bg-blue-500/80 text-white",
+              voiceStatus === "speaking" && "bg-green-500/80 text-white"
+            )}>
+              {voiceStatus === "recording" && (
+                <>
+                  <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                  กำลังฟัง...
+                </>
+              )}
+              {voiceStatus === "processing" && (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  น้องกายกำลังวิเคราะห์ตัวคุณอยู่...
+                </>
+              )}
+              {voiceStatus === "thinking" && (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  น้องกายกำลังคิด...
+                </>
+              )}
+              {voiceStatus === "speaking" && (
+                <>
+                  <Volume2 className="w-4 h-4" />
+                  น้องกายกำลังพูด...
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Current Exercise Display - Simplified */}
         <div className="absolute bottom-0 left-0 right-0 p-6 z-10">
           {/* Progress Bar */}
@@ -1019,6 +1501,34 @@ export default function WorkoutUI() {
 
             {/* Controls */}
             <div className="flex items-center gap-2">
+              {/* Voice Coach Button - Desktop */}
+              <button
+                onMouseDown={startVoiceRecording}
+                onMouseUp={stopVoiceRecording}
+                disabled={voiceStatus === "processing" || voiceStatus === "thinking" || voiceStatus === "speaking"}
+                className={cn(
+                  "w-12 h-12 rounded-full backdrop-blur-sm flex items-center justify-center transition-all",
+                  isRecording 
+                    ? "bg-red-500 animate-pulse scale-110" 
+                    : voiceStatus === "processing" || voiceStatus === "thinking"
+                      ? "bg-yellow-500"
+                      : voiceStatus === "speaking"
+                        ? "bg-green-500"
+                        : "bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600",
+                  (voiceStatus === "processing" || voiceStatus === "thinking" || voiceStatus === "speaking") && "opacity-70"
+                )}
+                title={isRecording ? "กำลังฟัง..." : voiceStatus === "processing" ? "น้องกายกำลังวิเคราะห์..." : voiceStatus === "thinking" ? "น้องกายกำลังคิด..." : voiceStatus === "speaking" ? "น้องกายตอบ..." : "กดค้างเพื่อถาม AI"}
+              >
+                {voiceStatus === "processing" || voiceStatus === "thinking" ? (
+                  <Loader2 className="w-5 h-5 text-white animate-spin" />
+                ) : voiceStatus === "speaking" ? (
+                  <Volume2 className="w-5 h-5 text-white" />
+                ) : isRecording ? (
+                  <MicOff className="w-5 h-5 text-white" />
+                ) : (
+                  <Mic className="w-5 h-5 text-white" />
+                )}
+              </button>
               <button
                 onClick={handlePrevious}
                 disabled={currentExercise === 0}
@@ -1267,6 +1777,45 @@ export default function WorkoutUI() {
           {isPaused && (
             <p className="text-center text-yellow-400 font-semibold mt-4 animate-pulse">PAUSED</p>
           )}
+
+          {/* Voice Coach Button */}
+          <div className="fixed bottom-28 left-4 flex flex-col items-center gap-2">
+            <button
+              onMouseDown={startVoiceRecording}
+              onMouseUp={stopVoiceRecording}
+              onTouchStart={startVoiceRecording}
+              onTouchEnd={stopVoiceRecording}
+              disabled={voiceStatus === "processing" || voiceStatus === "thinking" || voiceStatus === "speaking"}
+              className={cn(
+                "w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-all",
+                isRecording 
+                  ? "bg-red-500 animate-pulse scale-110" 
+                  : voiceStatus === "processing" || voiceStatus === "thinking"
+                    ? "bg-yellow-500"
+                    : voiceStatus === "speaking"
+                      ? "bg-green-500"
+                      : "bg-gradient-to-r from-blue-500 to-purple-500",
+                (voiceStatus === "processing" || voiceStatus === "thinking" || voiceStatus === "speaking") && "opacity-70"
+              )}
+            >
+              {voiceStatus === "processing" || voiceStatus === "thinking" ? (
+                <Loader2 className="w-6 h-6 text-white animate-spin" />
+              ) : voiceStatus === "speaking" ? (
+                <Volume2 className="w-6 h-6 text-white" />
+              ) : isRecording ? (
+                <MicOff className="w-6 h-6 text-white" />
+              ) : (
+                <Mic className="w-6 h-6 text-white" />
+              )}
+            </button>
+            <span className="text-xs text-white/70 bg-black/50 px-2 py-1 rounded-full">
+              {isRecording ? "กำลังฟัง..." : 
+               voiceStatus === "processing" ? "น้องกายวิเคราะห์..." :
+               voiceStatus === "thinking" ? "น้องกายกำลังคิด..." :
+               voiceStatus === "speaking" ? "น้องกายตอบ..." :
+               "กดค้างเพื่อถาม"}
+            </span>
+          </div>
 
           {!showCoach && (
             <button
