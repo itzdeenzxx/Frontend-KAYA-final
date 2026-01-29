@@ -57,6 +57,10 @@ const exerciseIcons: Record<string, React.ReactNode> = {
   'kaya-arm': <ArrowUp className="w-20 h-20" />,
   'kaya-torso': <RotateCcw className="w-20 h-20" />,
   'kaya-knee': <ArrowUpFromLine className="w-20 h-20" />,
+  // Intermediate KAYA icons
+  'kaya-squat-arm': <Dumbbell className="w-20 h-20" />,
+  'kaya-squat-twist': <RotateCcw className="w-20 h-20" />,
+  'kaya-high-knee': <Flame className="w-20 h-20" />,
 };
 
 // Style icons for header

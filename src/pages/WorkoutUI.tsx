@@ -36,6 +36,10 @@ const exerciseIcons: Record<string, React.ReactNode> = {
   'kaya-arm': <ArrowUp className="w-16 h-16" />,
   'kaya-torso': <RotateCcw className="w-16 h-16" />,
   'kaya-knee': <ArrowUpFromLine className="w-16 h-16" />,
+  // Intermediate KAYA icons
+  'kaya-squat-arm': <Dumbbell className="w-16 h-16" />,
+  'kaya-squat-twist': <RotateCcw className="w-16 h-16" />,
+  'kaya-high-knee': <Zap className="w-16 h-16" />,
 };
 
 // Larger icons for big screen
@@ -49,6 +53,10 @@ const exerciseIconsLarge: Record<string, React.ReactNode> = {
   'kaya-arm': <ArrowUp className="w-20 h-20" />,
   'kaya-torso': <RotateCcw className="w-20 h-20" />,
   'kaya-knee': <ArrowUpFromLine className="w-20 h-20" />,
+  // Intermediate KAYA icons
+  'kaya-squat-arm': <Dumbbell className="w-20 h-20" />,
+  'kaya-squat-twist': <RotateCcw className="w-20 h-20" />,
+  'kaya-high-knee': <Zap className="w-20 h-20" />,
 };
 
 // Style icons for header

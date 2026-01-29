@@ -1,5 +1,6 @@
 // Exercise Configuration - Ported from KAYA/config.py
 // 3 exercises: arm_raise, torso_twist, knee_raise
+// + 3 intermediate exercises: squat_arm_raise, squat_twist, high_knee_raise
 
 export type ExerciseType =
   | 'arm_raise'
@@ -89,7 +90,7 @@ export const EXERCISES: Record<ExerciseType, ExerciseDefinition> = {
     }
   },
 
-  // Intermediate additions
+  // Intermediate exercises
   squat_arm_raise: {
     id: 'squat_arm_raise',
     name: 'Squat with Arm Raise',
@@ -102,6 +103,7 @@ export const EXERCISES: Record<ExerciseType, ExerciseDefinition> = {
       knee_min_angle: 90,
       knee_max_angle: 160,
       arm_up_angle: 120,
+      arm_down_angle: 60,
     }
   },
 
@@ -112,7 +114,7 @@ export const EXERCISES: Record<ExerciseType, ExerciseDefinition> = {
     description: 'Perform a squat with a torso twist',
     descriptionTh: 'นั่งสควอตพร้อมบิดลำตัว ระบบวิเคราะห์ท่าซับซ้อนที่ผสม 2 ท่า เพิ่มความท้าทาย',
     icon: 'squat-twist',
-    stages: ['down_center', 'down_left', 'down_right'],
+    stages: ['down_center', 'down_left', 'down_right', 'up'],
     thresholds: {
       knee_min_angle: 90,
       knee_max_angle: 160,
@@ -129,72 +131,9 @@ export const EXERCISES: Record<ExerciseType, ExerciseDefinition> = {
     icon: 'high-knee',
     stages: ['up', 'down'],
     thresholds: {
-      knee_height_ratio: 0.05,
-      up_angle: 80,
-      down_angle: 160,
-    }
-  }
-  ,
-  squat_arm_raise: {
-    down: {
-      left_hip: { x: 0.55, y: 0.65 },
-      left_knee: { x: 0.55, y: 0.8 },
-      left_ankle: { x: 0.55, y: 0.95 },
-      right_hip: { x: 0.45, y: 0.65 },
-      right_knee: { x: 0.45, y: 0.8 },
-      right_ankle: { x: 0.45, y: 0.95 },
-      left_shoulder: { x: 0.6, y: 0.4 },
-      right_shoulder: { x: 0.4, y: 0.4 },
-      left_wrist: { x: 0.7, y: 0.25 },
-      right_wrist: { x: 0.3, y: 0.25 },
-    },
-    up: {
-      left_hip: { x: 0.55, y: 0.55 },
-      left_knee: { x: 0.55, y: 0.45 },
-      left_ankle: { x: 0.52, y: 0.55 },
-      right_hip: { x: 0.45, y: 0.55 },
-      right_knee: { x: 0.45, y: 0.45 },
-      right_ankle: { x: 0.45, y: 0.6 },
-      left_shoulder: { x: 0.6, y: 0.25 },
-      right_shoulder: { x: 0.4, y: 0.25 },
-      left_wrist: { x: 0.75, y: 0.08 },
-      right_wrist: { x: 0.25, y: 0.08 },
-    }
-  },
-  squat_twist: {
-    down_center: {
-      left_shoulder: { x: 0.6, y: 0.45 },
-      right_shoulder: { x: 0.4, y: 0.45 },
-      left_hip: { x: 0.55, y: 0.65 },
-      right_hip: { x: 0.45, y: 0.65 },
-      left_knee: { x: 0.55, y: 0.8 },
-      right_knee: { x: 0.45, y: 0.8 },
-    },
-    down_left: {
-      left_shoulder: { x: 0.55, y: 0.45 },
-      right_shoulder: { x: 0.35, y: 0.48 },
-    },
-    down_right: {
-      left_shoulder: { x: 0.65, y: 0.48 },
-      right_shoulder: { x: 0.45, y: 0.45 },
-    }
-  },
-  high_knee_raise: {
-    up: {
-      left_hip: { x: 0.55, y: 0.55 },
-      left_knee: { x: 0.55, y: 0.4 },
-      left_ankle: { x: 0.52, y: 0.55 },
-      right_hip: { x: 0.45, y: 0.55 },
-      right_knee: { x: 0.45, y: 0.75 },
-      right_ankle: { x: 0.45, y: 0.95 },
-    },
-    down: {
-      left_hip: { x: 0.55, y: 0.55 },
-      left_knee: { x: 0.55, y: 0.75 },
-      left_ankle: { x: 0.55, y: 0.95 },
-      right_hip: { x: 0.45, y: 0.55 },
-      right_knee: { x: 0.45, y: 0.75 },
-      right_ankle: { x: 0.45, y: 0.95 },
+      knee_height_ratio: 0.05, // knee.y should be < hip.y - ratio
+      up_angle: 80,    // hip-knee angle when raised
+      down_angle: 160, // hip-knee angle when down
     }
   }
 };
@@ -307,6 +246,79 @@ export const TARGET_POSES: Record<ExerciseType, Record<string, TargetPose>> = {
     up: {
       left_hip: { x: 0.55, y: 0.55 },
       left_knee: { x: 0.55, y: 0.45 },
+      left_ankle: { x: 0.52, y: 0.55 },
+      right_hip: { x: 0.45, y: 0.55 },
+      right_knee: { x: 0.45, y: 0.75 },
+      right_ankle: { x: 0.45, y: 0.95 },
+    },
+    down: {
+      left_hip: { x: 0.55, y: 0.55 },
+      left_knee: { x: 0.55, y: 0.75 },
+      left_ankle: { x: 0.55, y: 0.95 },
+      right_hip: { x: 0.45, y: 0.55 },
+      right_knee: { x: 0.45, y: 0.75 },
+      right_ankle: { x: 0.45, y: 0.95 },
+    }
+  },
+  // Intermediate exercise target poses
+  squat_arm_raise: {
+    down: {
+      left_hip: { x: 0.55, y: 0.65 },
+      left_knee: { x: 0.55, y: 0.8 },
+      left_ankle: { x: 0.55, y: 0.95 },
+      right_hip: { x: 0.45, y: 0.65 },
+      right_knee: { x: 0.45, y: 0.8 },
+      right_ankle: { x: 0.45, y: 0.95 },
+      left_shoulder: { x: 0.6, y: 0.4 },
+      right_shoulder: { x: 0.4, y: 0.4 },
+      left_wrist: { x: 0.7, y: 0.25 },
+      right_wrist: { x: 0.3, y: 0.25 },
+    },
+    up: {
+      left_hip: { x: 0.55, y: 0.55 },
+      left_knee: { x: 0.55, y: 0.75 },
+      left_ankle: { x: 0.55, y: 0.95 },
+      right_hip: { x: 0.45, y: 0.55 },
+      right_knee: { x: 0.45, y: 0.75 },
+      right_ankle: { x: 0.45, y: 0.95 },
+      left_shoulder: { x: 0.6, y: 0.35 },
+      right_shoulder: { x: 0.4, y: 0.35 },
+      left_wrist: { x: 0.65, y: 0.5 },
+      right_wrist: { x: 0.35, y: 0.5 },
+    }
+  },
+  squat_twist: {
+    down_center: {
+      left_shoulder: { x: 0.6, y: 0.45 },
+      right_shoulder: { x: 0.4, y: 0.45 },
+      left_hip: { x: 0.55, y: 0.65 },
+      right_hip: { x: 0.45, y: 0.65 },
+      left_knee: { x: 0.55, y: 0.8 },
+      right_knee: { x: 0.45, y: 0.8 },
+    },
+    down_left: {
+      left_shoulder: { x: 0.55, y: 0.45 },
+      right_shoulder: { x: 0.35, y: 0.48 },
+      left_hip: { x: 0.55, y: 0.65 },
+      right_hip: { x: 0.45, y: 0.65 },
+    },
+    down_right: {
+      left_shoulder: { x: 0.65, y: 0.48 },
+      right_shoulder: { x: 0.45, y: 0.45 },
+      left_hip: { x: 0.55, y: 0.65 },
+      right_hip: { x: 0.45, y: 0.65 },
+    },
+    up: {
+      left_shoulder: { x: 0.6, y: 0.35 },
+      right_shoulder: { x: 0.4, y: 0.35 },
+      left_hip: { x: 0.55, y: 0.55 },
+      right_hip: { x: 0.45, y: 0.55 },
+    }
+  },
+  high_knee_raise: {
+    up: {
+      left_hip: { x: 0.55, y: 0.55 },
+      left_knee: { x: 0.55, y: 0.4 },
       left_ankle: { x: 0.52, y: 0.55 },
       right_hip: { x: 0.45, y: 0.55 },
       right_knee: { x: 0.45, y: 0.75 },
@@ -450,8 +462,11 @@ export function getRandomMessage(messages: string[]): string {
   return messages[Math.floor(Math.random() * messages.length)];
 }
 
-// Exercise order for KAYA workout
+// Exercise order for KAYA workout (basic)
 export const KAYA_EXERCISE_ORDER: ExerciseType[] = ['arm_raise', 'torso_twist', 'knee_raise'];
+
+// Exercise order for KAYA intermediate workout
+export const KAYA_INTERMEDIATE_ORDER: ExerciseType[] = ['squat_arm_raise', 'squat_twist', 'high_knee_raise'];
 
 // MediaPipe landmark indices
 export const LANDMARK_INDICES = {
