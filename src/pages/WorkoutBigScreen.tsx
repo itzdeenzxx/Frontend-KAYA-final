@@ -133,6 +133,7 @@ export default function WorkoutBigScreen() {
   // Video ref for webcam
   const videoRef = useRef<HTMLVideoElement>(null);
   const [cameraError, setCameraError] = useState<string>('');
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   
   // Skeleton overlay state - hidden by default for clean UI
   const [showSkeleton, setShowSkeleton] = useState(false);
@@ -172,7 +173,35 @@ export default function WorkoutBigScreen() {
         });
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          
+
+          // Ensure video plays
+          try {
+            await videoRef.current.play();
+              {autoplayBlocked && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <button
+                    onClick={async () => {
+                      try {
+                        await videoRef.current?.play();
+                        setAutoplayBlocked(false);
+                        setCameraError('');
+                      } catch (e) {
+                        setCameraError('ไม่สามารถเริ่มวิดีโอได้ กรุณาแตะหน้าจออีกครั้ง');
+                      }
+                    }}
+                    className="px-6 py-3 bg-primary text-white rounded-xl shadow-lg"
+                  >
+                    เปิดกล้อง (แตะเพื่อเริ่ม)
+                  </button>
+                </div>
+              )}
+            console.log('BigScreen video playing');
+            setAutoplayBlocked(false);
+          } catch (playError) {
+            console.log('BigScreen auto-play blocked');
+            setAutoplayBlocked(true);
+          }
+
           // Track video dimensions when metadata loads
           videoRef.current.onloadedmetadata = () => {
             if (videoRef.current) {

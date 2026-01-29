@@ -151,6 +151,7 @@ export default function WorkoutUI() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [cameraError, setCameraError] = useState<string>('');
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   const [cameraEnabled, setCameraEnabled] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
@@ -222,17 +223,19 @@ export default function WorkoutUI() {
         });
         console.log('Camera stream obtained:', stream);
         
-        if (videoRef.current) {
+          if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          
+
           // Ensure video plays
           try {
             await videoRef.current.play();
             console.log('Video playing');
+            setAutoplayBlocked(false);
           } catch (playError) {
             console.log('Auto-play blocked, user interaction needed');
+            setAutoplayBlocked(true);
           }
-          
+
           // Mark camera as ready
           setCameraReady(true);
           
@@ -1303,6 +1306,25 @@ export default function WorkoutUI() {
                 className="w-full h-full object-cover scale-x-[-1]"
                 style={{ backgroundColor: '#000' }}
               />
+                {/* Autoplay blocked overlay */}
+                {autoplayBlocked && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <button
+                      onClick={async () => {
+                        try {
+                          await videoRef.current?.play();
+                          setAutoplayBlocked(false);
+                          setCameraError('');
+                        } catch (e) {
+                          setCameraError('ไม่สามารถเริ่มวิดีโอได้ กรุณาแตะหน้าจออีกครั้ง');
+                        }
+                      }}
+                      className="px-6 py-3 bg-primary text-white rounded-xl shadow-lg"
+                    >
+                      เปิดกล้อง (แตะเพื่อเริ่ม)
+                    </button>
+                  </div>
+                )}
               {/* Skeleton Overlay */}
               {cameraEnabled && (showSkeleton || showOpticalFlow) && (
                 <SkeletonOverlay
