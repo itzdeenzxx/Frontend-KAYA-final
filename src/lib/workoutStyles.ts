@@ -93,6 +93,19 @@ export const workoutStyles: WorkoutStyle[] = [
     features: ['AI Coach', 'Visual Guide', 'TTS', 'นับเซ็ต']
   },
   {
+    id: 'kaya-intermediate',
+    name: 'KAYA ระดับกลาง',
+    nameEn: 'KAYA Intermediate',
+    description: 'ชุดท่าระดับกลาง 3 ท่า พร้อม AI Coach วิเคราะห์ฟอร์มและ TTS',
+    icon: React.createElement(Target, { className: "w-8 h-8" }),
+    color: 'text-yellow-500',
+    bgGradient: 'from-yellow-500/10 to-yellow-500/20',
+    duration: '8-12 นาที',
+    calories: '40-80 kcal',
+    level: 'ปานกลาง',
+    features: ['AI Coach', 'Visual Guide', 'TTS', 'Intermediate']
+  },
+  {
     id: 'hiit',
     name: 'HIIT เผาผลาญสูงสุด',
     nameEn: 'HIIT Training',
