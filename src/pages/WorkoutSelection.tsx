@@ -65,38 +65,6 @@ const workoutStyles: WorkoutStyle[] = [
     accentColor: 'yellow'
   }
 ];
-  },
-  {
-    id: 'slow',
-    name: 'SLOW & CALM',
-    nameEn: 'Relaxing Movement',
-    description: 'เคลื่อนไหวช้าๆ เน้นการหายใจและผ่อนคลาย',
-    icon: <Wind className="w-8 h-8" />,
-    color: 'text-green-400',
-    bgGradient: 'from-green-600/90 via-emerald-600/80 to-teal-800/90',
-    duration: '20-40 นาที',
-    calories: '80-150',
-    level: 'ง่าย',
-    features: ['Relax', 'Breathing'],
-    image: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=800&q=80',
-    accentColor: 'green'
-  },
-  {
-    id: 'kaya-stretch',
-    name: 'KAYA AI COACH',
-    nameEn: 'Smart Stretch with AI',
-    description: 'AI วิเคราะห์ท่าทาง + เสียงโค้ชแนะนำแบบ Real-time',
-    icon: <Brain className="w-8 h-8" />,
-    color: 'text-violet-400',
-    bgGradient: 'from-violet-600/90 via-purple-600/80 to-indigo-800/90',
-    duration: '10-20 นาที',
-    calories: '80-150',
-    level: 'ง่าย',
-    features: ['AI Coach', 'TTS Voice', 'Pose Guide'],
-    image: 'https://images.unsplash.com/photo-1518611012118-696072aa579a?w=800&q=80',
-    accentColor: 'violet'
-  }
-];
 
 // Level badge colors
 const levelColors = {
