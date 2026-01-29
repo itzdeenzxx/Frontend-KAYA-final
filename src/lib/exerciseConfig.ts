@@ -1,7 +1,13 @@
 // Exercise Configuration - Ported from KAYA/config.py
 // 3 exercises: arm_raise, torso_twist, knee_raise
 
-export type ExerciseType = 'arm_raise' | 'torso_twist' | 'knee_raise';
+export type ExerciseType =
+  | 'arm_raise'
+  | 'torso_twist'
+  | 'knee_raise'
+  | 'squat_arm_raise'
+  | 'squat_twist'
+  | 'high_knee_raise';
 export type DifficultyLevel = 'beginner' | 'intermediate' | 'advanced' | 'expert';
 export type FormQuality = 'good' | 'warn' | 'bad';
 export type TempoQuality = 'perfect' | 'good' | 'too_fast' | 'too_slow' | 'inconsistent';
@@ -80,6 +86,52 @@ export const EXERCISES: Record<ExerciseType, ExerciseDefinition> = {
     thresholds: {
       up_angle: 90,    // angle < 90 means knee is raised
       down_angle: 160, // angle > 160 means knee is down
+    }
+  },
+
+  // Intermediate additions
+  squat_arm_raise: {
+    id: 'squat_arm_raise',
+    name: 'Squat with Arm Raise',
+    nameTh: 'สควอตพร้อมยกแขนเหนือศีรษะ',
+    description: 'Perform a squat while raising arms overhead',
+    descriptionTh: 'นั่งสควอตพร้อมยกแขนขึ้น ระบบตรวจจับมุมเข่า 90-160 องศา และมุมแขน ฝึกกล้ามเนื้อขา สะโพก และไหล่',
+    icon: 'squat-arm',
+    stages: ['down', 'up'],
+    thresholds: {
+      knee_min_angle: 90,
+      knee_max_angle: 160,
+      arm_up_angle: 120,
+    }
+  },
+
+  squat_twist: {
+    id: 'squat_twist',
+    name: 'Squat with Twist',
+    nameTh: 'สควอตพร้อมบิดลำตัว',
+    description: 'Perform a squat with a torso twist',
+    descriptionTh: 'นั่งสควอตพร้อมบิดลำตัว ระบบวิเคราะห์ท่าซับซ้อนที่ผสม 2 ท่า เพิ่มความท้าทาย',
+    icon: 'squat-twist',
+    stages: ['down_center', 'down_left', 'down_right'],
+    thresholds: {
+      knee_min_angle: 90,
+      knee_max_angle: 160,
+      twist_threshold: 0.12,
+    }
+  },
+
+  high_knee_raise: {
+    id: 'high_knee_raise',
+    name: 'High Knee Raise',
+    nameTh: 'ยกเข่าสูงในท่ายืน',
+    description: 'Raise knee above waist level while standing',
+    descriptionTh: 'ยกเข่าให้สูงกว่าระดับเอว ระบบวัดความสูงของเข่า เหมาะสำหรับคาร์ดิโอ',
+    icon: 'high-knee',
+    stages: ['up', 'down'],
+    thresholds: {
+      knee_height_ratio: 0.05,
+      up_angle: 80,
+      down_angle: 160,
     }
   }
 };

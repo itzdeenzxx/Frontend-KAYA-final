@@ -35,7 +35,7 @@ export interface WorkoutExercise {
   reps: number | null;
   icon: string;
   description?: string;
-  kayaExercise?: 'arm_raise' | 'torso_twist' | 'knee_raise'; // For AI-powered KAYA exercises
+  kayaExercise?: 'arm_raise' | 'torso_twist' | 'knee_raise' | 'squat_arm_raise' | 'squat_twist' | 'high_knee_raise'; // For AI-powered KAYA exercises
 }
 
 // Workout styles data
@@ -214,6 +214,13 @@ export const workoutExercises: Record<string, WorkoutExercise[]> = {
     { name: 'Arm Raise', nameTh: 'ยกแขน', duration: null, reps: 10, icon: 'kaya-arm', description: 'ยกแขนขึ้น-ลง ยืดกล้ามเนื้อไหล่และแขน', kayaExercise: 'arm_raise' },
     { name: 'Torso Twist', nameTh: 'บิดลำตัว', duration: null, reps: 10, icon: 'kaya-torso', description: 'บิดลำตัวซ้าย-ขวา ยืดกล้ามเนื้อแกนกลาง', kayaExercise: 'torso_twist' },
     { name: 'Knee Raise', nameTh: 'ยกเข่า', duration: null, reps: 10, icon: 'kaya-knee', description: 'ยกเข่าขึ้น-ลง ยืดกล้ามเนื้อขาและสะโพก', kayaExercise: 'knee_raise' },
+  ],
+
+  // New intermediate KAYA set
+  'kaya-intermediate': [
+    { name: 'Squat + Arm Raise', nameTh: 'สควอตพร้อมยกแขนเหนือศีรษะ', duration: null, reps: 10, icon: 'kaya-squat-arm', description: 'สควอตพร้อมยกแขนเหนือศีรษะ', kayaExercise: 'squat_arm_raise' },
+    { name: 'Squat + Twist', nameTh: 'สควอตพร้อมบิดลำตัว', duration: null, reps: 10, icon: 'kaya-squat-twist', description: 'สควอตแล้วบิดลำตัว เพิ่มความท้าทาย', kayaExercise: 'squat_twist' },
+    { name: 'High Knee Raise', nameTh: 'ยกเข่าสูงในท่ายืน', duration: null, reps: 20, icon: 'kaya-high-knee', description: 'ยกเข่าให้สูงกว่าระดับเอว เหมาะสำหรับคาร์ดิโอ', kayaExercise: 'high_knee_raise' },
   ],
   hiit: [
     { name: 'Jumping Jacks', nameTh: 'กระโดดตบ', duration: 30, reps: null, icon: 'run', description: 'กระโดดกางขา-แขน' },

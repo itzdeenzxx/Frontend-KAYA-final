@@ -176,7 +176,7 @@ export class ArmRaiseAnalyzer extends ExerciseAnalyzer {
     // Use average of both arms
     const avgArmAngle = (leftArmAngle + rightArmAngle) / 2;
     
-    const thresholds = EXERCISES.arm_raise.thresholds;
+    const thresholds = EXERCISES[this.exerciseType].thresholds as Record<string, number>;
 
     // KAYA-style rep counting logic
     let repCompleted = false;
@@ -303,7 +303,7 @@ export class TorsoTwistAnalyzer extends ExerciseAnalyzer {
     const hipMidX = (leftHip.x + rightHip.x) / 2;
     const twistOffset = shoulderMidX - hipMidX;
 
-    const thresholds = EXERCISES.torso_twist.thresholds;
+    const thresholds = EXERCISES[this.exerciseType].thresholds as Record<string, number>;
 
     // Stage detection
     this.previousStage = this.currentStage;
@@ -441,7 +441,7 @@ export class KneeRaiseAnalyzer extends ExerciseAnalyzer {
     const leftKneeAngle = calculateAngle(leftShoulder, leftHip, leftKnee);
     const rightKneeAngle = calculateAngle(rightShoulder, rightHip, rightKnee);
 
-    const thresholds = EXERCISES.knee_raise.thresholds;
+    const thresholds = EXERCISES[this.exerciseType].thresholds as Record<string, number>;
 
     // Track previous leg stages
     const prevLeftStage = this.leftLegStage;
@@ -555,6 +555,135 @@ export class KneeRaiseAnalyzer extends ExerciseAnalyzer {
   }
 }
 
+// Squat + Arm Raise Analyzer: reuse ArmRaiseAnalyzer but require squat knee angle
+export class SquatWithArmRaiseAnalyzer extends ArmRaiseAnalyzer {
+  constructor() {
+    super();
+    // Override exercise type so thresholds refer to the correct EXERCISES entry
+    // ArmRaiseAnalyzer constructor set exerciseType to 'arm_raise', replace it
+    (this as any).exerciseType = 'squat_arm_raise';
+  }
+
+  analyze(landmarks: Landmark[]): ExerciseAnalysisResult {
+    const prevReps = this.reps;
+    const result = super.analyze(landmarks);
+
+    // Check squat knee angles
+    const leftShoulder = landmarks[LM.LEFT_SHOULDER];
+    const leftHip = landmarks[LM.LEFT_HIP];
+    const leftKnee = landmarks[LM.LEFT_KNEE];
+    const rightShoulder = landmarks[LM.RIGHT_SHOULDER];
+    const rightHip = landmarks[LM.RIGHT_HIP];
+    const rightKnee = landmarks[LM.RIGHT_KNEE];
+
+    const leftKneeAngle = calculateAngle(leftShoulder, leftHip, leftKnee);
+    const rightKneeAngle = calculateAngle(rightShoulder, rightHip, rightKnee);
+    const avgKnee = (leftKneeAngle + rightKneeAngle) / 2;
+
+    const thresholds = EXERCISES[this.exerciseType].thresholds as Record<string, number>;
+    const minA = thresholds.knee_min_angle ?? 90;
+    const maxA = thresholds.knee_max_angle ?? 160;
+
+    const inSquat = avgKnee >= minA && avgKnee <= maxA;
+
+    if (!inSquat) {
+      // If a rep was counted by arm logic but user wasn't in squat, revert the count
+      if (result.repCompleted && this.reps > prevReps) {
+        this.reps = prevReps;
+        result.repCompleted = false;
+      }
+      // Add form issue
+      result.formFeedback.issues.push('ไม่อยู่ในท่าสควอต');
+      result.formFeedback.suggestions.push('ก้มเข่าลงให้ถึงมุมที่กำหนดก่อนทำท่านี้');
+      result.formFeedback.quality = 'warn';
+    }
+
+    return result;
+  }
+}
+
+// Squat + Twist Analyzer: reuse TorsoTwistAnalyzer but require squat knee angle
+export class SquatWithTwistAnalyzer extends TorsoTwistAnalyzer {
+  constructor() {
+    super();
+    (this as any).exerciseType = 'squat_twist';
+  }
+
+  analyze(landmarks: Landmark[]): ExerciseAnalysisResult {
+    const prevReps = this.reps;
+    const result = super.analyze(landmarks);
+
+    // Check squat knee angles
+    const leftShoulder = landmarks[LM.LEFT_SHOULDER];
+    const leftHip = landmarks[LM.LEFT_HIP];
+    const leftKnee = landmarks[LM.LEFT_KNEE];
+    const rightShoulder = landmarks[LM.RIGHT_SHOULDER];
+    const rightHip = landmarks[LM.RIGHT_HIP];
+    const rightKnee = landmarks[LM.RIGHT_KNEE];
+
+    const leftKneeAngle = calculateAngle(leftShoulder, leftHip, leftKnee);
+    const rightKneeAngle = calculateAngle(rightShoulder, rightHip, rightKnee);
+    const avgKnee = (leftKneeAngle + rightKneeAngle) / 2;
+
+    const thresholds = EXERCISES[this.exerciseType].thresholds as Record<string, number>;
+    const minA = thresholds.knee_min_angle ?? 90;
+    const maxA = thresholds.knee_max_angle ?? 160;
+
+    const inSquat = avgKnee >= minA && avgKnee <= maxA;
+
+    if (!inSquat) {
+      if (result.repCompleted && this.reps > prevReps) {
+        this.reps = prevReps;
+        result.repCompleted = false;
+      }
+      result.formFeedback.issues.push('ไม่อยู่ในท่าสควอต');
+      result.formFeedback.suggestions.push('ก้มเข่าลงให้ถึงมุมที่กำหนดก่อนบิดตัว');
+      result.formFeedback.quality = 'warn';
+    }
+
+    return result;
+  }
+}
+
+// High Knee Analyzer: reuse KneeRaiseAnalyzer but use high_knee_raise thresholds
+export class HighKneeAnalyzer extends KneeRaiseAnalyzer {
+  constructor() {
+    super();
+    (this as any).exerciseType = 'high_knee_raise';
+  }
+  
+  analyze(landmarks: Landmark[]): ExerciseAnalysisResult {
+    const prevReps = this.reps;
+    const result = super.analyze(landmarks);
+
+    // If a rep was counted, ensure knee height meets the high-knee threshold
+    if (result.repCompleted) {
+      const thresholds = EXERCISES[this.exerciseType].thresholds as Record<string, number>;
+      const heightThresh = thresholds.knee_height_ratio ?? 0.05;
+
+      const leftHip = landmarks[LM.LEFT_HIP];
+      const rightHip = landmarks[LM.RIGHT_HIP];
+      const leftKnee = landmarks[LM.LEFT_KNEE];
+      const rightKnee = landmarks[LM.RIGHT_KNEE];
+
+      // knee above hip means smaller y (normalized coordinates)
+      const leftHigh = leftKnee.y < leftHip.y - heightThresh;
+      const rightHigh = rightKnee.y < rightHip.y - heightThresh;
+
+      if (!(leftHigh || rightHigh)) {
+        // Revert rep if height condition not met
+        this.reps = prevReps;
+        result.repCompleted = false;
+        result.formFeedback.issues.push('ยกเข่าไม่ถึงระดับเอว');
+        result.formFeedback.suggestions.push('ยกเข่าให้สูงกว่าระดับสะโพก/เอว');
+        result.formFeedback.quality = 'warn';
+      }
+    }
+
+    return result;
+  }
+}
+
 // Factory function to create analyzer
 export function createExerciseAnalyzer(exerciseType: ExerciseType): ExerciseAnalyzer {
   switch (exerciseType) {
@@ -564,6 +693,12 @@ export function createExerciseAnalyzer(exerciseType: ExerciseType): ExerciseAnal
       return new TorsoTwistAnalyzer();
     case 'knee_raise':
       return new KneeRaiseAnalyzer();
+    case 'squat_arm_raise':
+      return new SquatWithArmRaiseAnalyzer();
+    case 'squat_twist':
+      return new SquatWithTwistAnalyzer();
+    case 'high_knee_raise':
+      return new HighKneeAnalyzer();
     default:
       throw new Error(`Unknown exercise type: ${exerciseType}`);
   }
