@@ -152,6 +152,7 @@ export default function WorkoutUI() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [cameraError, setCameraError] = useState<string>('');
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+  const debugCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [cameraEnabled, setCameraEnabled] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
@@ -278,6 +279,31 @@ export default function WorkoutUI() {
       }
     };
   }, [cameraEnabled, showLoader]);
+
+  // Draw a small debug thumbnail from the video to a canvas for troubleshooting
+  useEffect(() => {
+    let interval: number | null = null;
+    const drawFrame = () => {
+      const video = videoRef.current;
+      const canvas = debugCanvasRef.current;
+      if (!video || !canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      try {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      } catch (e) {
+        // ignore if video not ready
+      }
+    };
+
+    if (isKayaWorkout && cameraEnabled) {
+      interval = window.setInterval(drawFrame, 250);
+    }
+
+    return () => {
+      if (interval) window.clearInterval(interval);
+    };
+  }, [isKayaWorkout, cameraEnabled]);
 
   useEffect(() => {
     if (isPaused) return;
@@ -1687,6 +1713,22 @@ export default function WorkoutUI() {
               </div>
             </div>
           </div>
+          {/* Debug overlay for KAYA intermediate to diagnose black screen */}
+          {selectedStyleId === 'kaya-intermediate' && (
+            <div className="absolute top-6 right-6 z-50 p-3 bg-white/10 backdrop-blur rounded-lg text-xs text-white border border-white/10">
+              <div className="font-medium mb-1">Debug</div>
+              <div>cameraEnabled: {String(cameraEnabled)}</div>
+              <div>autoplayBlocked: {String(autoplayBlocked)}</div>
+              <div>cameraReady: {String(cameraReady)}</div>
+              <div>videoReadyState: {videoRef.current?.readyState ?? 'null'}</div>
+              <div>landmarks: {landmarks.length}</div>
+              <div>opticalFlow: {opticalFlowPoints.length}</div>
+              <div className="mt-2">
+                <canvas ref={debugCanvasRef} width={160} height={120} className="border border-white/20" />
+              </div>
+              <div className="mt-2 text-red-300">{cameraError}</div>
+            </div>
+          )}
 
           {/* Music Player for Mobile */}
           {showMusicPlayer && (
