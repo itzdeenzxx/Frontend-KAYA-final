@@ -32,6 +32,8 @@ interface GameBoardProps {
   onGameEnd: () => void;
   difficulty: 'easy' | 'medium' | 'hard';
   difficultySettings: DifficultySettings;
+  onMoleHit?: () => void;
+  onBombHit?: () => void;
 }
 
 const NUM_HOLES = 5;
@@ -48,6 +50,8 @@ export function GameBoard({
   onGameEnd,
   difficulty,
   difficultySettings,
+  onMoleHit,
+  onBombHit,
 }: GameBoardProps) {
   const [activeMole, setActiveMole] = useState<number | null>(null);
   const [isBomb, setIsBomb] = useState(false); // ตุ่นหรือระเบิด
@@ -126,6 +130,7 @@ export function GameBoard({
       if (isBomb) {
         // Hit bomb - lose 5 points
         playBombSound(); // เล่นเสียงระเบิด
+        onBombHit?.();
         setScore(prev => {
           const newScore = Math.max(0, prev - 5);
           onScoreChange(newScore);
@@ -135,6 +140,7 @@ export function GameBoard({
       } else {
         // Hit mole - gain 10 points
         playHitSound(); // เล่นเสียงตี
+        onMoleHit?.();
         setScore(prev => {
           const newScore = prev + 10;
           onScoreChange(newScore);

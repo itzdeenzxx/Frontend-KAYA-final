@@ -20,6 +20,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { getAllPersonalBests, type AllGameBests } from '@/lib/gameScores';
 
 // Game types
 interface Game {
@@ -35,7 +37,6 @@ interface Game {
   features: string[];
   image: string;
   accentColor: string;
-  highScore?: number;
 }
 
 // Games data
@@ -52,8 +53,7 @@ const games: Game[] = [
     difficulty: 'ปานกลาง',
     features: ['Endless Run', 'Collect Cheese'],
     image: 'https://images.unsplash.com/photo-1425082661705-1834bfd09dca?w=800&q=80',
-    accentColor: 'amber',
-    highScore: 1250
+    accentColor: 'amber'
   },
   {
     id: 'whack-a-mole',
@@ -67,8 +67,7 @@ const games: Game[] = [
     difficulty: 'ง่าย',
     features: ['Reflex Test', 'Time Attack'],
     image: 'https://plus.unsplash.com/premium_photo-1725408008366-390dfe32d0a6?q=80&w=1120&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
-    accentColor: 'green',
-    highScore: 26
+    accentColor: 'green'
   },
   {
     id: 'fishing',
@@ -82,9 +81,7 @@ const games: Game[] = [
     difficulty: 'ปานกลาง',
     features: ['Motion Control', 'Collect Fish'],
     image: 'https://plus.unsplash.com/premium_photo-1723575688585-d9bf8959f7f7?q=80&w=2070&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
-    // image: 'https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=800&q=80',
-    accentColor: 'cyan',
-    highScore: 20
+    accentColor: 'cyan'
   }
 ];
 
@@ -98,9 +95,15 @@ const difficultyColors = {
 export default function GameMode() {
   const navigate = useNavigate();
   const { theme } = useTheme();
+  const { lineProfile } = useAuth();
   const isDark = theme === 'dark';
   const [isDesktop, setIsDesktop] = useState(false);
   const [hoveredGame, setHoveredGame] = useState<string | null>(null);
+  const [highScores, setHighScores] = useState<AllGameBests>({
+    mouseRunning: 0,
+    whackAMole: 0,
+    fishing: 0,
+  });
 
   useEffect(() => {
     const checkScreenSize = () => {
@@ -110,6 +113,38 @@ export default function GameMode() {
     window.addEventListener('resize', checkScreenSize);
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
+
+  // Fetch high scores from database
+  useEffect(() => {
+    const fetchHighScores = async () => {
+      if (!lineProfile?.userId) return;
+      
+      try {
+        const scores = await getAllPersonalBests(lineProfile.userId);
+        setHighScores(scores);
+      } catch (error) {
+        console.error('Failed to fetch high scores:', error);
+      }
+    };
+    
+    fetchHighScores();
+  }, [lineProfile?.userId]);
+
+  // Helper to get high score for a game
+  const getHighScore = (gameId: string): number => {
+    const gameIdMap: Record<string, keyof AllGameBests> = {
+      'mouse-running': 'mouseRunning',
+      'whack-a-mole': 'whackAMole',
+      'fishing': 'fishing',
+    };
+    const key = gameIdMap[gameId];
+    return key ? highScores[key] : 0;
+  };
+
+  // Computed stats
+  const totalScore = highScores.mouseRunning + highScores.whackAMole + highScores.fishing;
+  const gamesPlayed = [highScores.mouseRunning, highScores.whackAMole, highScores.fishing].filter(s => s > 0).length;
+  const starsEarned = gamesPlayed; // 1 star per game with a high score
 
   const handleGameSelect = (gameId: string) => {
     if (gameId === 'mouse-running') {
@@ -171,7 +206,7 @@ export default function GameMode() {
               )}>
                 <Trophy className="w-6 h-6 text-yellow-500" />
                 <div>
-                  <p className="text-2xl font-bold">1,295</p>
+                  <p className="text-2xl font-bold">{totalScore.toLocaleString()}</p>
                   <p className={cn("text-xs", isDark ? "text-gray-500" : "text-gray-400")}>Total Score</p>
                 </div>
               </div>
@@ -181,7 +216,7 @@ export default function GameMode() {
               )}>
                 <Star className="w-6 h-6 text-amber-500" />
                 <div>
-                  <p className="text-2xl font-bold">3</p>
+                  <p className="text-2xl font-bold">{starsEarned}</p>
                   <p className={cn("text-xs", isDark ? "text-gray-500" : "text-gray-400")}>Stars Earned</p>
                 </div>
               </div>
@@ -243,10 +278,10 @@ export default function GameMode() {
                       )}>
                         {game.difficulty}
                       </span>
-                      {game.highScore && (
+                      {getHighScore(game.id) > 0 && (
                         <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-black/40 backdrop-blur">
                           <Trophy className="w-5 h-5 text-yellow-400" />
-                          <span className="text-yellow-400 font-bold text-lg">{game.highScore.toLocaleString()}</span>
+                          <span className="text-yellow-400 font-bold text-lg">{getHighScore(game.id).toLocaleString()}</span>
                         </div>
                       )}
                     </div>
@@ -378,7 +413,7 @@ export default function GameMode() {
             <div className="text-center">
               <div className="flex items-center justify-center gap-1 mb-1">
                 <Gamepad2 className="w-4 h-4 text-purple-400" />
-                <span className="text-2xl font-bold">2</span>
+                <span className="text-2xl font-bold">{games.length}</span>
               </div>
               <span className={cn("text-xs", isDark ? "text-gray-400" : "text-gray-500")}>เกมทั้งหมด</span>
             </div>
@@ -386,7 +421,7 @@ export default function GameMode() {
             <div className="text-center">
               <div className="flex items-center justify-center gap-1 mb-1">
                 <Trophy className="w-4 h-4 text-yellow-400" />
-                <span className="text-2xl font-bold">1,295</span>
+                <span className="text-2xl font-bold">{totalScore.toLocaleString()}</span>
               </div>
               <span className={cn("text-xs", isDark ? "text-gray-400" : "text-gray-500")}>คะแนนรวม</span>
             </div>
@@ -394,7 +429,7 @@ export default function GameMode() {
             <div className="text-center">
               <div className="flex items-center justify-center gap-1 mb-1">
                 <Star className="w-4 h-4 text-amber-400" />
-                <span className="text-2xl font-bold">3</span>
+                <span className="text-2xl font-bold">{starsEarned}</span>
               </div>
               <span className={cn("text-xs", isDark ? "text-gray-400" : "text-gray-500")}>ดาวที่ได้</span>
             </div>
@@ -442,10 +477,10 @@ export default function GameMode() {
                       <Timer className="w-3.5 h-3.5" />
                       <span>{game.duration}</span>
                     </div>
-                    {game.highScore && (
+                    {getHighScore(game.id) > 0 && (
                       <div className="flex items-center gap-1.5 ml-auto">
                         <Trophy className="w-3.5 h-3.5 text-yellow-400" />
-                        <span className="text-yellow-400 text-xs font-bold">{game.highScore.toLocaleString()}</span>
+                        <span className="text-yellow-400 text-xs font-bold">{getHighScore(game.id).toLocaleString()}</span>
                       </div>
                     )}
                   </div>

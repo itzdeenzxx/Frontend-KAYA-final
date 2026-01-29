@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useGameMediaPipe } from '@/hooks/useGameMediaPipe';
 import { useMultiplayerGameMediaPipe } from '@/hooks/useMultiplayerGameMediaPipe';
 import { useGameState } from '@/hooks/useGameState';
 import { useSoundManager } from '@/hooks/useSoundManager';
+import { useGameScores } from '@/hooks/useGameScores';
 import { TrafficLight } from './TrafficLight';
 import { MouseCharacter } from './MouseCharacter';
 import { CheeseGoal } from './CheeseGoal';
@@ -25,8 +26,13 @@ export function GameCanvas() {
   const [isMuted, setIsMuted] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const [hitTrigger, setHitTrigger] = useState(0);
+  const [isNewRecord, setIsNewRecord] = useState(false);
+  
+  const gameStartTimeRef = useRef<number>(0);
+  const scoreSavedRef = useRef(false); // Prevent double saving
   
   const sound = useSoundManager();
+  const { submitScore, personalBest, loadPersonalBest } = useGameScores();
   
   // Single player hooks
   const singlePlayer = useGameMediaPipe();
@@ -39,6 +45,47 @@ export function GameCanvas() {
   const canvasRef = gameMode === 'MULTIPLAYER' ? multiPlayer.canvasRef : singlePlayer.canvasRef;
   const isLoading = gameMode === 'MULTIPLAYER' ? multiPlayer.isLoading : singlePlayer.isLoading;
   const error = gameMode === 'MULTIPLAYER' ? multiPlayer.error : singlePlayer.error;
+
+  // Save score to database
+  const saveGameScore = useCallback(async (
+    score: number, 
+    elapsedTime: number, 
+    hitCount: number, 
+    steps: number
+  ) => {
+    if (scoreSavedRef.current) return; // Already saved
+    if (gameMode === 'MULTIPLAYER') return; // Don't save multiplayer for now
+    
+    scoreSavedRef.current = true;
+    
+    const duration = Math.floor((Date.now() - gameStartTimeRef.current) / 1000);
+    
+    // Map level ID to GameLevel type
+    const levelMap: Record<string, 'easy' | 'medium' | 'hard'> = {
+      'easy': 'easy',
+      'medium': 'medium',
+      'hard': 'hard',
+      'practice': 'easy',
+      'intense': 'hard',
+    };
+    const level = levelMap[selectedLevel.id] || 'medium';
+    
+    const result = await submitScore({
+      gameType: 'mouseRunning',
+      level,
+      score,
+      duration,
+      gameData: {
+        steps,
+        hitCount,
+        maxCombo: steps > 0 ? Math.max(1, steps - hitCount) : 0,
+      },
+    });
+    
+    if (result.isNewPersonalBest) {
+      setIsNewRecord(true);
+    }
+  }, [gameMode, selectedLevel.id, submitScore]);
 
   // Player 1 (or single player) game state
   const player1State = useGameState({
@@ -79,6 +126,18 @@ export function GameCanvas() {
   useEffect(() => {
     sound.setLevel(selectedLevel.id);
   }, [selectedLevel.id, sound]);
+
+  // Save score when player wins
+  useEffect(() => {
+    if (player1State.gameState === 'WIN' && !scoreSavedRef.current) {
+      saveGameScore(
+        player1State.score,
+        player1State.elapsedTime,
+        player1State.hitCount,
+        singlePlayer.stepCount
+      );
+    }
+  }, [player1State.gameState, player1State.score, player1State.elapsedTime, player1State.hitCount, singlePlayer.stepCount, saveGameScore]);
 
   const prevStepCount1 = useRef(0);
   const prevStepCount2 = useRef(0);
@@ -144,6 +203,20 @@ export function GameCanvas() {
     sound.playClick();
     setSelectedLevel(level);
     setScreen('PLAYING');
+    setIsNewRecord(false);
+    scoreSavedRef.current = false;
+    gameStartTimeRef.current = Date.now();
+    
+    // Map level ID to GameLevel type for loading personal best
+    const levelMap: Record<string, 'easy' | 'medium' | 'hard'> = {
+      'easy': 'easy',
+      'medium': 'medium',
+      'hard': 'hard',
+      'practice': 'easy',
+      'intense': 'hard',
+    };
+    const gameLevel = levelMap[level.id] || 'medium';
+    loadPersonalBest('mouseRunning', gameLevel);
     
     if (gameMode === 'SINGLE') {
       singlePlayer.resetSteps();
@@ -162,6 +235,9 @@ export function GameCanvas() {
   const handleRestart = () => {
     sound.playClick();
     setShowConfetti(false);
+    setIsNewRecord(false);
+    scoreSavedRef.current = false;
+    gameStartTimeRef.current = Date.now();
     
     if (gameMode === 'SINGLE') {
       singlePlayer.resetSteps();
@@ -349,6 +425,8 @@ export function GameCanvas() {
               onRestart={handleRestart}
               onBack={handleBackToMenu}
               gameMode={gameMode}
+              isNewRecord={isNewRecord}
+              personalBest={personalBest}
             />
 
             {/* Warning/Hit flash overlay */}

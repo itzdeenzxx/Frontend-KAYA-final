@@ -17,6 +17,8 @@ interface GameOverlayProps {
   onRestart: () => void;
   onBack?: () => void;
   gameMode?: GameMode;
+  isNewRecord?: boolean;
+  personalBest?: number;
 }
 
 function formatTime(seconds: number): string {
@@ -34,7 +36,9 @@ export function GameOverlay({
   onStart, 
   onRestart,
   onBack,
-  gameMode = 'SINGLE'
+  gameMode = 'SINGLE',
+  isNewRecord = false,
+  personalBest = 0,
 }: GameOverlayProps) {
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   
@@ -147,10 +151,15 @@ export function GameOverlay({
                 <h2 className="text-3xl md:text-4xl font-bold text-green-500 mb-4">
                   YOU WIN!
                 </h2>
+                {isNewRecord && (
+                  <div className="flex items-center justify-center gap-2 text-yellow-400 animate-pulse mb-2">
+                    <span className="text-lg">🏆 สถิติใหม่ของคุณ! 🏆</span>
+                  </div>
+                )}
                 <p className="text-muted-foreground mb-2">
                   The mouse got the cheese!
                 </p>
-                <div className="flex justify-center gap-4 mb-4">
+                <div className="flex justify-center gap-4 mb-2">
                   <div className="flex items-center gap-1">
                     <StarIcon className="w-6 h-6" />
                     <span className="font-bold text-xl text-yellow-500">{score}</span>
@@ -163,6 +172,12 @@ export function GameOverlay({
                     <span className="font-bold text-xl text-blue-400">{formatTime(elapsedTime)}</span>
                   </div>
                 </div>
+                {personalBest > 0 && (
+                  <div className="text-center mb-4">
+                    <p className="text-muted-foreground text-sm">สถิติส่วนตัว</p>
+                    <p className="text-amber-400 font-bold text-lg">{personalBest}</p>
+                  </div>
+                )}
               </>
             )}
             

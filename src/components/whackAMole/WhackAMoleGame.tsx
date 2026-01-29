@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWhackAMoleMediaPipe } from '@/hooks/useWhackAMoleMediaPipe';
+import { useGameScores } from '@/hooks/useGameScores';
 import { GameBoard } from './GameBoard';
 import { cn } from '@/lib/utils';
 import { 
@@ -54,6 +55,7 @@ const DIFFICULTY_SETTINGS = {
 export function WhackAMoleGame() {
   const navigate = useNavigate();
   const { videoRef, canvasRef, leftHand, rightHand, isLoading, error } = useWhackAMoleMediaPipe();
+  const { submitScore, personalBest, loadPersonalBest } = useGameScores();
   
   const [screen, setScreen] = useState<GameScreen>('MENU');
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
@@ -65,6 +67,16 @@ export function WhackAMoleGame() {
   });
   const [customMoleImage, setCustomMoleImage] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
+  const [isNewRecord, setIsNewRecord] = useState(false);
+  
+  // Track game stats
+  const gameStatsRef = useRef({
+    molesHit: 0,
+    bombsHit: 0,
+    totalAttempts: 0,
+    bestCombo: 0,
+    currentCombo: 0,
+  });
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -99,22 +111,81 @@ export function WhackAMoleGame() {
     setScore(0);
     setTimeLeft(GAME_DURATION);
     setScreen('PLAYING');
-  }, []);
+    setIsNewRecord(false);
+    gameStatsRef.current = {
+      molesHit: 0,
+      bombsHit: 0,
+      totalAttempts: 0,
+      bestCombo: 0,
+      currentCombo: 0,
+    };
+    loadPersonalBest('whackAMole', diff);
+  }, [loadPersonalBest]);
 
   // Handle game end
-  const handleGameEnd = useCallback(() => {
+  const handleGameEnd = useCallback(async () => {
     setScreen('GAME_OVER');
     if (score > highScore) {
       setHighScore(score);
       localStorage.setItem('whackamole_highscore', score.toString());
     }
-  }, [score, highScore]);
+    
+    // Save score to database
+    if (score > 0) {
+      const stats = gameStatsRef.current;
+      const accuracy = stats.totalAttempts > 0 
+        ? Math.round((stats.molesHit / stats.totalAttempts) * 100) 
+        : 0;
+      
+      const result = await submitScore({
+        gameType: 'whackAMole',
+        level: difficulty,
+        score,
+        duration: GAME_DURATION,
+        gameData: {
+          molesHit: stats.molesHit,
+          bombsHit: stats.bombsHit,
+          accuracy,
+          bestCombo: stats.bestCombo,
+        },
+      });
+      
+      if (result.isNewPersonalBest) {
+        setIsNewRecord(true);
+      }
+    }
+  }, [score, highScore, difficulty, submitScore]);
+
+  // Handle mole hit - track stats
+  const handleMoleHit = useCallback(() => {
+    gameStatsRef.current.molesHit += 1;
+    gameStatsRef.current.totalAttempts += 1;
+    gameStatsRef.current.currentCombo += 1;
+    if (gameStatsRef.current.currentCombo > gameStatsRef.current.bestCombo) {
+      gameStatsRef.current.bestCombo = gameStatsRef.current.currentCombo;
+    }
+  }, []);
+
+  // Handle bomb hit - track stats
+  const handleBombHit = useCallback(() => {
+    gameStatsRef.current.bombsHit += 1;
+    gameStatsRef.current.totalAttempts += 1;
+    gameStatsRef.current.currentCombo = 0; // Reset combo on bomb hit
+  }, []);
 
   // Restart game
   const restartGame = useCallback(() => {
     setScore(0);
     setTimeLeft(GAME_DURATION);
     setScreen('PLAYING');
+    setIsNewRecord(false);
+    gameStatsRef.current = {
+      molesHit: 0,
+      bombsHit: 0,
+      totalAttempts: 0,
+      bestCombo: 0,
+      currentCombo: 0,
+    };
   }, []);
 
   // Go to menu
@@ -351,6 +422,8 @@ export function WhackAMoleGame() {
           onGameEnd={handleGameEnd}
           difficulty={difficulty}
           difficultySettings={DIFFICULTY_SETTINGS[difficulty]}
+          onMoleHit={handleMoleHit}
+          onBombHit={handleBombHit}
         />
       )}
       
@@ -368,15 +441,29 @@ export function WhackAMoleGame() {
                 <span className="text-5xl font-black text-white">{score}</span>
               </div>
               
+              {isNewRecord && (
+                <div className="flex items-center justify-center gap-2 text-yellow-400 animate-pulse mb-2">
+                  <span className="text-lg">🏆 สถิติใหม่ของคุณ! 🏆</span>
+                </div>
+              )}
+              
               {score > highScore - 1 && score === highScore && (
                 <div className="flex items-center justify-center gap-2 text-yellow-400 animate-pulse">
                   <span className="text-lg">🎉 คะแนนสูงสุดใหม่! 🎉</span>
                 </div>
               )}
               
-              <div className="mt-4 pt-4 border-t border-white/20">
-                <p className="text-white/60 text-sm">คะแนนสูงสุด</p>
-                <p className="text-white text-xl font-bold">{Math.max(score, highScore)}</p>
+              <div className="mt-4 pt-4 border-t border-white/20 space-y-2">
+                <div>
+                  <p className="text-white/60 text-sm">คะแนนสูงสุด (เครื่องนี้)</p>
+                  <p className="text-white text-xl font-bold">{Math.max(score, highScore)}</p>
+                </div>
+                {personalBest > 0 && (
+                  <div>
+                    <p className="text-white/60 text-sm">สถิติส่วนตัว (ออนไลน์)</p>
+                    <p className="text-amber-400 text-xl font-bold">{personalBest}</p>
+                  </div>
+                )}
               </div>
             </div>
             

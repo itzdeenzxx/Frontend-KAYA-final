@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFishingGame } from '@/hooks/useFishingGame';
+import { useGameScores } from '@/hooks/useGameScores';
 import { FishType, RARITY_COLORS, RARITY_BG, getRandomFish } from './fishTypes';
 import { cn } from '@/lib/utils';
 import { ArrowLeft, Play, Trophy, Volume2, VolumeX, Loader2 } from 'lucide-react';
@@ -324,6 +325,7 @@ const ProgressBar = ({
 export function FishingGamePro() {
   const navigate = useNavigate();
   const { videoRef, canvasRef, gesture, isLoading, error } = useFishingGame();
+  const { submitScore, personalBest, loadPersonalBest } = useGameScores();
   
   const [phase, setPhase] = useState<GamePhase>('MENU');
   const [score, setScore] = useState(0);
@@ -333,6 +335,8 @@ export function FishingGamePro() {
     return saved ? parseInt(saved, 10) : 0;
   });
   const [isMuted, setIsMuted] = useState(false);
+  const [isNewRecord, setIsNewRecord] = useState(false);
+  const gameStartTime = useRef<number>(0);
   
   const [pullProgress, setPullProgress] = useState(0);
   const [waitTime, setWaitTime] = useState(0);
@@ -365,7 +369,10 @@ export function FishingGamePro() {
     setPhase('WAITING_CAST');
     castDetected.current = false;
     setCombo(1);
-  }, []);
+    setIsNewRecord(false);
+    gameStartTime.current = Date.now();
+    loadPersonalBest('fishing', 'medium');
+  }, [loadPersonalBest]);
 
   const readyForCast = useCallback(() => {
     clearTimers();
@@ -535,10 +542,35 @@ export function FishingGamePro() {
     return () => clearTimers();
   }, [clearTimers]);
 
-  const goToMenu = useCallback(() => {
+  const goToMenu = useCallback(async () => {
     clearTimers();
+    
+    // Save score to database if player caught any fish
+    if (totalCaught > 0 && score > 0) {
+      const duration = Math.floor((Date.now() - gameStartTime.current) / 1000);
+      const perfectCatches = caughtFishes.filter(f => f.rarity === 'legendary' || f.rarity === 'epic').length;
+      
+      const result = await submitScore({
+        gameType: 'fishing',
+        level: 'medium',
+        score,
+        duration,
+        gameData: {
+          fishCaught: totalCaught,
+          perfectCatches,
+          biggestFish: caughtFishes.length > 0 
+            ? caughtFishes.reduce((a, b) => a.score > b.score ? a : b).name 
+            : undefined,
+        },
+      });
+      
+      if (result.isNewPersonalBest) {
+        setIsNewRecord(true);
+      }
+    }
+    
     setPhase('MENU');
-  }, [clearTimers]);
+  }, [clearTimers, totalCaught, score, caughtFishes, submitScore]);
 
   const getFishRarity = (): 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' => {
     if (!currentFish) return 'common';
