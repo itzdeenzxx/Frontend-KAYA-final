@@ -282,6 +282,9 @@ export const COACH_MESSAGES = {
     arm_raise: 'เริ่มท่ายกแขนขึ้น-ลง ได้เลยครับ!',
     torso_twist: 'เริ่มท่าบิดลำตัว ได้เลยครับ!',
     knee_raise: 'เริ่มท่ายกเข่าสลับ ได้เลยครับ!',
+    squat_arm_raise: 'เริ่มท่าสควอตพร้อมยกแขน ได้เลยครับ!',
+    squat_twist: 'เริ่มท่าสควอตพร้อมบิดลำตัว ได้เลยครับ!',
+    high_knee_raise: 'เริ่มท่ายกเข่าสูงในท่ายืน ได้เลยครับ!',
   },
   
   countdown: [
@@ -300,6 +303,68 @@ export const COACH_MESSAGES = {
     'ดีมากครับ!',
     'ฟอร์มสวยมาก!',
     'เก่งมากครับ!',
+  squat_arm_raise: {
+    down: {
+      left_hip: { x: 0.55, y: 0.65 },
+      left_knee: { x: 0.55, y: 0.8 },
+      left_ankle: { x: 0.55, y: 0.95 },
+      right_hip: { x: 0.45, y: 0.65 },
+      right_knee: { x: 0.45, y: 0.8 },
+      right_ankle: { x: 0.45, y: 0.95 },
+      left_shoulder: { x: 0.6, y: 0.4 },
+      right_shoulder: { x: 0.4, y: 0.4 },
+      left_wrist: { x: 0.7, y: 0.25 },
+      right_wrist: { x: 0.3, y: 0.25 },
+    },
+    up: {
+      left_hip: { x: 0.55, y: 0.55 },
+      left_knee: { x: 0.55, y: 0.45 },
+      left_ankle: { x: 0.52, y: 0.55 },
+      right_hip: { x: 0.45, y: 0.55 },
+      right_knee: { x: 0.45, y: 0.45 },
+      right_ankle: { x: 0.45, y: 0.6 },
+      left_shoulder: { x: 0.6, y: 0.25 },
+      right_shoulder: { x: 0.4, y: 0.25 },
+      left_wrist: { x: 0.75, y: 0.08 },
+      right_wrist: { x: 0.25, y: 0.08 },
+    }
+  },
+  squat_twist: {
+    down_center: {
+      left_shoulder: { x: 0.6, y: 0.45 },
+      right_shoulder: { x: 0.4, y: 0.45 },
+      left_hip: { x: 0.55, y: 0.65 },
+      right_hip: { x: 0.45, y: 0.65 },
+      left_knee: { x: 0.55, y: 0.8 },
+      right_knee: { x: 0.45, y: 0.8 },
+    },
+    down_left: {
+      left_shoulder: { x: 0.55, y: 0.45 },
+      right_shoulder: { x: 0.35, y: 0.48 },
+    },
+    down_right: {
+      left_shoulder: { x: 0.65, y: 0.48 },
+      right_shoulder: { x: 0.45, y: 0.45 },
+    }
+  },
+  high_knee_raise: {
+    up: {
+      left_hip: { x: 0.55, y: 0.55 },
+      left_knee: { x: 0.55, y: 0.4 },
+      left_ankle: { x: 0.52, y: 0.55 },
+      right_hip: { x: 0.45, y: 0.55 },
+      right_knee: { x: 0.45, y: 0.75 },
+      right_ankle: { x: 0.45, y: 0.95 },
+    },
+    down: {
+      left_hip: { x: 0.55, y: 0.55 },
+      left_knee: { x: 0.55, y: 0.75 },
+      left_ankle: { x: 0.55, y: 0.95 },
+      right_hip: { x: 0.45, y: 0.55 },
+      right_knee: { x: 0.45, y: 0.75 },
+      right_ankle: { x: 0.45, y: 0.95 },
+    }
+  },
     'ทำได้ดีมาก!',
     'สุดยอดครับ!',
     'ยอดเยี่ยม!',
