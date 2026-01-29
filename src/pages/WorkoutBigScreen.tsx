@@ -504,8 +504,8 @@ export default function WorkoutBigScreen() {
               muted
               className="w-full h-full object-cover scale-x-[-1]"
             />
-            {/* Skeleton Overlay */}
-            {(showSkeleton || showOpticalFlow) && (
+            {/* Skeleton Overlay (temporarily disabled for kaya-intermediate diagnostics) */}
+            {cameraEnabled && (showSkeleton || showOpticalFlow) && selectedStyleId !== 'kaya-intermediate' && (
               <SkeletonOverlay
                 landmarks={landmarks}
                 opticalFlowPoints={opticalFlowPoints}

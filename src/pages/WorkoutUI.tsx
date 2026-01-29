@@ -169,7 +169,7 @@ export default function WorkoutUI() {
   const [showVisualGuide, setShowVisualGuide] = useState(false);
   
   // MediaPipe pose detection - always enabled for KAYA workouts
-  const { landmarks, opticalFlowPoints, getFlowHistory, isLoading: mediaPipeLoading } = useMediaPipePose(
+  const { landmarks, opticalFlowPoints, getFlowHistory, isLoading: mediaPipeLoading, error: mediaPipeError } = useMediaPipePose(
     videoRef,
     { enabled: cameraReady && cameraEnabled && isKayaWorkout }
   );
@@ -1632,8 +1632,8 @@ export default function WorkoutUI() {
               muted
               className="w-full h-full object-cover scale-x-[-1]"
             />
-            {/* Skeleton Overlay for Mobile */}
-            {cameraEnabled && (showSkeleton || showOpticalFlow) && (
+              {/* Skeleton Overlay for Mobile (temporarily disabled for kaya-intermediate diagnostics) */}
+            {cameraEnabled && (showSkeleton || showOpticalFlow) && selectedStyleId !== 'kaya-intermediate' && (
               <SkeletonOverlay
                 landmarks={landmarks}
                 opticalFlowPoints={opticalFlowPoints}
@@ -1723,6 +1723,8 @@ export default function WorkoutUI() {
               <div>videoReadyState: {videoRef.current?.readyState ?? 'null'}</div>
               <div>landmarks: {landmarks.length}</div>
               <div>opticalFlow: {opticalFlowPoints.length}</div>
+              <div>mediaPipeLoading: {String(mediaPipeLoading)}</div>
+              <div>mediaPipeError: {String(mediaPipeError ?? '')}</div>
               <div className="mt-2">
                 <canvas ref={debugCanvasRef} width={160} height={120} className="border border-white/20" />
               </div>
