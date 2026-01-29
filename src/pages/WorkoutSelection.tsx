@@ -32,100 +32,8 @@ import { cn } from '@/lib/utils';
 import { isMobileDevice } from '@/lib/session';
 import { useTheme } from '@/contexts/ThemeContext';
 
-// Workout style types
-interface WorkoutStyle {
-  id: string;
-  name: string;
-  nameEn: string;
-  description: string;
-  icon: React.ReactNode;
-  color: string;
-  bgGradient: string;
-  duration: string;
-  calories: string;
-  level: 'ง่าย' | 'ปานกลาง' | 'หนัก';
-  features: string[];
-  image: string;
-  accentColor: string;
-}
-
-// Workout styles data with images
+// Workout styles data with images (restricted to KAYA options)
 const workoutStyles: WorkoutStyle[] = [
-  {
-    id: 'rhythm',
-    name: 'RHYTHM WORKOUT',
-    nameEn: 'Dance to the Beat',
-    description: 'ออกกำลังกายสนุกๆ พร้อมเพลงที่คุณชอบ',
-    icon: <Music className="w-8 h-8" />,
-    color: 'text-pink-400',
-    bgGradient: 'from-pink-600/90 via-purple-600/80 to-violet-800/90',
-    duration: '15-30 นาที',
-    calories: '150-300',
-    level: 'ปานกลาง',
-    features: ['จังหวะเพลง', 'Cardio'],
-    image: 'https://images.unsplash.com/photo-1518611012118-696072aa579a?w=800&q=80',
-    accentColor: 'pink'
-  },
-  {
-    id: 'hiit',
-    name: 'HIIT EXTREME',
-    nameEn: 'Maximum Burn',
-    description: 'เผาผลาญไขมันสูงสุดใน 20 นาที',
-    icon: <Flame className="w-8 h-8" />,
-    color: 'text-orange-400',
-    bgGradient: 'from-orange-600/90 via-red-600/80 to-rose-800/90',
-    duration: '15-25 นาที',
-    calories: '200-400',
-    level: 'หนัก',
-    features: ['Fat Burn', 'Interval'],
-    image: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=800&q=80',
-    accentColor: 'orange'
-  },
-  {
-    id: 'strength',
-    name: 'POWER TRAINING',
-    nameEn: 'Build Your Strength',
-    description: 'สร้างกล้ามเนื้อและความแข็งแรง',
-    icon: <Dumbbell className="w-8 h-8" />,
-    color: 'text-purple-400',
-    bgGradient: 'from-purple-600/90 via-indigo-600/80 to-blue-800/90',
-    duration: '20-40 นาที',
-    calories: '150-300',
-    level: 'ปานกลาง',
-    features: ['Muscle', 'Toning'],
-    image: 'https://images.unsplash.com/photo-1581009146145-b5ef050c149a?w=800&q=80',
-    accentColor: 'purple'
-  },
-  {
-    id: 'yoga',
-    name: 'YOGA FLOW',
-    nameEn: 'Mind & Body Balance',
-    description: 'ผสมผสานการหายใจ สมาธิ และการเคลื่อนไหว',
-    icon: <Waves className="w-8 h-8" />,
-    color: 'text-teal-400',
-    bgGradient: 'from-teal-600/90 via-emerald-600/80 to-green-800/90',
-    duration: '20-60 นาที',
-    calories: '100-200',
-    level: 'ง่าย',
-    features: ['สมาธิ', 'Balance'],
-    image: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=800&q=80',
-    accentColor: 'teal'
-  },
-  {
-    id: 'cardio',
-    name: 'CARDIO BLAST',
-    nameEn: 'Heart Pumping Action',
-    description: 'เพิ่มความแข็งแรงของหัวใจและปอด',
-    icon: <Heart className="w-8 h-8" />,
-    color: 'text-red-400',
-    bgGradient: 'from-red-600/90 via-rose-600/80 to-pink-800/90',
-    duration: '20-45 นาที',
-    calories: '200-450',
-    level: 'ปานกลาง',
-    features: ['Endurance', 'Stamina'],
-    image: 'https://images.unsplash.com/photo-1538805060514-97d9cc17730c?w=800&q=80',
-    accentColor: 'red'
-  },
   {
     id: 'kaya-stretch',
     name: 'KAYA AI COACH',
@@ -155,21 +63,8 @@ const workoutStyles: WorkoutStyle[] = [
     features: ['AI Coach', 'Visual Guide', 'TTS', 'Intermediate'],
     image: 'https://images.unsplash.com/photo-1554284126-aa88f22d8d71?w=800&q=80',
     accentColor: 'yellow'
-  },
-  {
-    id: 'dance',
-    name: 'DANCE FITNESS',
-    nameEn: 'Move & Groove',
-    description: 'เต้นสนุกๆ พร้อมออกกำลังกายไปด้วย',
-    icon: <Footprints className="w-8 h-8" />,
-    color: 'text-yellow-400',
-    bgGradient: 'from-yellow-600/90 via-amber-600/80 to-orange-800/90',
-    duration: '20-45 นาที',
-    calories: '200-400',
-    level: 'ปานกลาง',
-    features: ['Fun', 'Full Body'],
-    image: 'https://images.unsplash.com/photo-1524594152303-9fd13543fe6e?w=800&q=80',
-    accentColor: 'yellow'
+  }
+];
   },
   {
     id: 'slow',
