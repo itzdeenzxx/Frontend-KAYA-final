@@ -142,6 +142,21 @@ const workoutStyles: WorkoutStyle[] = [
     accentColor: 'violet'
   },
   {
+    id: 'kaya-intermediate',
+    name: 'KAYA ระดับกลาง',
+    nameEn: 'KAYA Intermediate',
+    description: 'ชุดท่าระดับกลาง 3 ท่า พร้อม AI Coach วิเคราะห์ฟอร์มและ TTS',
+    icon: <Brain className="w-8 h-8" />,
+    color: 'text-yellow-400',
+    bgGradient: 'from-yellow-500/80 via-orange-400/70 to-red-500/50',
+    duration: '8-12 นาที',
+    calories: '40-80',
+    level: 'ปานกลาง',
+    features: ['AI Coach', 'Visual Guide', 'TTS', 'Intermediate'],
+    image: 'https://images.unsplash.com/photo-1554284126-aa88f22d8d71?w=800&q=80',
+    accentColor: 'yellow'
+  },
+  {
     id: 'dance',
     name: 'DANCE FITNESS',
     nameEn: 'Move & Groove',
@@ -201,7 +216,8 @@ export default function WorkoutSelection() {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
   const [isDesktop, setIsDesktop] = useState(false);
-  const [selectedStyle, setSelectedStyle] = useState<string | null>(null);
+  // Preselect the new intermediate KAYA style so it appears highlighted on load
+  const [selectedStyle, setSelectedStyle] = useState<string | null>('kaya-intermediate');
 
   useEffect(() => {
     const checkScreenSize = () => {
