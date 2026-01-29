@@ -65,6 +65,7 @@ const styleIcons: Record<string, React.ReactNode> = {
   slow: <Wind className="w-6 h-6" />,
   stretch: <PersonStanding className="w-6 h-6" />,
   'kaya-stretch': <Target className="w-6 h-6" />,
+  'kaya-intermediate': <Target className="w-6 h-6" />,
   hiit: <Flame className="w-6 h-6" />,
   strength: <Dumbbell className="w-6 h-6" />,
   cardio: <Heart className="w-6 h-6" />,
@@ -99,8 +100,8 @@ export default function WorkoutBigScreen() {
   const selectedStyle = getWorkoutStyle(selectedStyleId);
   const exercises = getExercisesForStyle(selectedStyleId);
 
-  // Check if this is a KAYA workout
-  const isKayaWorkout = selectedStyleId === 'kaya-stretch';
+  // Check if this is a KAYA workout (treat intermediate the same as kaya-stretch)
+  const isKayaWorkout = selectedStyleId === 'kaya-stretch' || selectedStyleId === 'kaya-intermediate';
 
   // Workout state
   const [currentExercise, setCurrentExercise] = useState(0);
