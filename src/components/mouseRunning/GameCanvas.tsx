@@ -4,6 +4,8 @@ import { useMultiplayerGameMediaPipe } from '@/hooks/useMultiplayerGameMediaPipe
 import { useGameState } from '@/hooks/useGameState';
 import { useSoundManager } from '@/hooks/useSoundManager';
 import { useGameScores } from '@/hooks/useGameScores';
+import { useAuth } from '@/contexts/AuthContext';
+import { addGameToDailyStats } from '@/lib/firestore';
 import { TrafficLight } from './TrafficLight';
 import { MouseCharacter } from './MouseCharacter';
 import { CheeseGoal } from './CheeseGoal';
@@ -30,9 +32,11 @@ export function GameCanvas() {
   
   const gameStartTimeRef = useRef<number>(0);
   const scoreSavedRef = useRef(false); // Prevent double saving
+  const statsSavedRef = useRef(false); // Prevent double saving stats
   
   const sound = useSoundManager();
   const { submitScore, personalBest, loadPersonalBest } = useGameScores();
+  const { lineProfile } = useAuth();
   
   // Single player hooks
   const singlePlayer = useGameMediaPipe();
@@ -138,6 +142,28 @@ export function GameCanvas() {
       );
     }
   }, [player1State.gameState, player1State.score, player1State.elapsedTime, player1State.hitCount, singlePlayer.stepCount, saveGameScore]);
+
+  // Save stats to daily stats when game ends (win or any completion)
+  useEffect(() => {
+    const saveStats = async () => {
+      if (player1State.gameState === 'WIN' && !statsSavedRef.current && lineProfile?.userId) {
+        statsSavedRef.current = true;
+        const duration = Math.floor((Date.now() - gameStartTimeRef.current) / 1000);
+        try {
+          await addGameToDailyStats(
+            lineProfile.userId,
+            'mouseRunning',
+            duration,
+            player1State.score
+          );
+          console.log('Mouse Running stats saved!', { duration, score: player1State.score });
+        } catch (error) {
+          console.error('Error saving game stats:', error);
+        }
+      }
+    };
+    saveStats();
+  }, [player1State.gameState, player1State.score, lineProfile?.userId]);
 
   const prevStepCount1 = useRef(0);
   const prevStepCount2 = useRef(0);

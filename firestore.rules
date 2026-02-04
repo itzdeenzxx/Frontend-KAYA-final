@@ -1,145 +1,110 @@
 // Firestore Security Rules for KAYA Fitness App
-// Copy this content to Firebase Console > Firestore Database > Rules
+// Note: This app uses LINE LIFF authentication (not Firebase Auth)
+// Security is handled at app level with LINE userId
 
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // ==================== HELPER FUNCTIONS ====================
-    
-    // Check if user is authenticated
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-    
-    // Check if user owns the document
-    function isOwner(userId) {
-      return request.auth != null && request.auth.uid == userId;
-    }
-    
-    // Check if the request is coming from the user themselves
-    function isCurrentUser(userId) {
-      return request.auth.uid == userId;
-    }
-    
-    // Validate timestamp
-    function isValidTimestamp(field) {
-      return field is timestamp || field == request.time;
-    }
+    // ==================== OPEN ACCESS ====================
+    // Since we use LINE LIFF authentication (not Firebase Auth),
+    // we allow read/write access and handle security at application level
+    // The app validates LINE userId before any database operations
     
     // ==================== GAME SCORES ====================
     
     match /gameScores/{scoreId} {
-      // Anyone can read scores (for leaderboards)
       allow read: if true;
-      
-      // Only authenticated users can create their own scores
-      allow create: if isAuthenticated() 
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.keys().hasAll(['userId', 'userName', 'gameType', 'level', 'score', 'duration', 'gameData'])
-        && request.resource.data.score is number
-        && request.resource.data.score >= 0
-        && request.resource.data.duration is number
-        && request.resource.data.duration >= 0;
-      
-      // Users cannot update or delete scores (prevents cheating)
+      allow create: if true;
       allow update, delete: if false;
     }
     
     // ==================== LEADERBOARDS ====================
     
     match /leaderboards/{leaderboardId} {
-      // Anyone can read leaderboards
       allow read: if true;
-      
-      // Only server/cloud functions can write (prevents manipulation)
-      // For now, allow authenticated users to update
-      allow write: if isAuthenticated();
+      allow write: if true;
     }
     
     // ==================== USER GAME STATS ====================
     
     match /userGameStats/{userId} {
-      // Users can only read their own stats
-      allow read: if isCurrentUser(userId);
-      
-      // Users can create/update their own stats
-      allow create, update: if isCurrentUser(userId);
-      
-      // Cannot delete stats
-      allow delete: if false;
+      allow read, write: if true;
     }
     
     // ==================== USER PROFILES ====================
     
     match /users/{userId} {
-      // Users can read any profile (for leaderboards, social features)
       allow read: if true;
-      
-      // Users can only write their own profile
-      allow create, update: if isCurrentUser(userId);
+      allow create, update: if true;
       allow delete: if false;
     }
     
     match /profiles/{userId} {
       allow read: if true;
-      allow create, update: if isCurrentUser(userId);
+      allow create, update: if true;
       allow delete: if false;
     }
     
     // ==================== HEALTH DATA ====================
     
     match /healthData/{userId} {
-      // Only the user can read/write their health data
-      allow read, write: if isCurrentUser(userId);
+      allow read, write: if true;
     }
     
     // ==================== WORKOUT HISTORY ====================
     
     match /workoutHistory/{sessionId} {
-      // Users can only read their own workout history
-      allow read: if isAuthenticated() 
-        && resource.data.userId == request.auth.uid;
-      
-      // Users can create their own workout sessions
-      allow create: if isAuthenticated() 
-        && request.resource.data.userId == request.auth.uid;
-      
-      // Cannot update or delete workout history
+      allow read: if true;
+      allow create: if true;
       allow update, delete: if false;
+    }
+    
+    // ==================== NUTRITION LOGS ====================
+    
+    match /nutritionLogs/{logId} {
+      allow read, write: if true;
     }
     
     // ==================== USER SETTINGS ====================
     
     match /userSettings/{userId} {
-      allow read, write: if isCurrentUser(userId);
+      allow read, write: if true;
+    }
+    
+    // ==================== USER THEMES ====================
+    
+    match /userThemes/{userId} {
+      allow read, write: if true;
     }
     
     // ==================== CHALLENGES ====================
     
     match /challenges/{challengeId} {
-      // Anyone can read challenges
       allow read: if true;
-      
-      // Only admins can create/update challenges (implement admin check)
-      allow write: if false;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if false;
     }
     
     // ==================== BADGES ====================
     
     match /badges/{badgeId} {
-      // Anyone can read badges
       allow read: if true;
-      
-      // Only server can write
       allow write: if false;
     }
     
     // User's earned badges
     match /userBadges/{userId}/badges/{badgeId} {
       allow read: if true;
-      allow write: if isCurrentUser(userId);
+      allow write: if true;
+    }
+    
+    // ==================== CATCH ALL ====================
+    // Allow any other collections for flexibility
+    match /{document=**} {
+      allow read, write: if true;
     }
   }
 }

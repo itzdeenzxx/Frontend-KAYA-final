@@ -42,7 +42,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
-import { useHealthData, useUserProfile, useWorkoutHistory } from "@/hooks/useFirestore";
+import { useHealthData, useUserProfile, useWorkoutHistory, useDailyStats } from "@/hooks/useFirestore";
 import { useTheme } from "@/contexts/ThemeContext";
 import liff from "@line/liff";
 
@@ -54,6 +54,7 @@ const goals = [
 ];
 
 // Epic Tier Configurations
+// Bronze: 0-999, Silver: 1000-1999, Gold: 2000-2999, Platinum: 3000-3999, Diamond: 4000+
 const tierConfig = {
   bronze: {
     name: 'BRONZE',
@@ -67,7 +68,9 @@ const tierConfig = {
     glow: 'shadow-amber-500/30',
     particles: 'bg-amber-400',
     nextTier: 'silver',
-    pointsToNext: 1000
+    pointsToNext: 1000,
+    minPoints: 0,
+    maxPoints: 999
   },
   silver: {
     name: 'SILVER',
@@ -81,7 +84,9 @@ const tierConfig = {
     glow: 'shadow-gray-400/30',
     particles: 'bg-gray-300',
     nextTier: 'gold',
-    pointsToNext: 5000
+    pointsToNext: 2000,
+    minPoints: 1000,
+    maxPoints: 1999
   },
   gold: {
     name: 'GOLD',
@@ -95,7 +100,9 @@ const tierConfig = {
     glow: 'shadow-yellow-500/40',
     particles: 'bg-yellow-400',
     nextTier: 'platinum',
-    pointsToNext: 15000
+    pointsToNext: 3000,
+    minPoints: 2000,
+    maxPoints: 2999
   },
   platinum: {
     name: 'PLATINUM',
@@ -109,7 +116,9 @@ const tierConfig = {
     glow: 'shadow-cyan-500/50',
     particles: 'bg-cyan-300',
     nextTier: 'diamond',
-    pointsToNext: 50000
+    pointsToNext: 4000,
+    minPoints: 3000,
+    maxPoints: 3999
   },
   diamond: {
     name: 'DIAMOND',
@@ -123,7 +132,9 @@ const tierConfig = {
     glow: 'shadow-purple-500/50',
     particles: 'bg-purple-400',
     nextTier: null,
-    pointsToNext: null
+    pointsToNext: null,
+    minPoints: 4000,
+    maxPoints: null
   }
 };
 
@@ -133,6 +144,7 @@ export default function Profile() {
   const { healthData, saveHealth, isLoading: healthLoading } = useHealthData();
   const { profile, updateProfile } = useUserProfile();
   const { stats } = useWorkoutHistory();
+  const { todayStats, cumulativeStats } = useDailyStats();
   
   const [isEditing, setIsEditing] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
@@ -146,6 +158,14 @@ export default function Profile() {
     goal: "Stay Fit",
     activityLevel: "moderate" as 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active',
   });
+  
+  // Format workout time as hh:mm:ss
+  const formatWorkoutTime = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
   useEffect(() => {
     const checkScreenSize = () => {
@@ -336,7 +356,7 @@ export default function Profile() {
                   contents: [
                     {
                       type: "text",
-                      text: String(stats?.totalWorkouts || 0),
+                      text: String(cumulativeStats?.totalWorkouts || 0),
                       size: "lg",
                       weight: "bold",
                       color: "#dd6e53",
@@ -362,7 +382,7 @@ export default function Profile() {
                   contents: [
                     {
                       type: "text",
-                      text: String(stats?.totalCalories || 0),
+                      text: String(cumulativeStats?.totalCalories || 0),
                       size: "lg",
                       weight: "bold",
                       color: "#dd6e53",
@@ -446,7 +466,7 @@ export default function Profile() {
     ? (userData.weight / Math.pow(userData.height / 100, 2)).toFixed(1) 
     : "0";
 
-  const userTier = (userProfile?.tier || "silver") as keyof typeof tierConfig;
+  const userTier = (userProfile?.tier || "bronze") as keyof typeof tierConfig;
   const tier = tierConfig[userTier];
   const TierIcon = tier.icon;
   const SecondaryIcon = tier.secondaryIcon;
@@ -457,10 +477,16 @@ export default function Profile() {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
   
-  // Calculate progress to next tier
-  const progressToNext = tier.pointsToNext 
-    ? Math.min((userPoints / tier.pointsToNext) * 100, 100) 
-    : 100;
+  // Calculate progress to next tier based on new thresholds
+  // Bronze: 0-999, Silver: 1000-1999, Gold: 2000-2999, Platinum: 3000-3999, Diamond: 4000+
+  const calculateProgressToNext = () => {
+    if (!tier.pointsToNext) return 100; // Diamond has no next tier
+    const pointsInCurrentTier = userPoints - tier.minPoints;
+    const pointsNeededForNextTier = tier.pointsToNext - tier.minPoints;
+    return Math.min((pointsInCurrentTier / pointsNeededForNextTier) * 100, 100);
+  };
+  const progressToNext = calculateProgressToNext();
+  const pointsToNextTier = tier.pointsToNext ? tier.pointsToNext - userPoints : 0;
 
   if (authLoading) {
     return (
@@ -835,7 +861,7 @@ export default function Profile() {
                       />
                     </div>
                     <p className={cn("text-center text-sm mt-2", isDark ? "text-gray-500" : "text-gray-400")}>
-                      อีก {(tier.pointsToNext! - userPoints).toLocaleString()} แต้มจะถึงระดับถัดไป
+                      อีก {pointsToNextTier.toLocaleString()} แต้มจะถึงระดับถัดไป
                     </p>
                   </div>
                 )}
@@ -844,16 +870,16 @@ export default function Profile() {
           )}
           
             {/* Stats Section */}
-            {activeSection === 'stats' && stats && (
+            {activeSection === 'stats' && (
               <div className="space-y-6">
-                {/* Main Stats */}
+                {/* Main Stats - Using cumulativeStats from dailyStats */}
                 <div className="grid grid-cols-4 gap-4">
                   <div className={cn(
                     "p-6 rounded-2xl border bg-gradient-to-br from-primary/20 to-orange-500/10",
                     isDark ? "border-primary/30" : "border-primary/20"
                   )}>
                     <Dumbbell className="w-8 h-8 text-primary mb-4" />
-                    <p className="text-3xl font-bold text-primary">{stats.totalWorkouts}</p>
+                    <p className="text-3xl font-bold text-primary">{cumulativeStats?.totalWorkouts || 0}</p>
                     <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>Workouts</p>
                   </div>
                   <div className={cn(
@@ -861,7 +887,7 @@ export default function Profile() {
                     isDark ? "border-green-500/30" : "border-green-500/20"
                   )}>
                     <Flame className="w-8 h-8 text-green-400 mb-4" />
-                    <p className="text-3xl font-bold text-green-400">{stats.totalCalories.toLocaleString()}</p>
+                    <p className="text-3xl font-bold text-green-400">{(cumulativeStats?.totalCalories || 0).toLocaleString()}</p>
                     <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>Calories Burned</p>
                   </div>
                   <div className={cn(
@@ -869,16 +895,16 @@ export default function Profile() {
                     isDark ? "border-blue-500/30" : "border-blue-500/20"
                   )}>
                     <Timer className="w-8 h-8 text-blue-400 mb-4" />
-                    <p className="text-3xl font-bold text-blue-400">{Math.round(stats.totalDuration / 60)}</p>
-                    <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>Minutes</p>
+                    <p className="text-2xl font-bold text-blue-400 font-mono">{formatWorkoutTime(cumulativeStats?.totalWorkoutTime || 0)}</p>
+                    <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>Total Time</p>
                   </div>
                   <div className={cn(
                     "p-6 rounded-2xl border bg-gradient-to-br from-purple-500/20 to-pink-500/10",
                     isDark ? "border-purple-500/30" : "border-purple-500/20"
                   )}>
                     <Zap className="w-8 h-8 text-purple-400 mb-4" />
-                    <p className="text-3xl font-bold text-purple-400">{stats.averageAccuracy}%</p>
-                    <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>Avg Accuracy</p>
+                    <p className="text-3xl font-bold text-purple-400">{userPoints.toLocaleString()}</p>
+                    <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>Total Points</p>
                   </div>
                 </div>
               
@@ -1146,12 +1172,12 @@ export default function Profile() {
                     </div>
                     <div className="w-px h-10 bg-white/20" />
                     <div className="text-center">
-                      <p className="text-2xl font-bold text-white">{stats?.totalWorkouts || 0}</p>
+                      <p className="text-2xl font-bold text-white">{cumulativeStats?.totalWorkouts || 0}</p>
                       <p className="text-white/70 text-sm">WORKOUTS</p>
                     </div>
                     <div className="w-px h-10 bg-white/20" />
                     <div className="text-center">
-                      <p className="text-2xl font-bold text-white">{stats?.totalCalories?.toLocaleString() || 0}</p>
+                      <p className="text-2xl font-bold text-white">{(cumulativeStats?.totalCalories || 0).toLocaleString()}</p>
                       <p className="text-white/70 text-sm">CALORIES</p>
                     </div>
                   </div>

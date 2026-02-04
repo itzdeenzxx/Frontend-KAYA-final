@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFishingGame } from '@/hooks/useFishingGame';
 import { useGameScores } from '@/hooks/useGameScores';
+import { useAuth } from '@/contexts/AuthContext';
+import { addGameToDailyStats } from '@/lib/firestore';
 import { FishType, RARITY_COLORS, RARITY_BG, getRandomFish } from './fishTypes';
 import { cn } from '@/lib/utils';
 import { ArrowLeft, Play, Trophy, Volume2, VolumeX, Loader2 } from 'lucide-react';
@@ -326,6 +328,7 @@ export function FishingGamePro() {
   const navigate = useNavigate();
   const { videoRef, canvasRef, gesture, isLoading, error } = useFishingGame();
   const { submitScore, personalBest, loadPersonalBest } = useGameScores();
+  const { lineProfile } = useAuth();
   
   const [phase, setPhase] = useState<GamePhase>('MENU');
   const [score, setScore] = useState(0);
@@ -337,6 +340,7 @@ export function FishingGamePro() {
   const [isMuted, setIsMuted] = useState(false);
   const [isNewRecord, setIsNewRecord] = useState(false);
   const gameStartTime = useRef<number>(0);
+  const statsSavedRef = useRef(false); // Prevent double saving stats
   
   const [pullProgress, setPullProgress] = useState(0);
   const [waitTime, setWaitTime] = useState(0);
@@ -368,6 +372,7 @@ export function FishingGamePro() {
     setCaughtFishes([]);
     setPhase('WAITING_CAST');
     castDetected.current = false;
+    statsSavedRef.current = false; // Reset for new game
     setCombo(1);
     setIsNewRecord(false);
     gameStartTime.current = Date.now();
@@ -567,10 +572,26 @@ export function FishingGamePro() {
       if (result.isNewPersonalBest) {
         setIsNewRecord(true);
       }
+      
+      // Save to daily stats (calories, workout time, points, streak)
+      if (lineProfile?.userId && !statsSavedRef.current) {
+        statsSavedRef.current = true;
+        try {
+          await addGameToDailyStats(
+            lineProfile.userId,
+            'fishing',
+            duration,
+            score
+          );
+          console.log('Fishing stats saved!', { duration, score });
+        } catch (error) {
+          console.error('Error saving game stats:', error);
+        }
+      }
     }
     
     setPhase('MENU');
-  }, [clearTimers, totalCaught, score, caughtFishes, submitScore]);
+  }, [clearTimers, totalCaught, score, caughtFishes, submitScore, lineProfile?.userId]);
 
   const getFishRarity = (): 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' => {
     if (!currentFish) return 'common';

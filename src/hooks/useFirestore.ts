@@ -1,5 +1,5 @@
 // Custom hooks for Firestore data operations
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   saveHealthData,
@@ -15,13 +15,23 @@ import {
   saveUserSettings,
   updateUserProfile,
   updateUserPoints,
+  getActiveChallenges,
+  updateChallengeProgress,
+  initializeUserChallenges,
+  incrementChallengeProgress,
+  getDailyStats,
+  initializeDailyStats,
+  updateDailyStats,
+  incrementWaterIntake,
+  getCumulativeStats,
   type FirestoreHealthData,
   type FirestoreWorkoutHistory,
   type FirestoreNutritionLog,
   type FirestoreUserBadge,
   type FirestoreUserSettings,
+  type FirestoreDailyStats,
 } from '@/lib/firestore';
-import type { LeaderboardEntry } from '@/lib/types';
+import type { LeaderboardEntry, Challenge } from '@/lib/types';
 
 // Hook for health data operations
 export const useHealthData = () => {
@@ -389,6 +399,184 @@ export const useUserProfile = () => {
     updateProfile,
     addPoints,
     refreshUser,
+    isLoading,
+    error,
+  };
+};
+
+// Hook for challenges
+export const useChallenges = () => {
+  const { lineProfile } = useAuth();
+  const [challenges, setChallenges] = useState<Challenge[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const isInitialized = useRef(false);
+
+  const fetchChallenges = useCallback(async () => {
+    if (!lineProfile?.userId) return;
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const data = await getActiveChallenges(lineProfile.userId);
+      setChallenges(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch challenges');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [lineProfile?.userId]);
+
+  const initializeChallenges = useCallback(async () => {
+    if (!lineProfile?.userId || isInitialized.current) return;
+    
+    isInitialized.current = true;
+    setIsLoading(true);
+    
+    try {
+      // Initialize default challenges if needed
+      await initializeUserChallenges(lineProfile.userId);
+      // Then fetch all challenges
+      await fetchChallenges();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to initialize challenges');
+      isInitialized.current = false;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [lineProfile?.userId, fetchChallenges]);
+
+  const updateProgress = useCallback(async (challengeId: string, progress: number) => {
+    try {
+      await updateChallengeProgress(challengeId, progress);
+      await fetchChallenges();
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update challenge');
+      return false;
+    }
+  }, [fetchChallenges]);
+
+  const incrementProgress = useCallback(async (
+    challengeType: 'workout' | 'calories' | 'water',
+    amount: number = 1
+  ) => {
+    if (!lineProfile?.userId) return false;
+    
+    try {
+      await incrementChallengeProgress(lineProfile.userId, challengeType, amount);
+      await fetchChallenges();
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to increment challenge');
+      return false;
+    }
+  }, [lineProfile?.userId, fetchChallenges]);
+
+  useEffect(() => {
+    if (lineProfile?.userId) {
+      initializeChallenges();
+    }
+  }, [lineProfile?.userId, initializeChallenges]);
+
+  return {
+    challenges,
+    updateProgress,
+    incrementProgress,
+    refreshChallenges: fetchChallenges,
+    isLoading,
+    error,
+  };
+};
+
+// Hook for daily stats (calories, workout time, total workouts, water intake)
+export const useDailyStats = () => {
+  const { lineProfile } = useAuth();
+  const [todayStats, setTodayStats] = useState<FirestoreDailyStats | null>(null);
+  const [cumulativeStats, setCumulativeStats] = useState<{
+    totalCalories: number;
+    totalWorkoutTime: number;
+    totalWorkouts: number;
+  } | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchTodayStats = useCallback(async () => {
+    if (!lineProfile?.userId) return;
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const stats = await initializeDailyStats(lineProfile.userId);
+      setTodayStats(stats);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch daily stats');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [lineProfile?.userId]);
+
+  const fetchCumulativeStats = useCallback(async () => {
+    if (!lineProfile?.userId) return;
+    
+    try {
+      const stats = await getCumulativeStats(lineProfile.userId);
+      setCumulativeStats(stats);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch cumulative stats');
+    }
+  }, [lineProfile?.userId]);
+
+  const addWater = useCallback(async () => {
+    if (!lineProfile?.userId) return null;
+    
+    try {
+      const newWater = await incrementWaterIntake(lineProfile.userId);
+      
+      // Update local state
+      setTodayStats(prev => prev ? { ...prev, waterIntake: newWater } : null);
+      
+      // Also increment water challenge
+      await incrementChallengeProgress(lineProfile.userId, 'water', 1);
+      
+      return newWater;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add water');
+      return null;
+    }
+  }, [lineProfile?.userId]);
+
+  const updateStats = useCallback(async (
+    updates: Partial<Pick<FirestoreDailyStats, 'caloriesBurned' | 'workoutTime' | 'totalWorkouts' | 'waterIntake'>>
+  ) => {
+    if (!lineProfile?.userId) return false;
+    
+    try {
+      await updateDailyStats(lineProfile.userId, updates);
+      await fetchTodayStats();
+      await fetchCumulativeStats();
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update stats');
+      return false;
+    }
+  }, [lineProfile?.userId, fetchTodayStats, fetchCumulativeStats]);
+
+  useEffect(() => {
+    if (lineProfile?.userId) {
+      fetchTodayStats();
+      fetchCumulativeStats();
+    }
+  }, [lineProfile?.userId, fetchTodayStats, fetchCumulativeStats]);
+
+  return {
+    todayStats,
+    cumulativeStats,
+    addWater,
+    updateStats,
+    refreshStats: fetchTodayStats,
     isLoading,
     error,
   };
