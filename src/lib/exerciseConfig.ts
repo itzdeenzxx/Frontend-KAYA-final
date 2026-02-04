@@ -8,11 +8,19 @@ export type ExerciseType =
   | 'knee_raise'
   | 'squat_arm_raise'
   | 'squat_twist'
-  | 'high_knee_raise';
+  | 'high_knee_raise'
+  // Advanced exercises
+  | 'jump_squat_arm_raise'
+  | 'standing_twist'
+  | 'running_in_place'
+  // Expert exercises
+  | 'modified_burpee'
+  | 'jump_twist'
+  | 'sprint_knee_raises';
 export type DifficultyLevel = 'beginner' | 'intermediate' | 'advanced' | 'expert';
 export type FormQuality = 'good' | 'warn' | 'bad';
 export type TempoQuality = 'perfect' | 'good' | 'too_fast' | 'too_slow' | 'inconsistent';
-export type ExerciseStage = 'up' | 'down' | 'center' | 'left' | 'right' | 'idle';
+export type ExerciseStage = 'up' | 'down' | 'center' | 'left' | 'right' | 'idle' | 'transition' | 'left_up' | 'right_up';
 
 // Coach Event Types
 export type CoachEventType = 
@@ -59,9 +67,9 @@ export const EXERCISES: Record<ExerciseType, ExerciseDefinition> = {
     icon: 'arm',
     stages: ['up', 'down'],
     thresholds: {
-      up_angle: 120,    // angle >= 120 means arms up (lowered from 150)
-      down_angle: 60,   // angle <= 60 means arms down (raised from 50)
-      symmetry_diff: 40, // max angle diff between arms (more lenient)
+      up_angle: 130,    // angle >= 130 means arms up (stricter for better form)
+      down_angle: 50,   // angle <= 50 means arms down
+      symmetry_diff: 35, // max angle diff between arms
     }
   },
   torso_twist: {
@@ -73,7 +81,7 @@ export const EXERCISES: Record<ExerciseType, ExerciseDefinition> = {
     icon: 'torso',
     stages: ['center', 'left', 'right'],
     thresholds: {
-      twist_threshold: 0.15, // normalized offset for twist detection
+      twist_threshold: 0.12, // slightly tighter for more accurate detection
     }
   },
   knee_raise: {
@@ -85,8 +93,8 @@ export const EXERCISES: Record<ExerciseType, ExerciseDefinition> = {
     icon: 'leg',
     stages: ['up', 'down'],
     thresholds: {
-      up_angle: 90,    // angle < 90 means knee is raised
-      down_angle: 160, // angle > 160 means knee is down
+      up_angle: 100,    // angle < 100 means knee is raised (slightly relaxed)
+      down_angle: 150, // angle > 150 means knee is down
     }
   },
 
@@ -134,6 +142,105 @@ export const EXERCISES: Record<ExerciseType, ExerciseDefinition> = {
       knee_height_ratio: 0.05, // knee.y should be < hip.y - ratio
       up_angle: 80,    // hip-knee angle when raised
       down_angle: 160, // hip-knee angle when down
+    }
+  },
+
+  // === ADVANCED EXERCISES ===
+
+  jump_squat_arm_raise: {
+    id: 'jump_squat_arm_raise',
+    name: 'Jump Squat with Arm Raise',
+    nameTh: 'กระโดดสควอตพร้อมยกแขน',
+    description: 'Jump squat with arm raise - detects vertical movement for explosive power training',
+    descriptionTh: 'กระโดดพร้อมทำสควอตและยกแขน ระบบตรวจจับการกระโดด (Vertical Movement) ฝึกพลังระเบิด',
+    icon: 'jump-squat',
+    stages: ['squat', 'jump', 'land'],
+    thresholds: {
+      knee_min_angle: 90,      // squat position
+      knee_max_angle: 160,     // standing position
+      arm_up_angle: 120,       // arms up during jump
+      arm_down_angle: 60,      // arms down in squat
+      jump_height_ratio: 0.05, // vertical movement threshold for jump detection
+      land_threshold: 0.02,    // landing detection threshold
+    }
+  },
+
+  standing_twist: {
+    id: 'standing_twist',
+    name: 'Standing Twist',
+    nameTh: 'บิดลำตัวในท่ายืน',
+    description: 'Fast continuous standing torso twists - measures speed and smoothness',
+    descriptionTh: 'บิดลำตัวอย่างรวดเร็วและต่อเนื่อง ระบบวัดความเร็วและความราบรื่น',
+    icon: 'standing-twist',
+    stages: ['center', 'left', 'right'],
+    thresholds: {
+      twist_threshold: 0.12,     // offset for twist detection
+      min_twist_speed: 0.08,     // minimum angular velocity
+      smoothness_threshold: 0.7, // smoothness score 0-1
+    }
+  },
+
+  running_in_place: {
+    id: 'running_in_place',
+    name: 'Running in Place',
+    nameTh: 'วิ่งยกเข่าอยู่กับที่',
+    description: 'Running in place with high knees - counts steps using optical flow',
+    descriptionTh: 'วิ่งยกเข่าสูงอยู่กับที่ ระบบนับจำนวนก้าวด้วย Optical Flow เหมาะสำหรับคาร์ดิโอ',
+    icon: 'running',
+    stages: ['left_up', 'right_up', 'both_down'],
+    thresholds: {
+      knee_height_ratio: 0.03,  // knee must rise above this relative to hip
+      step_cooldown: 200,       // ms between step counts
+      min_step_height: 0.05,    // minimum vertical knee movement
+    }
+  },
+
+  // === EXPERT EXERCISES ===
+
+  modified_burpee: {
+    id: 'modified_burpee',
+    name: 'Modified Burpee',
+    nameTh: 'เบอร์พีแบบไม่วิดพื้น',
+    description: 'Modified burpee (no push-up) - detects 3 phases: down, up, jump',
+    descriptionTh: 'ลงนอน-ลุกขึ้น-กระโดด ระบบตรวจจับ 3 Phase ท่าทางที่ซับซ้อนที่สุด',
+    icon: 'burpee',
+    stages: ['standing', 'down', 'jump'],
+    thresholds: {
+      down_ratio: 0.6,          // hip.y must be below this ratio of shoulder
+      standing_ratio: 0.4,      // hip.y above this when standing
+      jump_height_ratio: 0.05,  // vertical movement for jump
+      phase_hold_time: 300,     // ms to hold each phase
+    }
+  },
+
+  jump_twist: {
+    id: 'jump_twist',
+    name: 'Jump Twist',
+    nameTh: 'กระโดดบิดลำตัวกลางอากาศ',
+    description: 'Jump with mid-air torso twist - analyzes airborne movement for agility training',
+    descriptionTh: 'กระโดดพร้อมบิดลำตัว ระบบวิเคราะห์การเคลื่อนไหวกลางอากาศ ฝึกความคล่องแคล่ว',
+    icon: 'jump-twist',
+    stages: ['ground', 'air_twist_left', 'air_twist_right', 'land'],
+    thresholds: {
+      jump_height_ratio: 0.04,  // vertical movement for jump
+      twist_threshold: 0.10,    // twist detection in air
+      air_time_min: 200,        // minimum airborne time in ms
+    }
+  },
+
+  sprint_knee_raises: {
+    id: 'sprint_knee_raises',
+    name: 'Sprint Knee Raises',
+    nameTh: 'วิ่งสปรินต์ยกเข่า',
+    description: 'Fast sprint-style knee raises - measures speed and step count',
+    descriptionTh: 'วิ่งยกเข่าอย่างรวดเร็ว ระบบวัดความเร็วและจำนวนก้าว ท้าทายที่สุด',
+    icon: 'sprint',
+    stages: ['left_up', 'right_up', 'transition'],
+    thresholds: {
+      knee_height_ratio: 0.08,  // higher knee requirement
+      min_speed: 0.15,          // minimum movement speed
+      step_cooldown: 150,       // faster step detection
+      target_spm: 180,          // target steps per minute
     }
   }
 };
@@ -332,6 +439,202 @@ export const TARGET_POSES: Record<ExerciseType, Record<string, TargetPose>> = {
       right_knee: { x: 0.45, y: 0.75 },
       right_ankle: { x: 0.45, y: 0.95 },
     }
+  },
+
+  // === ADVANCED EXERCISES TARGET POSES ===
+
+  jump_squat_arm_raise: {
+    squat: {
+      left_hip: { x: 0.55, y: 0.65 },
+      left_knee: { x: 0.6, y: 0.8 },
+      left_ankle: { x: 0.55, y: 0.95 },
+      right_hip: { x: 0.45, y: 0.65 },
+      right_knee: { x: 0.4, y: 0.8 },
+      right_ankle: { x: 0.45, y: 0.95 },
+      left_shoulder: { x: 0.6, y: 0.45 },
+      right_shoulder: { x: 0.4, y: 0.45 },
+      left_wrist: { x: 0.65, y: 0.55 },
+      right_wrist: { x: 0.35, y: 0.55 },
+    },
+    jump: {
+      left_hip: { x: 0.55, y: 0.5 },
+      left_knee: { x: 0.55, y: 0.65 },
+      left_ankle: { x: 0.55, y: 0.85 },
+      right_hip: { x: 0.45, y: 0.5 },
+      right_knee: { x: 0.45, y: 0.65 },
+      right_ankle: { x: 0.45, y: 0.85 },
+      left_shoulder: { x: 0.6, y: 0.3 },
+      right_shoulder: { x: 0.4, y: 0.3 },
+      left_wrist: { x: 0.7, y: 0.1 },
+      right_wrist: { x: 0.3, y: 0.1 },
+    },
+    land: {
+      left_hip: { x: 0.55, y: 0.55 },
+      left_knee: { x: 0.55, y: 0.75 },
+      left_ankle: { x: 0.55, y: 0.95 },
+      right_hip: { x: 0.45, y: 0.55 },
+      right_knee: { x: 0.45, y: 0.75 },
+      right_ankle: { x: 0.45, y: 0.95 },
+      left_shoulder: { x: 0.6, y: 0.35 },
+      right_shoulder: { x: 0.4, y: 0.35 },
+      left_wrist: { x: 0.65, y: 0.5 },
+      right_wrist: { x: 0.35, y: 0.5 },
+    }
+  },
+
+  standing_twist: {
+    center: {
+      left_shoulder: { x: 0.6, y: 0.35 },
+      right_shoulder: { x: 0.4, y: 0.35 },
+      left_hip: { x: 0.55, y: 0.55 },
+      right_hip: { x: 0.45, y: 0.55 },
+    },
+    left: {
+      left_shoulder: { x: 0.5, y: 0.35 },
+      right_shoulder: { x: 0.3, y: 0.38 },
+      left_hip: { x: 0.55, y: 0.55 },
+      right_hip: { x: 0.45, y: 0.55 },
+    },
+    right: {
+      left_shoulder: { x: 0.7, y: 0.38 },
+      right_shoulder: { x: 0.5, y: 0.35 },
+      left_hip: { x: 0.55, y: 0.55 },
+      right_hip: { x: 0.45, y: 0.55 },
+    }
+  },
+
+  running_in_place: {
+    left_up: {
+      left_hip: { x: 0.55, y: 0.55 },
+      left_knee: { x: 0.55, y: 0.42 },
+      left_ankle: { x: 0.52, y: 0.55 },
+      right_hip: { x: 0.45, y: 0.55 },
+      right_knee: { x: 0.45, y: 0.75 },
+      right_ankle: { x: 0.45, y: 0.95 },
+    },
+    right_up: {
+      left_hip: { x: 0.55, y: 0.55 },
+      left_knee: { x: 0.55, y: 0.75 },
+      left_ankle: { x: 0.55, y: 0.95 },
+      right_hip: { x: 0.45, y: 0.55 },
+      right_knee: { x: 0.45, y: 0.42 },
+      right_ankle: { x: 0.48, y: 0.55 },
+    },
+    both_down: {
+      left_hip: { x: 0.55, y: 0.55 },
+      left_knee: { x: 0.55, y: 0.75 },
+      left_ankle: { x: 0.55, y: 0.95 },
+      right_hip: { x: 0.45, y: 0.55 },
+      right_knee: { x: 0.45, y: 0.75 },
+      right_ankle: { x: 0.45, y: 0.95 },
+    }
+  },
+
+  // === EXPERT EXERCISES TARGET POSES ===
+
+  modified_burpee: {
+    standing: {
+      left_hip: { x: 0.55, y: 0.55 },
+      left_knee: { x: 0.55, y: 0.75 },
+      left_ankle: { x: 0.55, y: 0.95 },
+      right_hip: { x: 0.45, y: 0.55 },
+      right_knee: { x: 0.45, y: 0.75 },
+      right_ankle: { x: 0.45, y: 0.95 },
+      left_shoulder: { x: 0.6, y: 0.35 },
+      right_shoulder: { x: 0.4, y: 0.35 },
+    },
+    down: {
+      left_hip: { x: 0.55, y: 0.75 },
+      left_knee: { x: 0.55, y: 0.85 },
+      left_ankle: { x: 0.55, y: 0.95 },
+      right_hip: { x: 0.45, y: 0.75 },
+      right_knee: { x: 0.45, y: 0.85 },
+      right_ankle: { x: 0.45, y: 0.95 },
+      left_shoulder: { x: 0.6, y: 0.65 },
+      right_shoulder: { x: 0.4, y: 0.65 },
+    },
+    jump: {
+      left_hip: { x: 0.55, y: 0.45 },
+      left_knee: { x: 0.55, y: 0.6 },
+      left_ankle: { x: 0.55, y: 0.8 },
+      right_hip: { x: 0.45, y: 0.45 },
+      right_knee: { x: 0.45, y: 0.6 },
+      right_ankle: { x: 0.45, y: 0.8 },
+      left_shoulder: { x: 0.6, y: 0.25 },
+      right_shoulder: { x: 0.4, y: 0.25 },
+      left_wrist: { x: 0.7, y: 0.1 },
+      right_wrist: { x: 0.3, y: 0.1 },
+    }
+  },
+
+  jump_twist: {
+    ground: {
+      left_hip: { x: 0.55, y: 0.55 },
+      left_knee: { x: 0.55, y: 0.75 },
+      left_ankle: { x: 0.55, y: 0.95 },
+      right_hip: { x: 0.45, y: 0.55 },
+      right_knee: { x: 0.45, y: 0.75 },
+      right_ankle: { x: 0.45, y: 0.95 },
+      left_shoulder: { x: 0.6, y: 0.35 },
+      right_shoulder: { x: 0.4, y: 0.35 },
+    },
+    air_twist_left: {
+      left_hip: { x: 0.5, y: 0.45 },
+      left_knee: { x: 0.5, y: 0.6 },
+      left_ankle: { x: 0.5, y: 0.8 },
+      right_hip: { x: 0.4, y: 0.48 },
+      right_knee: { x: 0.4, y: 0.63 },
+      right_ankle: { x: 0.4, y: 0.83 },
+      left_shoulder: { x: 0.55, y: 0.28 },
+      right_shoulder: { x: 0.35, y: 0.32 },
+    },
+    air_twist_right: {
+      left_hip: { x: 0.6, y: 0.48 },
+      left_knee: { x: 0.6, y: 0.63 },
+      left_ankle: { x: 0.6, y: 0.83 },
+      right_hip: { x: 0.5, y: 0.45 },
+      right_knee: { x: 0.5, y: 0.6 },
+      right_ankle: { x: 0.5, y: 0.8 },
+      left_shoulder: { x: 0.65, y: 0.32 },
+      right_shoulder: { x: 0.45, y: 0.28 },
+    },
+    land: {
+      left_hip: { x: 0.55, y: 0.55 },
+      left_knee: { x: 0.55, y: 0.75 },
+      left_ankle: { x: 0.55, y: 0.95 },
+      right_hip: { x: 0.45, y: 0.55 },
+      right_knee: { x: 0.45, y: 0.75 },
+      right_ankle: { x: 0.45, y: 0.95 },
+      left_shoulder: { x: 0.6, y: 0.35 },
+      right_shoulder: { x: 0.4, y: 0.35 },
+    }
+  },
+
+  sprint_knee_raises: {
+    left_up: {
+      left_hip: { x: 0.55, y: 0.55 },
+      left_knee: { x: 0.55, y: 0.38 },
+      left_ankle: { x: 0.52, y: 0.52 },
+      right_hip: { x: 0.45, y: 0.55 },
+      right_knee: { x: 0.45, y: 0.75 },
+      right_ankle: { x: 0.45, y: 0.95 },
+    },
+    right_up: {
+      left_hip: { x: 0.55, y: 0.55 },
+      left_knee: { x: 0.55, y: 0.75 },
+      left_ankle: { x: 0.55, y: 0.95 },
+      right_hip: { x: 0.45, y: 0.55 },
+      right_knee: { x: 0.45, y: 0.38 },
+      right_ankle: { x: 0.48, y: 0.52 },
+    },
+    transition: {
+      left_hip: { x: 0.55, y: 0.55 },
+      left_knee: { x: 0.55, y: 0.65 },
+      left_ankle: { x: 0.55, y: 0.85 },
+      right_hip: { x: 0.45, y: 0.55 },
+      right_knee: { x: 0.45, y: 0.65 },
+      right_ankle: { x: 0.45, y: 0.85 },
+    }
   }
 };
 
@@ -360,6 +663,14 @@ export const COACH_MESSAGES = {
     squat_arm_raise: 'เริ่มท่าสควอตพร้อมยกแขน ได้เลยครับ!',
     squat_twist: 'เริ่มท่าสควอตพร้อมบิดลำตัว ได้เลยครับ!',
     high_knee_raise: 'เริ่มท่ายกเข่าสูงในท่ายืน ได้เลยครับ!',
+    // Advanced exercises
+    jump_squat_arm_raise: 'เริ่มท่ากระโดดสควอตพร้อมยกแขน ได้เลยครับ! 💪',
+    standing_twist: 'เริ่มท่าบิดลำตัวในท่ายืน ได้เลยครับ! 🔥',
+    running_in_place: 'เริ่มวิ่งยกเข่าอยู่กับที่ ได้เลยครับ! 🏃',
+    // Expert exercises
+    modified_burpee: 'เริ่มท่าเบอร์พี ได้เลยครับ! สุดยอดมาก! ⚡',
+    jump_twist: 'เริ่มท่ากระโดดบิดลำตัว ได้เลยครับ! ⭐',
+    sprint_knee_raises: 'เริ่มวิ่งสปรินต์ยกเข่า ได้เลยครับ! ท้าทายที่สุด! 🏆',
   },
   
   countdown: [
@@ -467,6 +778,12 @@ export const KAYA_EXERCISE_ORDER: ExerciseType[] = ['arm_raise', 'torso_twist', 
 
 // Exercise order for KAYA intermediate workout
 export const KAYA_INTERMEDIATE_ORDER: ExerciseType[] = ['squat_arm_raise', 'squat_twist', 'high_knee_raise'];
+
+// Exercise order for KAYA advanced workout
+export const KAYA_ADVANCED_ORDER: ExerciseType[] = ['jump_squat_arm_raise', 'standing_twist', 'running_in_place'];
+
+// Exercise order for KAYA expert workout
+export const KAYA_EXPERT_ORDER: ExerciseType[] = ['modified_burpee', 'jump_twist', 'sprint_knee_raises'];
 
 // MediaPipe landmark indices
 export const LANDMARK_INDICES = {

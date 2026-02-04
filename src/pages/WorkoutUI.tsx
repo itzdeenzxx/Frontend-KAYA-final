@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Play, Pause, SkipForward, SkipBack, X, Volume2, MessageCircle, Dumbbell, Flame, PersonStanding, Heart, Brain, Sparkles, Target, Zap, Camera, CameraOff, Activity, Bone, EyeOff, Music, Wind, Waves, Footprints, ArrowUp, RotateCcw, ArrowUpFromLine, Mic, MicOff, Send, Loader2 } from "lucide-react";
+import { Play, Pause, SkipForward, SkipBack, X, Volume2, MessageCircle, Dumbbell, Flame, PersonStanding, Heart, Brain, Sparkles, Target, Zap, Camera, CameraOff, Activity, Bone, Eye, EyeOff, Music, Wind, Waves, Footprints, ArrowUp, RotateCcw, ArrowUpFromLine, Mic, MicOff, Send, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMediaPipePose } from "@/hooks/useMediaPipePose";
 import { SkeletonOverlay } from "@/components/shared/SkeletonOverlay";
@@ -40,6 +40,14 @@ const exerciseIcons: Record<string, React.ReactNode> = {
   'kaya-squat-arm': <Dumbbell className="w-16 h-16" />,
   'kaya-squat-twist': <RotateCcw className="w-16 h-16" />,
   'kaya-high-knee': <Zap className="w-16 h-16" />,
+  // Advanced KAYA icons
+  'kaya-jump-squat': <Zap className="w-16 h-16" />,
+  'kaya-standing-twist': <RotateCcw className="w-16 h-16" />,
+  'kaya-running': <PersonStanding className="w-16 h-16" />,
+  // Expert KAYA icons
+  'kaya-burpee': <Flame className="w-16 h-16" />,
+  'kaya-jump-twist': <RotateCcw className="w-16 h-16" />,
+  'kaya-sprint': <Zap className="w-16 h-16" />,
 };
 
 // Larger icons for big screen
@@ -57,6 +65,14 @@ const exerciseIconsLarge: Record<string, React.ReactNode> = {
   'kaya-squat-arm': <Dumbbell className="w-20 h-20" />,
   'kaya-squat-twist': <RotateCcw className="w-20 h-20" />,
   'kaya-high-knee': <Zap className="w-20 h-20" />,
+  // Advanced KAYA icons
+  'kaya-jump-squat': <Zap className="w-20 h-20" />,
+  'kaya-standing-twist': <RotateCcw className="w-20 h-20" />,
+  'kaya-running': <PersonStanding className="w-20 h-20" />,
+  // Expert KAYA icons
+  'kaya-burpee': <Flame className="w-20 h-20" />,
+  'kaya-jump-twist': <RotateCcw className="w-20 h-20" />,
+  'kaya-sprint': <Zap className="w-20 h-20" />,
 };
 
 // Style icons for header
@@ -66,6 +82,8 @@ const styleIcons: Record<string, React.ReactNode> = {
   stretch: <PersonStanding className="w-5 h-5" />,
   'kaya-stretch': <Target className="w-5 h-5" />,
   'kaya-intermediate': <Target className="w-5 h-5" />,
+  'kaya-advanced': <Zap className="w-5 h-5" />,
+  'kaya-expert': <Flame className="w-5 h-5" />,
   hiit: <Flame className="w-5 h-5" />,
   strength: <Dumbbell className="w-5 h-5" />,
   cardio: <Heart className="w-5 h-5" />,
@@ -94,8 +112,8 @@ export default function WorkoutUI() {
   const selectedStyle = getWorkoutStyle(selectedStyleId);
   const exercises = getExercisesForStyle(selectedStyleId);
   
-  // Check if this is a KAYA workout (treat intermediate the same as kaya-stretch)
-  const isKayaWorkout = selectedStyleId === 'kaya-stretch' || selectedStyleId === 'kaya-intermediate';
+  // Check if this is a KAYA workout (all KAYA levels)
+  const isKayaWorkout = selectedStyleId === 'kaya-stretch' || selectedStyleId === 'kaya-intermediate' || selectedStyleId === 'kaya-advanced' || selectedStyleId === 'kaya-expert';
   
   const [currentExercise, setCurrentExercise] = useState(0);
   const [timeLeft, setTimeLeft] = useState(exercises[0]?.duration || 0);
@@ -170,16 +188,19 @@ export default function WorkoutUI() {
   const [showOpticalFlow, setShowOpticalFlow] = useState(false);
   const [videoDimensions, setVideoDimensions] = useState({ width: 1920, height: 1080 });
   
+  // MediaPipe toggle - enabled by default for KAYA workouts
+  const [mediaPipeEnabled, setMediaPipeEnabled] = useState(true);
+  
   // Music player state
   const [showMusicPlayer, setShowMusicPlayer] = useState(false);
   
   // Visual guide state for KAYA - hidden by default for clean UI
   const [showVisualGuide, setShowVisualGuide] = useState(false);
   
-  // MediaPipe pose detection - always enabled for KAYA workouts
+  // MediaPipe pose detection - can be toggled on/off
   const { landmarks, opticalFlowPoints, getFlowHistory, isLoading: mediaPipeLoading, error: mediaPipeError } = useMediaPipePose(
     videoRef,
-    { enabled: cameraReady && cameraEnabled && isKayaWorkout }
+    { enabled: cameraReady && cameraEnabled && isKayaWorkout && mediaPipeEnabled }
   );
   
   // Current KAYA exercise type
@@ -187,9 +208,9 @@ export default function WorkoutUI() {
   
   // KAYA exercise analysis hook
   const kayaAnalysis = useExerciseAnalysis(
-    isKayaWorkout ? landmarks : [],
+    isKayaWorkout && mediaPipeEnabled ? landmarks : [],
     {
-      enabled: isKayaWorkout && !!currentKayaExercise && !showLoader,
+      enabled: isKayaWorkout && mediaPipeEnabled && !!currentKayaExercise && !showLoader,
       difficulty: 'beginner',
       exerciseType: currentKayaExercise,
     }
@@ -1453,7 +1474,20 @@ export default function WorkoutUI() {
             <div className="text-white text-lg font-mono bg-black/30 backdrop-blur-sm rounded-full px-3 py-1">
               {formatTime(totalTime)}
             </div>
-            {/* Settings Menu */}
+            {/* Skeleton Toggle - Desktop */}
+            {isKayaWorkout && (
+              <button
+                onClick={() => setShowSkeleton(!showSkeleton)}
+                className={cn(
+                  "w-10 h-10 rounded-full backdrop-blur-sm flex items-center justify-center transition-colors",
+                  showSkeleton ? "bg-green-500 text-white" : "bg-black/30 text-white/70 hover:bg-black/50"
+                )}
+                title={showSkeleton ? "ซ่อนโครงกระดูก" : "แสดงโครงกระดูก"}
+              >
+                {showSkeleton ? <Bone className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+              </button>
+            )}
+            {/* Music Toggle */}
             <button
               onClick={() => setShowMusicPlayer(!showMusicPlayer)}
               className={cn(
@@ -1689,16 +1723,18 @@ export default function WorkoutUI() {
                 <Music className="w-5 h-5" />
               </button>
               {/* Skeleton Toggle for Mobile */}
-              <button 
-                onClick={() => setShowSkeleton(!showSkeleton)}
-                className={cn(
-                  "w-10 h-10 rounded-xl backdrop-blur-sm flex items-center justify-center transition-colors",
-                  showSkeleton ? "bg-primary/80 text-white" : "bg-white/10 text-white/60"
-                )}
-                title={showSkeleton ? "ซ่อนโครงกระดูก" : "แสดงโครงกระดูก"}
-              >
-                {showSkeleton ? <Bone className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
-              </button>
+              {isKayaWorkout && (
+                <button 
+                  onClick={() => setShowSkeleton(!showSkeleton)}
+                  className={cn(
+                    "w-10 h-10 rounded-xl backdrop-blur-sm flex items-center justify-center transition-colors",
+                    showSkeleton ? "bg-green-500/80 text-white" : "bg-white/10 text-white/60"
+                  )}
+                  title={showSkeleton ? "ซ่อนโครงกระดูก" : "แสดงโครงกระดูก"}
+                >
+                  {showSkeleton ? <Bone className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
+                </button>
+              )}
               {/* Screenshot Button for Mobile */}
               <button
                 onClick={captureScreenshot}
