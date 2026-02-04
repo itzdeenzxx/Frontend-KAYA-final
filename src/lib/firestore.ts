@@ -37,7 +37,135 @@ export const COLLECTIONS = {
   CHALLENGES: 'challenges',
   LEADERBOARD: 'leaderboard',
   SETTINGS: 'userSettings',
+  DAILY_STATS: 'dailyStats',
 } as const;
+
+// ==================== DAILY STATS ====================
+
+export interface FirestoreDailyStats {
+  id?: string;
+  userId: string;
+  date: string; // YYYY-MM-DD format
+  caloriesBurned: number;
+  workoutTime: number; // in seconds
+  totalWorkouts: number;
+  waterIntake: number; // number of glasses (0-8)
+  updatedAt: Timestamp;
+}
+
+// Get today's date string in YYYY-MM-DD format
+export const getTodayDateString = (): string => {
+  const today = new Date();
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+};
+
+// Get or create daily stats for user
+export const getDailyStats = async (userId: string, date?: string): Promise<FirestoreDailyStats | null> => {
+  const dateStr = date || getTodayDateString();
+  const docId = `${userId}_${dateStr}`;
+  const statsRef = doc(db, COLLECTIONS.DAILY_STATS, docId);
+  const statsSnap = await getDoc(statsRef);
+  
+  if (statsSnap.exists()) {
+    return { id: statsSnap.id, ...statsSnap.data() } as FirestoreDailyStats;
+  }
+  return null;
+};
+
+// Initialize or get today's daily stats
+export const initializeDailyStats = async (userId: string): Promise<FirestoreDailyStats> => {
+  const dateStr = getTodayDateString();
+  const docId = `${userId}_${dateStr}`;
+  const statsRef = doc(db, COLLECTIONS.DAILY_STATS, docId);
+  const statsSnap = await getDoc(statsRef);
+  
+  if (statsSnap.exists()) {
+    return { id: statsSnap.id, ...statsSnap.data() } as FirestoreDailyStats;
+  }
+  
+  // Create new daily stats
+  const newStats: Omit<FirestoreDailyStats, 'id'> = {
+    userId,
+    date: dateStr,
+    caloriesBurned: 0,
+    workoutTime: 0,
+    totalWorkouts: 0,
+    waterIntake: 0,
+    updatedAt: serverTimestamp() as Timestamp,
+  };
+  
+  await setDoc(statsRef, newStats);
+  return { id: docId, ...newStats };
+};
+
+// Update daily stats
+export const updateDailyStats = async (
+  userId: string,
+  updates: Partial<Pick<FirestoreDailyStats, 'caloriesBurned' | 'workoutTime' | 'totalWorkouts' | 'waterIntake'>>
+): Promise<void> => {
+  const dateStr = getTodayDateString();
+  const docId = `${userId}_${dateStr}`;
+  const statsRef = doc(db, COLLECTIONS.DAILY_STATS, docId);
+  
+  // Initialize if not exists
+  const statsSnap = await getDoc(statsRef);
+  if (!statsSnap.exists()) {
+    await initializeDailyStats(userId);
+  }
+  
+  await updateDoc(statsRef, {
+    ...updates,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+// Increment water intake (max 8)
+export const incrementWaterIntake = async (userId: string): Promise<number> => {
+  const stats = await initializeDailyStats(userId);
+  const currentWater = stats.waterIntake || 0;
+  
+  if (currentWater >= 8) {
+    return currentWater; // Already at max
+  }
+  
+  const newWater = currentWater + 1;
+  await updateDailyStats(userId, { waterIntake: newWater });
+  return newWater;
+};
+
+// Add workout to daily stats
+export const addWorkoutToDailyStats = async (
+  userId: string,
+  caloriesBurned: number,
+  duration: number
+): Promise<void> => {
+  const stats = await initializeDailyStats(userId);
+  
+  await updateDailyStats(userId, {
+    caloriesBurned: (stats.caloriesBurned || 0) + caloriesBurned,
+    workoutTime: (stats.workoutTime || 0) + duration,
+    totalWorkouts: (stats.totalWorkouts || 0) + 1,
+  });
+};
+
+// Get cumulative stats (all time)
+export const getCumulativeStats = async (userId: string): Promise<{
+  totalCalories: number;
+  totalWorkoutTime: number;
+  totalWorkouts: number;
+}> => {
+  const statsRef = collection(db, COLLECTIONS.DAILY_STATS);
+  const q = query(statsRef, where('userId', '==', userId));
+  
+  const querySnap = await getDocs(q);
+  const stats = querySnap.docs.map(doc => doc.data() as FirestoreDailyStats);
+  
+  return {
+    totalCalories: stats.reduce((sum, s) => sum + (s.caloriesBurned || 0), 0),
+    totalWorkoutTime: stats.reduce((sum, s) => sum + (s.workoutTime || 0), 0),
+    totalWorkouts: stats.reduce((sum, s) => sum + (s.totalWorkouts || 0), 0),
+  };
+};
 
 // ==================== USER PROFILE ====================
 
@@ -52,6 +180,7 @@ export interface FirestoreUserProfile {
   tier: UserTier;
   points: number;
   streakDays: number;
+  lastActivityDate?: string; // YYYY-MM-DD format for streak tracking
   createdAt: Timestamp;
   updatedAt: Timestamp;
   lastLoginAt: Timestamp;
@@ -236,11 +365,13 @@ export const updateUserPoints = async (userId: string, pointsToAdd: number): Pro
     const currentPoints = userSnap.data().points || 0;
     const newPoints = currentPoints + pointsToAdd;
     
-    // Calculate new tier
-    let newTier: UserTier = 'silver';
-    if (newPoints >= 15000) newTier = 'diamond_plus';
-    else if (newPoints >= 5000) newTier = 'diamond';
-    else if (newPoints >= 1000) newTier = 'gold';
+    // Calculate new tier based on new point thresholds
+    // Bronze: 0-999, Silver: 1000-1999, Gold: 2000-2999, Platinum: 3000-3999, Diamond: 4000+
+    let newTier: UserTier = 'bronze';
+    if (newPoints >= 4000) newTier = 'diamond';
+    else if (newPoints >= 3000) newTier = 'platinum';
+    else if (newPoints >= 2000) newTier = 'gold';
+    else if (newPoints >= 1000) newTier = 'silver';
     
     await updateDoc(userRef, {
       points: newPoints,
@@ -251,17 +382,78 @@ export const updateUserPoints = async (userId: string, pointsToAdd: number): Pro
 };
 
 // Update streak
-export const updateUserStreak = async (userId: string, increment: boolean = true): Promise<void> => {
+export const updateUserStreak = async (userId: string): Promise<number> => {
   const userRef = doc(db, COLLECTIONS.USERS, userId);
   const userSnap = await getDoc(userRef);
   
-  if (userSnap.exists()) {
-    const currentStreak = userSnap.data().streakDays || 0;
-    await updateDoc(userRef, {
-      streakDays: increment ? currentStreak + 1 : 0,
-      updatedAt: serverTimestamp(),
-    });
+  if (!userSnap.exists()) return 0;
+  
+  const userData = userSnap.data();
+  const currentStreak = userData.streakDays || 0;
+  const lastActivityDate = userData.lastActivityDate || '';
+  
+  const today = getTodayDateString();
+  const yesterday = getYesterdayDateString();
+  
+  let newStreak = currentStreak;
+  
+  if (lastActivityDate === today) {
+    // Already did activity today, no change
+    return currentStreak;
+  } else if (lastActivityDate === yesterday) {
+    // Consecutive day, increment streak
+    newStreak = currentStreak + 1;
+  } else {
+    // Streak broken, start fresh
+    newStreak = 1;
   }
+  
+  await updateDoc(userRef, {
+    streakDays: newStreak,
+    lastActivityDate: today,
+    updatedAt: serverTimestamp(),
+  });
+  
+  return newStreak;
+};
+
+// Get yesterday's date string
+const getYesterdayDateString = (): string => {
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  return `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+};
+
+// Add game stats (for games like Mouse Running, Whack-a-Mole, Fishing)
+export const addGameToDailyStats = async (
+  userId: string,
+  gameType: 'mouseRunning' | 'whackAMole' | 'fishing',
+  duration: number, // seconds
+  score: number
+): Promise<void> => {
+  // Calculate approximate calories burned based on game type and duration
+  // Light activity: ~3-4 cal/min
+  const caloriesPerMinute = gameType === 'mouseRunning' ? 5 : 3;
+  const caloriesBurned = Math.round((duration / 60) * caloriesPerMinute);
+  
+  // Add to daily stats
+  const stats = await initializeDailyStats(userId);
+  await updateDailyStats(userId, {
+    caloriesBurned: (stats.caloriesBurned || 0) + caloriesBurned,
+    workoutTime: (stats.workoutTime || 0) + duration,
+    totalWorkouts: (stats.totalWorkouts || 0) + 1,
+  });
+  
+  // Calculate points: 1 point per 100 score points
+  const pointsEarned = Math.max(1, Math.floor(score / 100));
+  await updateUserPoints(userId, pointsEarned);
+  
+  // Update streak
+  await updateUserStreak(userId);
+  
+  // Update challenges
+  await incrementChallengeProgress(userId, 'workout', 1);
+  await incrementChallengeProgress(userId, 'calories', caloriesBurned);
 };
 
 // ==================== HEALTH DATA OPERATIONS ====================
@@ -565,6 +757,117 @@ export const updateTTSSettings = async (
 
 // ==================== CHALLENGE OPERATIONS ====================
 
+// Default challenges templates
+const DEFAULT_CHALLENGES = [
+  {
+    name: 'Daily Workout',
+    nameEn: 'Complete 1 Workout',
+    nameTh: 'ออกกำลังกาย 1 ครั้ง',
+    description: 'ออกกำลังกายอย่างน้อย 1 ครั้งวันนี้',
+    target: 1,
+    reward: 50,
+    type: 'daily' as const,
+  },
+  {
+    name: 'Burn Calories',
+    nameEn: 'Burn 100 Calories',
+    nameTh: 'เผาผลาญ 100 แคลอรี่',
+    description: 'เผาผลาญแคลอรี่ให้ได้ 100 แคลอรี่',
+    target: 100,
+    reward: 100,
+    type: 'daily' as const,
+  },
+  {
+    name: 'Drink Water',
+    nameEn: 'Drink 8 Glasses of Water',
+    nameTh: 'ดื่มน้ำ 8 แก้ว',
+    description: 'ดื่มน้ำให้ครบ 8 แก้ววันนี้',
+    target: 8,
+    reward: 30,
+    type: 'daily' as const,
+  },
+  {
+    name: 'Weekly Warrior',
+    nameEn: 'Complete 5 Workouts This Week',
+    nameTh: 'ออกกำลังกาย 5 ครั้งในสัปดาห์นี้',
+    description: 'ออกกำลังกายให้ครบ 5 ครั้งในสัปดาห์นี้',
+    target: 5,
+    reward: 200,
+    type: 'weekly' as const,
+  },
+  {
+    name: 'Calorie Crusher',
+    nameEn: 'Burn 500 Calories This Week',
+    nameTh: 'เผาผลาญ 500 แคลอรี่ในสัปดาห์นี้',
+    description: 'เผาผลาญแคลอรี่รวม 500 แคลอรี่ในสัปดาห์นี้',
+    target: 500,
+    reward: 250,
+    type: 'weekly' as const,
+  },
+  {
+    name: 'Monthly Master',
+    nameEn: 'Complete 20 Workouts This Month',
+    nameTh: 'ออกกำลังกาย 20 ครั้งในเดือนนี้',
+    description: 'ออกกำลังกายให้ครบ 20 ครั้งในเดือนนี้',
+    target: 20,
+    reward: 500,
+    type: 'monthly' as const,
+  },
+];
+
+// Calculate end date based on challenge type
+const getEndDate = (type: 'daily' | 'weekly' | 'monthly'): Date => {
+  const now = new Date();
+  switch (type) {
+    case 'daily':
+      // End of today
+      return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    case 'weekly':
+      // End of this week (Sunday)
+      const daysUntilSunday = 7 - now.getDay();
+      const endOfWeek = new Date(now);
+      endOfWeek.setDate(now.getDate() + daysUntilSunday);
+      endOfWeek.setHours(23, 59, 59);
+      return endOfWeek;
+    case 'monthly':
+      // End of this month
+      return new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+  }
+};
+
+// Create a challenge for user
+export const createChallenge = async (
+  userId: string,
+  challenge: Omit<Challenge, 'id' | 'current' | 'endDate'> & { type: 'daily' | 'weekly' | 'monthly' }
+): Promise<string> => {
+  const challengeRef = collection(db, COLLECTIONS.CHALLENGES);
+  const docRef = await addDoc(challengeRef, {
+    ...challenge,
+    userId,
+    current: 0,
+    endDate: Timestamp.fromDate(getEndDate(challenge.type)),
+    createdAt: serverTimestamp(),
+  });
+  return docRef.id;
+};
+
+// Initialize default challenges for a user (run once per period)
+export const initializeUserChallenges = async (userId: string): Promise<void> => {
+  // Check if user already has active challenges
+  const existingChallenges = await getActiveChallenges(userId);
+  
+  // Get existing challenge types
+  const existingTypes = new Set(existingChallenges.map(c => `${c.type}-${c.name}`));
+  
+  // Create missing challenges
+  for (const template of DEFAULT_CHALLENGES) {
+    const key = `${template.type}-${template.name}`;
+    if (!existingTypes.has(key)) {
+      await createChallenge(userId, template);
+    }
+  }
+};
+
 // Get active challenges
 export const getActiveChallenges = async (userId: string): Promise<Challenge[]> => {
   const challengeRef = collection(db, COLLECTIONS.CHALLENGES);
@@ -577,10 +880,21 @@ export const getActiveChallenges = async (userId: string): Promise<Challenge[]> 
   );
   
   const querySnap = await getDocs(q);
-  return querySnap.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data(),
-  })) as unknown as Challenge[];
+  return querySnap.docs.map(doc => {
+    const data = doc.data();
+    return {
+      id: doc.id,
+      name: data.name,
+      nameEn: data.nameEn,
+      nameTh: data.nameTh,
+      description: data.description,
+      target: data.target,
+      current: data.current || 0,
+      reward: data.reward,
+      endDate: data.endDate?.toDate() || new Date(),
+      type: data.type,
+    };
+  }) as Challenge[];
 };
 
 // Update challenge progress
@@ -592,4 +906,34 @@ export const updateChallengeProgress = async (
   await updateDoc(challengeRef, {
     current: progress,
   });
+};
+
+// Increment challenge progress (for workout completion, etc.)
+export const incrementChallengeProgress = async (
+  userId: string,
+  challengeType: 'workout' | 'calories' | 'water',
+  amount: number = 1
+): Promise<void> => {
+  const challenges = await getActiveChallenges(userId);
+  
+  for (const challenge of challenges) {
+    let shouldUpdate = false;
+    
+    // Match challenge to type
+    if (challengeType === 'workout' && 
+        (challenge.name.includes('Workout') || challenge.nameTh.includes('ออกกำลังกาย'))) {
+      shouldUpdate = true;
+    } else if (challengeType === 'calories' && 
+               (challenge.name.includes('Calorie') || challenge.nameTh.includes('แคลอรี่'))) {
+      shouldUpdate = true;
+    } else if (challengeType === 'water' && 
+               (challenge.name.includes('Water') || challenge.nameTh.includes('น้ำ'))) {
+      shouldUpdate = true;
+    }
+    
+    if (shouldUpdate && challenge.current < challenge.target) {
+      const newProgress = Math.min(challenge.current + amount, challenge.target);
+      await updateChallengeProgress(challenge.id, newProgress);
+    }
+  }
 };
