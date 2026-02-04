@@ -95,14 +95,27 @@ async function processQueue(): Promise<void> {
   console.log(`🔊 Speaking: "${text}"`);
   
   try {
+    // Add timeout for fetch to prevent hanging
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 35000); // 35s total timeout
+    
     const response = await fetch('/api/aift/tts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         text: text,
         speaker: 'nana'  // เสียงผู้หญิง ชัดเจน
-      })
+      }),
+      signal: controller.signal,
     });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      console.warn(`TTS API error: ${response.status}, using fallback`);
+      await speakWithWebSpeech(text);
+      return;
+    }
     
     const result = await response.json();
     
@@ -114,8 +127,12 @@ async function processQueue(): Promise<void> {
       await speakWithWebSpeech(text);
     }
     
-  } catch (error) {
-    console.error('TTS Error:', error);
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      console.warn('TTS request timed out, using fallback');
+    } else {
+      console.error('TTS Error:', error);
+    }
     // Fallback to Web Speech API
     await speakWithWebSpeech(text);
   } finally {

@@ -144,8 +144,26 @@ export interface FirestoreUserSettings {
     voiceCoach: boolean;
     restTimerDuration: number;
   };
+  tts: {
+    enabled: boolean;
+    speed: number;        // 0.5-2.0, default 1.0
+    nfeSteps: number;     // 16-64, default 32 (quality)
+    useVajax: boolean;    // true = VAJAX-TTS, false = fallback
+    referenceAudioUrl?: string;  // Custom reference audio URL
+    referenceText?: string;      // Text matching reference audio
+  };
   updatedAt: Timestamp;
 }
+
+// Default TTS Settings
+export const DEFAULT_TTS_SETTINGS = {
+  enabled: true,
+  speed: 1.0,
+  nfeSteps: 32,
+  useVajax: false,  // Disabled by default, requires reference audio
+  referenceAudioUrl: '',  
+  referenceText: '',
+};
 
 // ==================== USER OPERATIONS ====================
 
@@ -513,9 +531,36 @@ export const initializeUserSettings = async (userId: string): Promise<void> => {
       voiceCoach: true,
       restTimerDuration: 30,
     },
+    tts: {
+      enabled: true,
+      speed: 1.0,
+      nfeSteps: 32,
+      useVajax: true,
+      referenceAudioUrl: '',
+      referenceText: '',
+    },
   };
   
   await saveUserSettings(userId, defaultSettings);
+};
+
+// Update TTS settings only
+export const updateTTSSettings = async (
+  userId: string,
+  ttsSettings: Partial<FirestoreUserSettings['tts']>
+): Promise<void> => {
+  const settingsRef = doc(db, COLLECTIONS.SETTINGS, userId);
+  const existing = await getUserSettings(userId);
+  
+  const currentTTS = existing?.tts || DEFAULT_TTS_SETTINGS;
+  
+  await updateDoc(settingsRef, {
+    tts: {
+      ...currentTTS,
+      ...ttsSettings,
+    },
+    updatedAt: serverTimestamp(),
+  });
 };
 
 // ==================== CHALLENGE OPERATIONS ====================

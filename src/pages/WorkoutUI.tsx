@@ -974,6 +974,26 @@ export default function WorkoutUI() {
     }
   }, []);
 
+  // Fallback: Use Web Speech API when TTS API fails
+  const speakWithWebSpeechFallback = useCallback((text: string): Promise<void> => {
+    return new Promise((resolve) => {
+      if (typeof window === 'undefined' || !window.speechSynthesis) {
+        resolve();
+        return;
+      }
+      
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'th-TH';
+      utterance.rate = 1.0;
+      
+      utterance.onend = () => resolve();
+      utterance.onerror = () => resolve();
+      
+      window.speechSynthesis.speak(utterance);
+    });
+  }, []);
+
   // Speak coach introduction
   const speakCoachIntroduction = useCallback(async () => {
     const userName = userProfile?.nickname || userProfile?.displayName || 'คุณ';
@@ -981,21 +1001,42 @@ export default function WorkoutUI() {
     
     console.log('TTS Coach Intro: Calling API with text:', introText);
     
+    // Helper function to speak first exercise after intro
+    const speakFirstExercise = () => {
+      const exercise = exercises[0];
+      if (exercise) {
+        setTimeout(() => {
+          speakExerciseInstruction(exercise);
+        }, 500);
+      }
+    };
+    
     try {
+      // Add timeout for fetch to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 35000); // 35s timeout
+      
       const response = await fetch('/api/aift/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: introText, speaker: 'nana' }),
+        signal: controller.signal,
       });
       
+      clearTimeout(timeoutId);
+      
       if (!response.ok) {
-        console.error('TTS Coach Intro API error:', response.status);
+        console.warn('TTS Coach Intro API error:', response.status, '- using fallback');
+        await speakWithWebSpeechFallback(introText);
+        speakFirstExercise();
         return;
       }
       
       const result = await response.json();
       if (!result.audio_base64) {
-        console.error('TTS Coach Intro: No audio_base64');
+        console.warn('TTS Coach Intro: No audio_base64 - using fallback');
+        await speakWithWebSpeechFallback(introText);
+        speakFirstExercise();
         return;
       }
       
@@ -1023,19 +1064,19 @@ export default function WorkoutUI() {
         console.log('TTS Coach Intro: Ended');
         URL.revokeObjectURL(audioUrl);
         ttsAudioRef.current = null;
-        
-        // After intro ends, speak first exercise instruction
-        const exercise = exercises[0];
-        if (exercise) {
-          setTimeout(() => {
-            speakExerciseInstruction(exercise);
-          }, 500);
-        }
+        speakFirstExercise();
       };
-    } catch (error) {
-      console.error('TTS Coach Intro error:', error);
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.warn('TTS Coach Intro timeout - using fallback');
+      } else {
+        console.error('TTS Coach Intro error:', error);
+      }
+      // Use Web Speech API as fallback
+      await speakWithWebSpeechFallback(introText);
+      speakFirstExercise();
     }
-  }, [userProfile, exercises, speakExerciseInstruction]);
+  }, [userProfile, exercises, speakExerciseInstruction, speakWithWebSpeechFallback]);
 
   // Speak coach introduction when workout starts
   useEffect(() => {

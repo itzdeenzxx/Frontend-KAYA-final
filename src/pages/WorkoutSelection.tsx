@@ -51,7 +51,7 @@ const workoutStyles: WorkoutStyle[] = [
   },
   {
     id: 'kaya-intermediate',
-    name: 'KAYA ระดับกลาง',
+    name: 'KAYA Intermediate',
     nameEn: 'KAYA Intermediate',
     description: 'สควอต + ยกแขน, สควอต + บิดลำตัว, ยกเข่าสูง',
     icon: <Brain className="w-8 h-8" />,
