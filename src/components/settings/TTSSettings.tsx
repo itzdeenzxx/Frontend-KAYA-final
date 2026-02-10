@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Volume2, Play, Loader2, Settings2, Zap, Music } from 'lucide-react';
+import { Volume2, Play, Loader2, Settings2, Zap, Music, User } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
-import { getUserSettings, updateTTSSettings, DEFAULT_TTS_SETTINGS } from '@/lib/firestore';
+import { getUserSettings, updateTTSSettings, DEFAULT_TTS_SETTINGS, VAJA_SPEAKERS } from '@/lib/firestore';
 
 interface TTSSettingsProps {
   isDark: boolean;
@@ -22,6 +22,7 @@ export function TTSSettings({ isDark }: TTSSettingsProps) {
   const [settings, setSettings] = useState({
     enabled: DEFAULT_TTS_SETTINGS.enabled,
     speed: DEFAULT_TTS_SETTINGS.speed,
+    speaker: DEFAULT_TTS_SETTINGS.speaker,
     nfeSteps: DEFAULT_TTS_SETTINGS.nfeSteps,
     useVajax: DEFAULT_TTS_SETTINGS.useVajax,
   });
@@ -37,6 +38,7 @@ export function TTSSettings({ isDark }: TTSSettingsProps) {
           setSettings({
             enabled: userSettings.tts.enabled ?? DEFAULT_TTS_SETTINGS.enabled,
             speed: userSettings.tts.speed ?? DEFAULT_TTS_SETTINGS.speed,
+            speaker: userSettings.tts.speaker ?? DEFAULT_TTS_SETTINGS.speaker,
             nfeSteps: userSettings.tts.nfeSteps ?? DEFAULT_TTS_SETTINGS.nfeSteps,
             useVajax: userSettings.tts.useVajax ?? DEFAULT_TTS_SETTINGS.useVajax,
           });
@@ -147,7 +149,7 @@ export function TTSSettings({ isDark }: TTSSettingsProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: previewText,
-          speaker: 'nana',
+          speaker: settings.speaker,
         }),
         signal: controller.signal,
       });
@@ -233,6 +235,39 @@ export function TTSSettings({ isDark }: TTSSettingsProps) {
             checked={settings.enabled}
             onCheckedChange={(checked) => handleSettingChange('enabled', checked)}
           />
+        </div>
+
+        {/* Speaker Selection */}
+        <div className="p-4">
+          <div className="flex items-center gap-3 mb-3">
+            <User className={cn("w-5 h-5", isDark ? "text-gray-400" : "text-gray-500")} />
+            <div>
+              <p className={cn("font-medium", isDark ? "text-white" : "text-gray-900")}>
+                เลือกเสียงโค้ช
+              </p>
+              <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>
+                {VAJA_SPEAKERS.find(s => s.id === settings.speaker)?.description || 'เลือกเสียงที่ต้องการ'}
+              </p>
+            </div>
+          </div>
+          <select
+            value={settings.speaker}
+            onChange={(e) => handleSettingChange('speaker', e.target.value)}
+            disabled={!settings.enabled}
+            className={cn(
+              "w-full p-3 rounded-xl border text-sm transition-colors",
+              isDark 
+                ? "bg-white/5 border-white/20 text-white disabled:opacity-50" 
+                : "bg-gray-50 border-gray-200 text-gray-900 disabled:opacity-50",
+              "focus:outline-none focus:ring-2 focus:ring-primary/50"
+            )}
+          >
+            {VAJA_SPEAKERS.map((speaker) => (
+              <option key={speaker.id} value={speaker.id} className={isDark ? "bg-gray-900" : ""}>
+                {speaker.name} - {speaker.description}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Use VAJAX (High Quality) - Hidden for now, requires reference audio */}

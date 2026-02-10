@@ -5,7 +5,7 @@ import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { useTheme, ThemeMode } from "@/contexts/ThemeContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { TTSSettings } from "@/components/settings/TTSSettings";
+import { CoachSettings } from "@/components/settings/CoachSettings";
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -181,8 +181,8 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* TTS Settings */}
-          <TTSSettings isDark={isDark} />
+          {/* Coach Settings */}
+          <CoachSettings isDark={isDark} />
 
           {/* Notifications */}
           <div className={cn(

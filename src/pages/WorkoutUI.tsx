@@ -13,6 +13,8 @@ import { AICoachPopup } from "@/components/workout/AICoachPopup";
 import { ExerciseType } from "@/lib/exerciseConfig";
 import { WorkoutLoader } from "@/components/shared/WorkoutLoader";
 import { useAuth } from "@/contexts/AuthContext";
+import { getUserSettings, DEFAULT_TTS_SETTINGS } from "@/lib/firestore";
+import { getCoachById, Coach } from "@/lib/coachConfig";
 
 // Rep count messages - only speak at 1, 5, 9, 10
 const REP_MESSAGES: Record<number, string> = {
@@ -196,6 +198,50 @@ export default function WorkoutUI() {
   
   // Visual guide state for KAYA - hidden by default for clean UI
   const [showVisualGuide, setShowVisualGuide] = useState(false);
+  
+  // TTS speaker setting
+  const [ttsSpeaker, setTtsSpeaker] = useState(DEFAULT_TTS_SETTINGS.speaker);
+  const [ttsCoach, setTtsCoach] = useState<Coach | null>(null);
+  const [ttsCoachId, setTtsCoachId] = useState<string>('coach-nana');
+  const [customCoachForLLM, setCustomCoachForLLM] = useState<{ name: string; personality: string; gender: 'male' | 'female' } | null>(null);
+  
+  // Load TTS speaker setting from user preferences
+  useEffect(() => {
+    const loadTTSSettings = async () => {
+      if (userProfile?.lineUserId) {
+        try {
+          const settings = await getUserSettings(userProfile.lineUserId);
+          if (settings?.tts?.speaker) {
+            setTtsSpeaker(settings.tts.speaker);
+          }
+          if (settings?.selectedCoachId) {
+            setTtsCoachId(settings.selectedCoachId);
+            
+            if (settings.selectedCoachId === 'coach-custom') {
+              // Load custom coach data
+              const { getCustomCoach, } = await import('@/lib/firestore');
+              const { buildCoachFromCustom } = await import('@/lib/coachConfig');
+              const custom = await getCustomCoach(userProfile.lineUserId);
+              if (custom) {
+                setTtsCoach(buildCoachFromCustom(custom));
+                setCustomCoachForLLM({
+                  name: custom.name,
+                  personality: custom.personality,
+                  gender: custom.gender,
+                });
+              }
+            } else {
+              const coach = getCoachById(settings.selectedCoachId);
+              if (coach) setTtsCoach(coach);
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to load TTS settings:', err);
+        }
+      }
+    };
+    loadTTSSettings();
+  }, [userProfile?.lineUserId]);
   
   // MediaPipe pose detection - can be toggled on/off
   const { landmarks, opticalFlowPoints, getFlowHistory, isLoading: mediaPipeLoading, error: mediaPipeError } = useMediaPipePose(
@@ -491,14 +537,41 @@ export default function WorkoutUI() {
     try {
       isTtsSpeakingRef.current = true;
       
-      const response = await fetch('/api/aift/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, speaker: 'nana' }),
-      });
+      // Priority 1: Gemini TTS with coach voice + instruction
+      let response: Response | null = null;
+      try {
+        const geminiController = new AbortController();
+        const geminiTimeout = setTimeout(() => geminiController.abort(), 30000);
+        response = await fetch('/api/gemini/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text,
+            voiceName: ttsCoach?.geminiVoice || ttsSpeaker || 'Kore',
+            instruction: ttsCoach?.ttsInstruction || '',
+          }),
+          signal: geminiController.signal,
+        });
+        clearTimeout(geminiTimeout);
+        if (!response?.ok) response = null;
+      } catch (e: any) {
+        console.warn('Gemini TTS failed:', e.name === 'AbortError' ? 'timeout' : e.message);
+        response = null;
+      }
+
+      // Priority 2: VAJA TTS fallback
+      if (!response) {
+        try {
+          response = await fetch('/api/aift/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, speaker: ttsSpeaker }),
+          });
+        } catch { response = null; }
+      }
       
-      if (!response.ok) {
-        console.error('TTS API error:', response.status);
+      if (!response?.ok) {
+        console.error('TTS API error');
         isTtsSpeakingRef.current = false;
         return;
       }
@@ -871,6 +944,8 @@ export default function WorkoutUI() {
             message: transcript,
             imageBase64: screenshot,
             userContext,
+            coachId: ttsCoachId,
+            customCoach: customCoachForLLM || undefined,
           }),
         });
         
@@ -906,11 +981,35 @@ export default function WorkoutUI() {
     console.log('TTS: Calling API with text:', instruction);
     
     try {
-      const response = await fetch('/api/aift/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: instruction, speaker: 'nana' }),
-      });
+      // Use Gemini TTS with coach voice
+      let response: Response | null = null;
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        response = await fetch('/api/gemini/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: instruction,
+            voiceName: ttsCoach?.geminiVoice || ttsSpeaker || 'Kore',
+            instruction: ttsCoach?.ttsInstruction || '',
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        if (!response?.ok) response = null;
+      } catch {
+        response = null;
+      }
+
+      // Fallback to VAJA
+      if (!response) {
+        response = await fetch('/api/aift/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: instruction, speaker: ttsSpeaker }),
+        });
+      }
       
       console.log('TTS: Response status:', response.status);
       
@@ -1016,10 +1115,14 @@ export default function WorkoutUI() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 35000); // 35s timeout
       
-      const response = await fetch('/api/aift/tts', {
+      const response = await fetch('/api/gemini/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: introText, speaker: 'nana' }),
+        body: JSON.stringify({
+          text: introText,
+          voiceName: ttsCoach?.geminiVoice || ttsSpeaker || 'Kore',
+          instruction: ttsCoach?.ttsInstruction || '',
+        }),
         signal: controller.signal,
       });
       

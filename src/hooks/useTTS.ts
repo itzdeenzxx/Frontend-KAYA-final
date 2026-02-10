@@ -1,13 +1,19 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getUserSettings, DEFAULT_TTS_SETTINGS } from '@/lib/firestore';
+import { getUserSettings, getCustomCoach, DEFAULT_TTS_SETTINGS } from '@/lib/firestore';
+import { getCoachById, buildCoachFromCustom, CustomCoach } from '@/lib/coachConfig';
 
 export interface TTSSettings {
   enabled: boolean;
   speed: number;
+  speaker: string;
   nfeSteps: number;
   useVajax: boolean;
   referenceAudioUrl?: string;
   referenceText?: string;
+  // Custom voice fields (legacy single-ref)
+  customVoiceEnabled?: boolean;
+  customVoiceRefUrl?: string;
+  customVoiceRefText?: string;
 }
 
 interface UseTTSReturn {
@@ -18,10 +24,11 @@ interface UseTTSReturn {
   isSpeaking: boolean;
 }
 
-export function useTTS(userId?: string): UseTTSReturn {
+export function useTTS(userId?: string, coachId?: string): UseTTSReturn {
   const [settings, setSettings] = useState<TTSSettings>(DEFAULT_TTS_SETTINGS);
   const [isLoading, setIsLoading] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [customCoachData, setCustomCoachData] = useState<CustomCoach | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const queueRef = useRef<string[]>([]);
   const isProcessingRef = useRef(false);
@@ -40,11 +47,21 @@ export function useTTS(userId?: string): UseTTSReturn {
           setSettings({
             enabled: userSettings.tts.enabled ?? DEFAULT_TTS_SETTINGS.enabled,
             speed: userSettings.tts.speed ?? DEFAULT_TTS_SETTINGS.speed,
+            speaker: userSettings.tts.speaker ?? DEFAULT_TTS_SETTINGS.speaker,
             nfeSteps: userSettings.tts.nfeSteps ?? DEFAULT_TTS_SETTINGS.nfeSteps,
             useVajax: userSettings.tts.useVajax ?? DEFAULT_TTS_SETTINGS.useVajax,
             referenceAudioUrl: userSettings.tts.referenceAudioUrl,
             referenceText: userSettings.tts.referenceText,
+            customVoiceEnabled: userSettings.tts.customVoiceEnabled ?? false,
+            customVoiceRefUrl: userSettings.tts.customVoiceRefUrl,
+            customVoiceRefText: userSettings.tts.customVoiceRefText,
           });
+        }
+        
+        // Load custom coach data if user has selected coach-custom
+        if (coachId === 'coach-custom' || userSettings?.selectedCoachId === 'coach-custom') {
+          const custom = await getCustomCoach(userId);
+          setCustomCoachData(custom);
         }
       } catch (err) {
         console.error('Error loading TTS settings:', err);
@@ -54,7 +71,7 @@ export function useTTS(userId?: string): UseTTSReturn {
     };
 
     loadSettings();
-  }, [userId]);
+  }, [userId, coachId]);
 
   // Play audio from base64
   const playAudioBase64 = useCallback((base64: string): Promise<void> => {
@@ -122,6 +139,20 @@ export function useTTS(userId?: string): UseTTSReturn {
     isProcessingRef.current = true;
     setIsSpeaking(true);
 
+    // Resolve coach config for Gemini voice + instruction
+    let coach = coachId ? getCoachById(coachId) : null;
+    
+    // For custom coach, build a Coach-like object
+    const isCustomCoach = coachId === 'coach-custom' && customCoachData;
+    if (isCustomCoach) {
+      coach = buildCoachFromCustom(customCoachData);
+    }
+    
+    // Check if custom coach has voice refs for VAJAX
+    const hasCustomVoiceRefs = isCustomCoach && customCoachData.voiceRefs?.length > 0;
+    // Pick the first voice ref for VAJAX cloning (use best quality ref)
+    const primaryVoiceRef = hasCustomVoiceRefs ? customCoachData.voiceRefs[0] : null;
+
     while (queueRef.current.length > 0) {
       const text = queueRef.current.shift();
       if (!text) continue;
@@ -129,34 +160,108 @@ export function useTTS(userId?: string): UseTTSReturn {
       console.log(`🔊 TTS Speaking: "${text.substring(0, 30)}..."`);
 
       try {
-        // Try TTS API (VAJA)
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 35000);
+        // Path A: Custom voice via VAJAX (if custom coach has voice refs OR legacy custom voice)
+        const useCustomVajax = 
+          (hasCustomVoiceRefs && primaryVoiceRef) ||
+          (settings.customVoiceEnabled && settings.customVoiceRefUrl && settings.customVoiceRefText);
+          
+        if (useCustomVajax) {
+          const refUrl = primaryVoiceRef?.audioUrl || settings.customVoiceRefUrl;
+          const refText = primaryVoiceRef?.refText || settings.customVoiceRefText;
+          
+          try {
+            const vajaxController = new AbortController();
+            const vajaxTimeout = setTimeout(() => vajaxController.abort(), 60000);
 
-          const response = await fetch('/api/aift/tts', {
+            const vajaxRes = await fetch('/api/aift/vajax-tts', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                text,
+                referenceAudioUrl: refUrl,
+                referenceText: refText,
+                speed: settings.speed,
+                nfeSteps: settings.nfeSteps || 32,
+              }),
+              signal: vajaxController.signal,
+            });
+
+            clearTimeout(vajaxTimeout);
+
+            if (vajaxRes.ok) {
+              const result = await vajaxRes.json();
+              if (result.success && result.audio_base64) {
+                console.log('✅ VAJAX custom voice TTS success');
+                await playAudioBase64(result.audio_base64);
+                continue;
+              }
+            }
+            console.warn('VAJAX custom voice failed, falling back to Gemini');
+          } catch (err: any) {
+            console.warn('VAJAX error:', err.name === 'AbortError' ? 'timeout' : err.message);
+          }
+        }
+
+        // Path B: Gemini TTS (primary for preset coaches)
+        try {
+          const geminiController = new AbortController();
+          const geminiTimeout = setTimeout(() => geminiController.abort(), 30000);
+
+          const geminiRes = await fetch('/api/gemini/tts', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text, speaker: 'nana' }),
-            signal: controller.signal,
+            body: JSON.stringify({
+              text,
+              voiceName: coach?.geminiVoice || settings.speaker || 'Kore',
+              instruction: coach?.ttsInstruction || '',
+            }),
+            signal: geminiController.signal,
           });
 
-          clearTimeout(timeoutId);
+          clearTimeout(geminiTimeout);
 
-          if (response.ok) {
-            const result = await response.json();
+          if (geminiRes.ok) {
+            const result = await geminiRes.json();
             if (result.success && result.audio_base64) {
+              console.log('✅ Gemini TTS success, voice:', result.voice);
               await playAudioBase64(result.audio_base64);
               continue;
             }
           }
+          console.warn('Gemini TTS response not ok:', geminiRes.status);
         } catch (err: any) {
-          if (err.name !== 'AbortError') {
-            console.warn('TTS API error:', err);
-          }
+          console.warn('Gemini TTS error:', err.name === 'AbortError' ? 'timeout' : err.message);
         }
 
-        // Fallback: Web Speech API
+        // Path C: VAJA TTS (backup when available)
+        try {
+          const vajaController = new AbortController();
+          const vajaTimeout = setTimeout(() => vajaController.abort(), 15000);
+
+          const vajaRes = await fetch('/api/aift/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, speaker: settings.speaker || 'nana' }),
+            signal: vajaController.signal,
+          });
+
+          clearTimeout(vajaTimeout);
+
+          if (vajaRes.ok) {
+            const result = await vajaRes.json();
+            if (result.success && result.audio_base64) {
+              console.log('✅ VAJA TTS success');
+              await playAudioBase64(result.audio_base64);
+              continue;
+            }
+          }
+          console.warn('VAJA TTS response not ok:', vajaRes.status);
+        } catch (err: any) {
+          console.warn('VAJA TTS error:', err.name === 'AbortError' ? 'timeout' : err.message);
+        }
+
+        // Path D: Web Speech API (browser built-in)
+        console.log('🔄 Using Web Speech API fallback');
         await speakWithWebSpeech(text);
 
       } catch (err) {
@@ -167,7 +272,7 @@ export function useTTS(userId?: string): UseTTSReturn {
 
     isProcessingRef.current = false;
     setIsSpeaking(false);
-  }, [settings, playAudioBase64, speakWithWebSpeech]);
+  }, [settings, coachId, customCoachData, playAudioBase64, speakWithWebSpeech]);
 
   // Speak function
   const speak = useCallback(async (text: string) => {

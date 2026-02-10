@@ -28,6 +28,7 @@ interface AICoachPopupProps {
   isMuted?: boolean;
   onMuteToggle?: () => void;
   className?: string;
+  speaker?: string;  // VAJA speaker voice
 }
 
 // TTS State
@@ -35,12 +36,14 @@ interface TTSState {
   isSpeaking: boolean;
   queue: string[];
   currentAudio: HTMLAudioElement | null;
+  speaker: string;
 }
 
 const ttsState: TTSState = {
   isSpeaking: false,
   queue: [],
   currentAudio: null,
+  speaker: 'nana',
 };
 
 /**
@@ -104,7 +107,7 @@ async function processQueue(): Promise<void> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         text: text,
-        speaker: 'nana'  // เสียงผู้หญิง ชัดเจน
+        speaker: ttsState.speaker
       }),
       signal: controller.signal,
     });
@@ -167,7 +170,12 @@ function speakWithWebSpeech(text: string): Promise<void> {
 /**
  * Add text to TTS queue
  */
-function speakText(text: string): void {
+function speakText(text: string, speaker?: string): void {
+  // Update speaker if provided
+  if (speaker) {
+    ttsState.speaker = speaker;
+  }
+  
   // Don't add duplicates
   if (ttsState.queue.includes(text)) {
     return;
@@ -199,11 +207,17 @@ export function AICoachPopup({
   isMuted = false,
   onMuteToggle,
   className = '',
+  speaker = 'nana',
 }: AICoachPopupProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [displayedMessage, setDisplayedMessage] = useState<CoachMessage | null>(null);
   const lastMessageIdRef = useRef<string>('');
   const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Update speaker in TTS state
+  useEffect(() => {
+    ttsState.speaker = speaker;
+  }, [speaker]);
 
   // Handle new messages
   useEffect(() => {
@@ -217,7 +231,7 @@ export function AICoachPopup({
 
     // Speak the message if not muted
     if (!isMuted) {
-      speakText(currentMessage.text);
+      speakText(currentMessage.text, speaker);
     }
 
     // Clear previous timeout

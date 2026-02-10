@@ -30,6 +30,8 @@ import {
   TTSState,
 } from '@/lib/session';
 import { useAuth } from '@/contexts/AuthContext';
+import { getUserSettings, DEFAULT_TTS_SETTINGS } from '@/lib/firestore';
+import { getCoachById, Coach } from '@/lib/coachConfig';
 
 // Voice status type
 type VoiceStatus = "idle" | "recording" | "processing" | "thinking" | "speaking";
@@ -66,6 +68,49 @@ export default function WorkoutRemote() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioStreamRef = useRef<MediaStream | null>(null);
   const pcmDataRef = useRef<Float32Array[]>([]);
+  
+  // TTS speaker setting
+  const [ttsSpeaker, setTtsSpeaker] = useState(DEFAULT_TTS_SETTINGS.speaker);
+  const [ttsCoach, setTtsCoach] = useState<Coach | null>(null);
+  const [ttsCoachId, setTtsCoachId] = useState<string>('coach-nana');
+  const [customCoachForLLM, setCustomCoachForLLM] = useState<{ name: string; personality: string; gender: 'male' | 'female' } | null>(null);
+  
+  // Load TTS speaker setting from user preferences
+  useEffect(() => {
+    const loadTTSSettings = async () => {
+      if (userProfile?.lineUserId) {
+        try {
+          const settings = await getUserSettings(userProfile.lineUserId);
+          if (settings?.tts?.speaker) {
+            setTtsSpeaker(settings.tts.speaker);
+          }
+          if (settings?.selectedCoachId) {
+            setTtsCoachId(settings.selectedCoachId);
+            
+            if (settings.selectedCoachId === 'coach-custom') {
+              const { getCustomCoach } = await import('@/lib/firestore');
+              const { buildCoachFromCustom } = await import('@/lib/coachConfig');
+              const custom = await getCustomCoach(userProfile.lineUserId);
+              if (custom) {
+                setTtsCoach(buildCoachFromCustom(custom));
+                setCustomCoachForLLM({
+                  name: custom.name,
+                  personality: custom.personality,
+                  gender: custom.gender,
+                });
+              }
+            } else {
+              const coach = getCoachById(settings.selectedCoachId);
+              if (coach) setTtsCoach(coach);
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to load TTS settings:', err);
+        }
+      }
+    };
+    loadTTSSettings();
+  }, [userProfile?.lineUserId]);
 
   // Subscribe to session updates
   useEffect(() => {
@@ -172,11 +217,36 @@ export default function WorkoutRemote() {
       setVoiceStatus("speaking");
       
       console.log('Calling TTS API...');
-      const response = await fetch('/api/aift/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, speaker: 'nana' }),
-      });
+      // Priority 1: Gemini TTS with coach voice
+      let response: Response | null = null;
+      try {
+        const geminiController = new AbortController();
+        const geminiTimeout = setTimeout(() => geminiController.abort(), 30000);
+        response = await fetch('/api/gemini/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text,
+            voiceName: ttsCoach?.geminiVoice || ttsSpeaker || 'Kore',
+            instruction: ttsCoach?.ttsInstruction || '',
+          }),
+          signal: geminiController.signal,
+        });
+        clearTimeout(geminiTimeout);
+        if (!response?.ok) response = null;
+      } catch (e: any) {
+        console.warn('Gemini TTS failed:', e.name === 'AbortError' ? 'timeout' : e.message);
+        response = null;
+      }
+
+      // Priority 2: VAJA TTS fallback
+      if (!response) {
+        response = await fetch('/api/aift/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, speaker: ttsSpeaker }),
+        });
+      }
       
       console.log('TTS API response status:', response.status);
       
@@ -461,6 +531,8 @@ export default function WorkoutRemote() {
         body: JSON.stringify({
           message: transcript,
           userContext,
+          coachId: ttsCoachId,
+          customCoach: customCoachForLLM || undefined,
         }),
       });
       

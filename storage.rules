@@ -1,0 +1,20 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Voice reference recordings for custom coach
+    // Path: {userId}/sound-ref/{filename}
+    // LINE LIFF auth is used (not Firebase Auth), so request.auth is null
+    // Restrict to sound-ref path only, max 5MB WAV files
+    match /{userId}/sound-ref/{fileName} {
+      allow read: if true;
+      allow write: if request.resource == null // allow delete
+                   || (request.resource.size < 5 * 1024 * 1024
+                       && request.resource.contentType.matches('audio/.*'));
+    }
+
+    // Deny everything else
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
