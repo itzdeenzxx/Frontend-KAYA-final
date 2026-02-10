@@ -281,14 +281,14 @@ export const mockChallenges: Challenge[] = [
 
 // Mock Leaderboard
 export const mockLeaderboard: LeaderboardEntry[] = [
-  { rank: 1, userId: 'u-1', nickname: 'FitnessPro', tier: 'diamond_plus', points: 18500 },
+  { rank: 1, userId: 'u-1', nickname: 'FitnessPro', tier: 'diamond', points: 18500 },
   { rank: 2, userId: 'u-2', nickname: 'GymQueen', tier: 'diamond', points: 12300 },
   { rank: 3, userId: 'u-3', nickname: 'WorkoutKing', tier: 'diamond', points: 8700 },
-  { rank: 4, userId: 'u-4', nickname: 'Deen', tier: 'gold', points: 2450 },
+  { rank: 4, userId: 'u-4', nickname: 'Deen', tier: 'platinum', points: 3450 },
   { rank: 5, userId: 'u-5', nickname: 'RunnerBee', tier: 'gold', points: 2100 },
-  { rank: 6, userId: 'u-6', nickname: 'YogaMaster', tier: 'gold', points: 1850 },
-  { rank: 7, userId: 'u-7', nickname: 'CardioFan', tier: 'silver', points: 890 },
-  { rank: 8, userId: 'u-8', nickname: 'NewbieFit', tier: 'silver', points: 450 },
+  { rank: 6, userId: 'u-6', nickname: 'YogaMaster', tier: 'silver', points: 1850 },
+  { rank: 7, userId: 'u-7', nickname: 'CardioFan', tier: 'silver', points: 1090 },
+  { rank: 8, userId: 'u-8', nickname: 'NewbieFit', tier: 'bronze', points: 450 },
 ];
 
 // Mock Meals

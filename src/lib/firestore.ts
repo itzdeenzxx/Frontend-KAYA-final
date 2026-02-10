@@ -303,7 +303,7 @@ export const createOrUpdateUserFromLine = async (
       displayName,
       pictureUrl,
       nickname: displayName,
-      tier: 'silver',
+      tier: 'bronze',
       points: 0,
       streakDays: 0,
       createdAt: serverTimestamp() as Timestamp,
@@ -404,6 +404,24 @@ const getYesterdayDateString = (): string => {
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   return `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+};
+
+// Calculate real-time streak (returns 0 if no activity within last 24 hours)
+export const getCalculatedStreak = (streakDays: number, lastActivityDate?: string): number => {
+  if (!lastActivityDate || streakDays === 0) {
+    return 0;
+  }
+  
+  const today = getTodayDateString();
+  const yesterday = getYesterdayDateString();
+  
+  // If last activity was today or yesterday, streak is valid
+  if (lastActivityDate === today || lastActivityDate === yesterday) {
+    return streakDays;
+  }
+  
+  // More than 24 hours since last activity, streak is broken
+  return 0;
 };
 
 // Add game stats (for games like Mouse Running, Whack-a-Mole, Fishing)

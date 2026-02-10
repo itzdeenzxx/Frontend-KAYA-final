@@ -43,6 +43,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useHealthData, useUserProfile, useWorkoutHistory, useDailyStats } from "@/hooks/useFirestore";
+import { getCalculatedStreak } from "@/lib/firestore";
 import { useTheme } from "@/contexts/ThemeContext";
 import liff from "@line/liff";
 
@@ -471,7 +472,7 @@ export default function Profile() {
   const TierIcon = tier.icon;
   const SecondaryIcon = tier.secondaryIcon;
   const userPoints = userProfile?.points || 0;
-  const streakDays = userProfile?.streakDays || 0;
+  const streakDays = getCalculatedStreak(userProfile?.streakDays || 0, userProfile?.lastActivityDate);
   
   // Theme
   const { theme } = useTheme();

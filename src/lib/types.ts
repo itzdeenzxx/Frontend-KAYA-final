@@ -1,5 +1,5 @@
 // User Tier System
-export type UserTier = 'silver' | 'gold' | 'diamond' | 'diamond_plus';
+export type UserTier = 'bronze' | 'silver' | 'gold' | 'platinum' | 'diamond';
 
 export interface User {
   id: string;
@@ -24,33 +24,40 @@ export interface TierConfig {
 }
 
 export const TIER_CONFIG: Record<UserTier, TierConfig> = {
+  bronze: {
+    name: 'Bronze',
+    minPoints: 0,
+    color: 'hsl(30, 60%, 50%)',
+    icon: '🥉',
+    benefits: ['Basic workout templates', 'Nutrition recommendations'],
+  },
   silver: {
     name: 'Silver',
-    minPoints: 0,
+    minPoints: 1000,
     color: 'hsl(220, 15%, 65%)',
     icon: '🥈',
-    benefits: ['Basic workout templates', 'Nutrition recommendations'],
+    benefits: ['All Bronze benefits', 'Custom workout builder'],
   },
   gold: {
     name: 'Gold',
-    minPoints: 1000,
+    minPoints: 2000,
     color: 'hsl(45, 95%, 55%)',
     icon: '🥇',
-    benefits: ['Custom workout builder', 'AI suggestions', 'Priority support'],
+    benefits: ['All Silver benefits', 'AI suggestions', 'Priority support'],
+  },
+  platinum: {
+    name: 'Platinum',
+    minPoints: 3000,
+    color: 'hsl(180, 20%, 70%)',
+    icon: '⚪',
+    benefits: ['All Gold benefits', 'Voice coach', 'Pose correction'],
   },
   diamond: {
     name: 'Diamond',
-    minPoints: 5000,
+    minPoints: 4000,
     color: 'hsl(200, 80%, 65%)',
     icon: '💎',
-    benefits: ['All Gold benefits', 'Voice coach', 'Pose correction'],
-  },
-  diamond_plus: {
-    name: 'Diamond+',
-    minPoints: 15000,
-    color: 'hsl(280, 80%, 65%)',
-    icon: '💎✨',
-    benefits: ['All Diamond benefits', 'Personal coaching', 'Exclusive content'],
+    benefits: ['All Platinum benefits', 'Personal coaching', 'Exclusive content'],
   },
 };
 

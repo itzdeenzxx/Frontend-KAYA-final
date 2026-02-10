@@ -8,6 +8,7 @@ import { ChallengeCard } from "@/components/gamification/ChallengeCard";
 import { mockBadges } from "@/lib/mockData";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkoutHistory, useNutrition, useChallenges, useDailyStats } from "@/hooks/useFirestore";
+import { getCalculatedStreak } from "@/lib/firestore";
 import { useTheme } from "@/contexts/ThemeContext";
 
 // Tier configurations
@@ -68,8 +69,8 @@ export default function Dashboard() {
   }, [isInitialized, isAuthenticated, navigate]);
 
   const displayName = userProfile?.nickname || lineProfile?.displayName || "User";
-  const userTier = (userProfile?.tier || "silver") as keyof typeof tierConfig;
-  const streakDays = userProfile?.streakDays || 0;
+  const userTier = (userProfile?.tier || "bronze") as keyof typeof tierConfig;
+  const streakDays = getCalculatedStreak(userProfile?.streakDays || 0, userProfile?.lastActivityDate);
   const userPoints = userProfile?.points || 0;
   
   // Use daily stats from Firebase (today's data)
