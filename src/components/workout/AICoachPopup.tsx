@@ -28,6 +28,7 @@ interface AICoachPopupProps {
   isMuted?: boolean;
   onMuteToggle?: () => void;
   className?: string;
+  speaker?: string;  // VAJA speaker voice
 }
 
 // TTS State
@@ -35,12 +36,14 @@ interface TTSState {
   isSpeaking: boolean;
   queue: string[];
   currentAudio: HTMLAudioElement | null;
+  speaker: string;
 }
 
 const ttsState: TTSState = {
   isSpeaking: false,
   queue: [],
   currentAudio: null,
+  speaker: 'nana',
 };
 
 /**
@@ -95,14 +98,27 @@ async function processQueue(): Promise<void> {
   console.log(`🔊 Speaking: "${text}"`);
   
   try {
+    // Add timeout for fetch to prevent hanging
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 35000); // 35s total timeout
+    
     const response = await fetch('/api/aift/tts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         text: text,
-        speaker: 'nana'  // เสียงผู้หญิง ชัดเจน
-      })
+        speaker: ttsState.speaker
+      }),
+      signal: controller.signal,
     });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      console.warn(`TTS API error: ${response.status}, using fallback`);
+      await speakWithWebSpeech(text);
+      return;
+    }
     
     const result = await response.json();
     
@@ -114,8 +130,12 @@ async function processQueue(): Promise<void> {
       await speakWithWebSpeech(text);
     }
     
-  } catch (error) {
-    console.error('TTS Error:', error);
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      console.warn('TTS request timed out, using fallback');
+    } else {
+      console.error('TTS Error:', error);
+    }
     // Fallback to Web Speech API
     await speakWithWebSpeech(text);
   } finally {
@@ -150,7 +170,12 @@ function speakWithWebSpeech(text: string): Promise<void> {
 /**
  * Add text to TTS queue
  */
-function speakText(text: string): void {
+function speakText(text: string, speaker?: string): void {
+  // Update speaker if provided
+  if (speaker) {
+    ttsState.speaker = speaker;
+  }
+  
   // Don't add duplicates
   if (ttsState.queue.includes(text)) {
     return;
@@ -182,11 +207,17 @@ export function AICoachPopup({
   isMuted = false,
   onMuteToggle,
   className = '',
+  speaker = 'nana',
 }: AICoachPopupProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [displayedMessage, setDisplayedMessage] = useState<CoachMessage | null>(null);
   const lastMessageIdRef = useRef<string>('');
   const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Update speaker in TTS state
+  useEffect(() => {
+    ttsState.speaker = speaker;
+  }, [speaker]);
 
   // Handle new messages
   useEffect(() => {
@@ -200,7 +231,7 @@ export function AICoachPopup({
 
     // Speak the message if not muted
     if (!isMuted) {
-      speakText(currentMessage.text);
+      speakText(currentMessage.text, speaker);
     }
 
     // Clear previous timeout

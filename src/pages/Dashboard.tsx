@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Flame, Timer, Droplets, Activity, Play, ChevronRight, Trophy, Loader2, Target, Zap, Sparkles, TrendingUp, Calendar, Dumbbell, Crown, Star, Brain, Plus } from "lucide-react";
+import { Flame, Timer, Droplets, Activity, Play, ChevronRight, Trophy, Loader2, Target, Zap, Sparkles, TrendingUp, Calendar, Dumbbell, Crown, Star, Brain, Plus, Minus } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
@@ -10,6 +10,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useWorkoutHistory, useNutrition, useChallenges, useDailyStats } from "@/hooks/useFirestore";
 import { getCalculatedStreak } from "@/lib/firestore";
 import { useTheme } from "@/contexts/ThemeContext";
+import { hasSelectedCoach } from "@/lib/firestore";
+import { CoachSelectionPopup } from "@/components/coach";
 
 // Tier configurations
 const tierConfig = {
@@ -57,10 +59,33 @@ export default function Dashboard() {
   const { stats } = useWorkoutHistory();
   const { logs: nutritionLogs } = useNutrition();
   const { challenges } = useChallenges();
-  const { todayStats, cumulativeStats, addWater } = useDailyStats();
+  const { todayStats, cumulativeStats, addWater, removeWater } = useDailyStats();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
   const [isAddingWater, setIsAddingWater] = useState(false);
+  const [isRemovingWater, setIsRemovingWater] = useState(false);
+  const [showCoachPopup, setShowCoachPopup] = useState(false);
+  const [hasCheckedCoach, setHasCheckedCoach] = useState(false);
+  
+  // Check if user has selected a coach
+  useEffect(() => {
+    const checkCoachSelection = async () => {
+      if (!userProfile?.lineUserId || hasCheckedCoach) return;
+      
+      try {
+        const hasCoach = await hasSelectedCoach(userProfile.lineUserId);
+        if (!hasCoach) {
+          setShowCoachPopup(true);
+        }
+        setHasCheckedCoach(true);
+      } catch (error) {
+        console.error('Error checking coach selection:', error);
+        setHasCheckedCoach(true);
+      }
+    };
+    
+    checkCoachSelection();
+  }, [userProfile?.lineUserId, hasCheckedCoach]);
   
   useEffect(() => {
     if (isInitialized && !isAuthenticated) {
@@ -104,6 +129,18 @@ export default function Dashboard() {
       await addWater();
     } finally {
       setIsAddingWater(false);
+    }
+  };
+
+  // Handle removing water
+  const handleRemoveWater = async () => {
+    if (isRemovingWater || waterIntake <= 0) return;
+    
+    setIsRemovingWater(true);
+    try {
+      await removeWater();
+    } finally {
+      setIsRemovingWater(false);
     }
   };
 
@@ -218,20 +255,38 @@ export default function Dashboard() {
                   <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <Droplets className="w-6 h-6 text-white" />
                   </div>
-                  {waterIntake < waterGoal && (
-                    <button
-                      disabled={isAddingWater}
-                      className={cn(
-                        "w-8 h-8 rounded-full flex items-center justify-center transition-all",
-                        isDark 
-                          ? "bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-400" 
-                          : "bg-cyan-100 hover:bg-cyan-200 text-cyan-600",
-                        isAddingWater && "animate-pulse"
-                      )}
-                    >
-                      <Plus className="w-5 h-5" />
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {waterIntake > 0 && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleRemoveWater(); }}
+                        disabled={isRemovingWater}
+                        className={cn(
+                          "w-8 h-8 rounded-full flex items-center justify-center transition-all",
+                          isDark 
+                            ? "bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-400" 
+                            : "bg-cyan-100 hover:bg-cyan-200 text-cyan-600",
+                          isRemovingWater && "animate-pulse"
+                        )}
+                      >
+                        <Minus className="w-5 h-5" />
+                      </button>
+                    )}
+                    {waterIntake < waterGoal && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleAddWater(); }}
+                        disabled={isAddingWater}
+                        className={cn(
+                          "w-8 h-8 rounded-full flex items-center justify-center transition-all",
+                          isDark 
+                            ? "bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-400" 
+                            : "bg-cyan-100 hover:bg-cyan-200 text-cyan-600",
+                          isAddingWater && "animate-pulse"
+                        )}
+                      >
+                        <Plus className="w-5 h-5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <p className="text-3xl font-black mb-1">{waterIntake}/{waterGoal}</p>
                 <p className={cn("text-xs", isDark ? "text-gray-400" : "text-gray-500")}>
@@ -614,20 +669,38 @@ export default function Dashboard() {
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center">
                     <Droplets className="w-5 h-5 text-white" />
                   </div>
-                  {waterIntake < waterGoal && (
-                    <button
-                      disabled={isAddingWater}
-                      className={cn(
-                        "w-7 h-7 rounded-full flex items-center justify-center transition-all",
-                        isDark 
-                          ? "bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-400" 
-                          : "bg-cyan-100 hover:bg-cyan-200 text-cyan-600",
-                        isAddingWater && "animate-pulse"
-                      )}
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {waterIntake > 0 && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleRemoveWater(); }}
+                        disabled={isRemovingWater}
+                        className={cn(
+                          "w-7 h-7 rounded-full flex items-center justify-center transition-all",
+                          isDark 
+                            ? "bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-400" 
+                            : "bg-cyan-100 hover:bg-cyan-200 text-cyan-600",
+                          isRemovingWater && "animate-pulse"
+                        )}
+                      >
+                        <Minus className="w-4 h-4" />
+                      </button>
+                    )}
+                    {waterIntake < waterGoal && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleAddWater(); }}
+                        disabled={isAddingWater}
+                        className={cn(
+                          "w-7 h-7 rounded-full flex items-center justify-center transition-all",
+                          isDark 
+                            ? "bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-400" 
+                            : "bg-cyan-100 hover:bg-cyan-200 text-cyan-600",
+                          isAddingWater && "animate-pulse"
+                        )}
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <p className="text-2xl font-bold">{waterIntake}/{waterGoal}</p>
                 <p className={cn("text-xs", isDark ? "text-gray-400" : "text-gray-500")}>
@@ -786,5 +859,17 @@ export default function Dashboard() {
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
 
-  return isDesktop ? <DesktopLayout /> : <MobileLayout />;
+  return (
+    <>
+      {isDesktop ? <DesktopLayout /> : <MobileLayout />}
+      
+      {/* Coach Selection Popup for new users */}
+      <CoachSelectionPopup
+        open={showCoachPopup}
+        onClose={() => setShowCoachPopup(false)}
+        onCoachSelected={() => setShowCoachPopup(false)}
+        canSkip={true}
+      />
+    </>
+  );
 }

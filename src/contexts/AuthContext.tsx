@@ -19,6 +19,7 @@ import {
   initializeUserSettings,
   saveHealthData,
   updateUserProfile,
+  updateSelectedCoach,
   type FirestoreUserProfile,
   type FirestoreHealthData,
   type FirestoreUserSettings,
@@ -56,6 +57,7 @@ interface OnboardingData {
   age: number;
   gender: 'male' | 'female' | 'other';
   bmi: number;
+  selectedCoachId?: string;
 }
 
 const initialState: AuthState = {
@@ -265,10 +267,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         nickname: data.nickname,
       });
       
+      // Save selected coach if provided
+      if (data.selectedCoachId) {
+        await updateSelectedCoach(state.lineProfile.userId, data.selectedCoachId);
+      }
+      
       // Refresh data
-      const [healthData, userProfile] = await Promise.all([
+      const [healthData, userProfile, userSettings] = await Promise.all([
         getHealthData(state.lineProfile.userId),
         getUserProfile(state.lineProfile.userId),
+        getUserSettings(state.lineProfile.userId),
       ]);
       
       setState(prev => ({
@@ -276,6 +284,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         isNewUser: false,
         healthData,
         userProfile,
+        userSettings,
       }));
     } catch (error) {
       console.error('Failed to complete onboarding:', error);

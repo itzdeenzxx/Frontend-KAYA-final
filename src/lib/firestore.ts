@@ -133,6 +133,20 @@ export const incrementWaterIntake = async (userId: string): Promise<number> => {
   return newWater;
 };
 
+// Decrement water intake (min 0)
+export const decrementWaterIntake = async (userId: string): Promise<number> => {
+  const stats = await initializeDailyStats(userId);
+  const currentWater = stats.waterIntake || 0;
+  
+  if (currentWater <= 0) {
+    return currentWater; // Already at min
+  }
+  
+  const newWater = currentWater - 1;
+  await updateDailyStats(userId, { waterIntake: newWater });
+  return newWater;
+};
+
 // Add workout to daily stats
 export const addWorkoutToDailyStats = async (
   userId: string,
@@ -257,6 +271,7 @@ export interface FirestoreUserBadge {
 export interface FirestoreUserSettings {
   userId: string;
   language: 'th' | 'en';
+  selectedCoachId?: string;  // Personal coach selection
   notifications: {
     workoutReminders: boolean;
     mealReminders: boolean;
@@ -273,8 +288,72 @@ export interface FirestoreUserSettings {
     voiceCoach: boolean;
     restTimerDuration: number;
   };
+  tts: {
+    enabled: boolean;
+    speed: number;        // 0.5-2.0, default 1.0
+    speaker: string;      // VAJA speaker: nana, noina, farah, mewzy, farsai, prim, ped, poom, doikham, praw, wayu, namphueng, toon, sanooch, thanwa
+    nfeSteps: number;     // 16-64, default 32 (quality)
+    useVajax: boolean;    // true = VAJAX-TTS, false = fallback
+    referenceAudioUrl?: string;  // Custom reference audio URL
+    referenceText?: string;      // Text matching reference audio
+    // Custom voice cloning fields
+    customVoiceEnabled?: boolean;    // true = use VAJAX with custom ref audio
+    customVoiceRefUrl?: string;      // Firebase Storage URL for ref audio  (legacy single)
+    customVoiceRefText?: string;     // Reference text matching the audio   (legacy single)
+    customCoachName?: string;        // User-defined coach name
+  };
+  // Custom coach data (full custom coach with avatar, personality, multi-ref voices)
+  customCoach?: {
+    name: string;
+    avatarId: string;
+    gender: 'male' | 'female';
+    personality: string;
+    color: string;
+    voiceRefs: Array<{
+      id: string;
+      audioUrl: string;
+      refText: string;
+      createdAt: number;
+    }>;
+    createdAt: number;
+    updatedAt: number;
+  };
   updatedAt: Timestamp;
 }
+
+// VAJA TTS Speakers list
+export const VAJA_SPEAKERS = [
+  { id: 'nana', name: 'นาน่า', description: 'ผู้หญิง | พากย์การ์ตูน | Animation' },
+  { id: 'noina', name: 'น้อยหน่า', description: 'ผู้หญิง | สปอตโฆษณา | ระบบตอบรับ' },
+  { id: 'farah', name: 'ฟาร่า', description: 'ผู้หญิง | สารคดี | Presentation' },
+  { id: 'mewzy', name: 'มิวซี่', description: 'ผู้หญิง | สปอตโฆษณา' },
+  { id: 'farsai', name: 'ฟ้าใส', description: 'ผู้หญิง | พากย์การ์ตูน | Animation' },
+  { id: 'prim', name: 'พริม', description: 'ผู้หญิง | Announcer' },
+  { id: 'ped', name: 'เป็ด', description: 'ผู้หญิง | Announcer' },
+  { id: 'poom', name: 'ภูมิ', description: 'ผู้ชาย | สปอตโฆษณา | ระบบตอบรับ' },
+  { id: 'doikham', name: 'ดอยคำ', description: 'ผู้ชาย | ภาษาเหนือ' },
+  { id: 'praw', name: 'พราว', description: 'เด็กผู้หญิง' },
+  { id: 'wayu', name: 'วายุ', description: 'เด็กผู้ชาย' },
+  { id: 'namphueng', name: 'น้ำผึ้ง', description: 'ผู้หญิง | Anchor-style' },
+  { id: 'toon', name: 'ตูน', description: 'ผู้หญิง | Broadcast-style' },
+  { id: 'sanooch', name: 'สนุช', description: 'ผู้หญิง | Teacher-style' },
+  { id: 'thanwa', name: 'ธันวา', description: 'ผู้ชาย | Broadcast-style' },
+] as const;
+
+// Default TTS Settings
+export const DEFAULT_TTS_SETTINGS = {
+  enabled: true,
+  speed: 1.0,
+  speaker: 'nana',  // Default VAJA speaker (fallback)
+  nfeSteps: 32,
+  useVajax: false,
+  referenceAudioUrl: '',  
+  referenceText: '',
+  customVoiceEnabled: false,
+  customVoiceRefUrl: '',
+  customVoiceRefText: '',
+  customCoachName: '',
+};
 
 // ==================== USER OPERATIONS ====================
 
@@ -723,9 +802,149 @@ export const initializeUserSettings = async (userId: string): Promise<void> => {
       voiceCoach: true,
       restTimerDuration: 30,
     },
+    tts: {
+      enabled: true,
+      speed: 1.0,
+      speaker: 'nana',
+      nfeSteps: 32,
+      useVajax: true,
+      referenceAudioUrl: '',
+      referenceText: '',
+    },
   };
   
   await saveUserSettings(userId, defaultSettings);
+};
+
+// Update TTS settings only
+export const updateTTSSettings = async (
+  userId: string,
+  ttsSettings: Partial<FirestoreUserSettings['tts']>
+): Promise<void> => {
+  const settingsRef = doc(db, COLLECTIONS.SETTINGS, userId);
+  const existing = await getUserSettings(userId);
+  
+  const currentTTS = existing?.tts || DEFAULT_TTS_SETTINGS;
+  
+  await updateDoc(settingsRef, {
+    tts: {
+      ...currentTTS,
+      ...ttsSettings,
+    },
+    updatedAt: serverTimestamp(),
+  });
+};
+
+// Update selected coach
+export const updateSelectedCoach = async (
+  userId: string,
+  coachId: string
+): Promise<void> => {
+  const settingsRef = doc(db, COLLECTIONS.SETTINGS, userId);
+  const existing = await getUserSettings(userId);
+  
+  if (!existing) {
+    // Create settings with coach
+    await initializeUserSettings(userId);
+  }
+  
+  await updateDoc(settingsRef, {
+    selectedCoachId: coachId,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+// Get selected coach ID
+export const getSelectedCoachId = async (userId: string): Promise<string | null> => {
+  const settings = await getUserSettings(userId);
+  return settings?.selectedCoachId || null;
+};
+
+// Check if user has selected a coach
+export const hasSelectedCoach = async (userId: string): Promise<boolean> => {
+  const coachId = await getSelectedCoachId(userId);
+  return coachId !== null && coachId !== '';
+};
+
+// ==================== CUSTOM COACH OPERATIONS ====================
+
+import type { CustomCoach } from '@/lib/coachConfig';
+
+// Save or update custom coach
+export const saveCustomCoach = async (
+  userId: string,
+  customCoach: CustomCoach
+): Promise<void> => {
+  const settingsRef = doc(db, COLLECTIONS.SETTINGS, userId);
+  const existing = await getUserSettings(userId);
+  
+  if (!existing) {
+    await initializeUserSettings(userId);
+  }
+  
+  await updateDoc(settingsRef, {
+    customCoach: {
+      ...customCoach,
+      updatedAt: Date.now(),
+    },
+    // Also enable custom voice in TTS settings
+    'tts.customVoiceEnabled': customCoach.voiceRefs.length > 0,
+    'tts.customCoachName': customCoach.name,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+// Get custom coach data
+export const getCustomCoach = async (userId: string): Promise<CustomCoach | null> => {
+  const settings = await getUserSettings(userId);
+  return (settings as any)?.customCoach || null;
+};
+
+// Delete custom coach
+export const deleteCustomCoach = async (userId: string): Promise<void> => {
+  const settingsRef = doc(db, COLLECTIONS.SETTINGS, userId);
+  await updateDoc(settingsRef, {
+    customCoach: null,
+    selectedCoachId: 'coach-nana', // Reset to default
+    'tts.customVoiceEnabled': false,
+    'tts.customCoachName': '',
+    updatedAt: serverTimestamp(),
+  });
+};
+
+// Legacy: Update custom voice settings (kept for backward compat)
+export const updateCustomVoiceSettings = async (
+  userId: string,
+  customVoice: {
+    customVoiceEnabled: boolean;
+    customVoiceRefUrl?: string;
+    customVoiceRefText?: string;
+    customCoachName?: string;
+  }
+): Promise<void> => {
+  const settingsRef = doc(db, COLLECTIONS.SETTINGS, userId);
+  const existing = await getUserSettings(userId);
+  
+  const currentTTS = existing?.tts || DEFAULT_TTS_SETTINGS;
+  
+  await updateDoc(settingsRef, {
+    tts: {
+      ...currentTTS,
+      ...customVoice,
+    },
+    updatedAt: serverTimestamp(),
+  });
+};
+
+// Legacy: Get custom voice settings
+export const getCustomVoiceSettings = async (userId: string) => {
+  const settings = await getUserSettings(userId);
+  return {
+    customVoiceEnabled: settings?.tts?.customVoiceEnabled ?? false,
+    customVoiceRefUrl: settings?.tts?.customVoiceRefUrl ?? '',
+    customVoiceRefText: settings?.tts?.customVoiceRefText ?? '',
+    customCoachName: settings?.tts?.customCoachName ?? '',
+  };
 };
 
 // ==================== CHALLENGE OPERATIONS ====================

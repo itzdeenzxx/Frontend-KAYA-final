@@ -1,4 +1,7 @@
-export const config = { runtime: 'edge' };
+export const config = { 
+  runtime: 'edge',
+  maxDuration: 60, // Allow up to 60 seconds for TTS processing
+};
 
 declare const process: {
   env: Record<string, string | undefined>;
@@ -47,26 +50,45 @@ export default async function handler(req: Request): Promise<Response> {
   const speaker = body.speaker || 'nana';
   const vajaUrl = 'https://api.aiforthai.in.th/vaja';
 
-  // Add timeout with AbortController
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+  // Helper function to make request with timeout
+  async function makeRequestWithRetry(maxRetries = 3): Promise<Response> {
+    let lastError: any = null;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      const controller = new AbortController();
+      // Increase timeout significantly: 40s first, 50s retry, 55s final
+      const timeout = 40000 + (attempt * 10000);
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+      
+      try {
+        console.log(`TTS attempt ${attempt + 1}/${maxRetries} with ${timeout}ms timeout`);
+        const response = await fetch(vajaUrl, {
+          method: 'POST',
+          headers: {
+            'Apikey': apiKey as string,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ text, speaker }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        return response;
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        lastError = err;
+        if (err.name === 'AbortError' && attempt < maxRetries - 1) {
+          console.log(`TTS attempt ${attempt + 1} timed out, retrying...`);
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw lastError;
+  }
 
   try {
-    // Step 1: Request TTS synthesis
-    const synthRes = await fetch(vajaUrl, {
-      method: 'POST',
-      headers: {
-        'Apikey': apiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        text,
-        speaker,
-      }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
+    // Step 1: Request TTS synthesis with retry
+    const synthRes = await makeRequestWithRetry();
 
     if (!synthRes.ok) {
       const errText = await synthRes.text();
@@ -94,9 +116,9 @@ export default async function handler(req: Request): Promise<Response> {
       });
     }
 
-    // Step 2: Download audio file
+    // Step 2: Download audio file with longer timeout
     const controller2 = new AbortController();
-    const timeoutId2 = setTimeout(() => controller2.abort(), 10000);
+    const timeoutId2 = setTimeout(() => controller2.abort(), 20000);
 
     const audioRes = await fetch(audioUrl, {
       headers: {
@@ -138,7 +160,7 @@ export default async function handler(req: Request): Promise<Response> {
     });
 
   } catch (err: any) {
-    clearTimeout(timeoutId);
+    console.error('TTS error:', err);
     if (err.name === 'AbortError') {
       return new Response(JSON.stringify({ error: 'TTS request timeout' }), {
         status: 504,

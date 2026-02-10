@@ -23,6 +23,7 @@ import {
   initializeDailyStats,
   updateDailyStats,
   incrementWaterIntake,
+  decrementWaterIntake,
   getCumulativeStats,
   type FirestoreHealthData,
   type FirestoreWorkoutHistory,
@@ -548,6 +549,22 @@ export const useDailyStats = () => {
     }
   }, [lineProfile?.userId]);
 
+  const removeWater = useCallback(async () => {
+    if (!lineProfile?.userId) return null;
+    
+    try {
+      const newWater = await decrementWaterIntake(lineProfile.userId);
+      
+      // Update local state
+      setTodayStats(prev => prev ? { ...prev, waterIntake: newWater } : null);
+      
+      return newWater;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove water');
+      return null;
+    }
+  }, [lineProfile?.userId]);
+
   const updateStats = useCallback(async (
     updates: Partial<Pick<FirestoreDailyStats, 'caloriesBurned' | 'workoutTime' | 'totalWorkouts' | 'waterIntake'>>
   ) => {
@@ -575,6 +592,7 @@ export const useDailyStats = () => {
     todayStats,
     cumulativeStats,
     addWater,
+    removeWater,
     updateStats,
     refreshStats: fetchTodayStats,
     isLoading,

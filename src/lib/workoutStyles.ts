@@ -35,7 +35,7 @@ export interface WorkoutExercise {
   reps: number | null;
   icon: string;
   description?: string;
-  kayaExercise?: 'arm_raise' | 'torso_twist' | 'knee_raise' | 'squat_arm_raise' | 'squat_twist' | 'high_knee_raise'; // For AI-powered KAYA exercises
+  kayaExercise?: 'arm_raise' | 'torso_twist' | 'knee_raise' | 'squat_arm_raise' | 'squat_twist' | 'high_knee_raise' | 'jump_squat_arm_raise' | 'standing_twist' | 'running_in_place' | 'modified_burpee' | 'jump_twist' | 'sprint_knee_raises'; // For AI-powered KAYA exercises
 }
 
 // Workout styles data
@@ -104,6 +104,32 @@ export const workoutStyles: WorkoutStyle[] = [
     calories: '40-80 kcal',
     level: 'ปานกลาง',
     features: ['AI Coach', 'Visual Guide', 'TTS', 'Intermediate']
+  },
+  {
+    id: 'kaya-advanced',
+    name: 'KAYA ระดับสูง',
+    nameEn: 'KAYA Advanced',
+    description: 'กระโดดสควอต บิดลำตัวเร็ว วิ่งยกเข่า ฝึกพลังระเบิดและคาร์ดิโอ',
+    icon: React.createElement(Flame, { className: "w-8 h-8" }),
+    color: 'text-orange-500',
+    bgGradient: 'from-orange-500/20 to-red-500/20',
+    duration: '12-18 นาที',
+    calories: '120-200 kcal',
+    level: 'หนัก',
+    features: ['AI Coach', 'Jump Detection', 'Speed Analysis', 'Cardio']
+  },
+  {
+    id: 'kaya-expert',
+    name: 'KAYA ผู้เชี่ยวชาญ',
+    nameEn: 'KAYA Expert',
+    description: 'เบอร์พี กระโดดบิดลำตัว สปรินต์ยกเข่า ท้าทายขั้นสูงสุด!',
+    icon: React.createElement(Target, { className: "w-8 h-8" }),
+    color: 'text-rose-500',
+    bgGradient: 'from-rose-500/20 to-purple-500/20',
+    duration: '15-25 นาที',
+    calories: '180-300 kcal',
+    level: 'หนัก',
+    features: ['AI Coach', 'Multi-Phase', 'Air Movement', 'Sprint Mode']
   },
   {
     id: 'hiit',
@@ -234,6 +260,20 @@ export const workoutExercises: Record<string, WorkoutExercise[]> = {
     { name: 'Squat + Arm Raise', nameTh: 'สควอตพร้อมยกแขนเหนือศีรษะ', duration: null, reps: 10, icon: 'kaya-squat-arm', description: 'สควอตพร้อมยกแขนเหนือศีรษะ', kayaExercise: 'squat_arm_raise' },
     { name: 'Squat + Twist', nameTh: 'สควอตพร้อมบิดลำตัว', duration: null, reps: 10, icon: 'kaya-squat-twist', description: 'สควอตแล้วบิดลำตัว เพิ่มความท้าทาย', kayaExercise: 'squat_twist' },
     { name: 'High Knee Raise', nameTh: 'ยกเข่าสูงในท่ายืน', duration: null, reps: 20, icon: 'kaya-high-knee', description: 'ยกเข่าให้สูงกว่าระดับเอว เหมาะสำหรับคาร์ดิโอ', kayaExercise: 'high_knee_raise' },
+  ],
+
+  // Advanced KAYA set
+  'kaya-advanced': [
+    { name: 'Jump Squat with Arm Raise', nameTh: 'กระโดดสควอตพร้อมยกแขน', duration: null, reps: 15, icon: 'kaya-jump-squat', description: 'กระโดดพร้อมทำสควอตและยกแขน ฝึกพลังระเบิด', kayaExercise: 'jump_squat_arm_raise' },
+    { name: 'Standing Twist', nameTh: 'บิดลำตัวในท่ายืน', duration: null, reps: 20, icon: 'kaya-standing-twist', description: 'บิดลำตัวอย่างรวดเร็วและต่อเนื่อง', kayaExercise: 'standing_twist' },
+    { name: 'Running in Place', nameTh: 'วิ่งยกเข่าอยู่กับที่', duration: null, reps: 30, icon: 'kaya-running', description: 'วิ่งยกเข่าสูงอยู่กับที่ เหมาะสำหรับคาร์ดิโอ', kayaExercise: 'running_in_place' },
+  ],
+
+  // Expert KAYA set
+  'kaya-expert': [
+    { name: 'Modified Burpee', nameTh: 'เบอร์พีแบบไม่วิดพื้น', duration: null, reps: 12, icon: 'kaya-burpee', description: 'ลงนอน-ลุกขึ้น-กระโดด ท่าที่ซับซ้อนที่สุด', kayaExercise: 'modified_burpee' },
+    { name: 'Jump Twist', nameTh: 'กระโดดบิดลำตัวกลางอากาศ', duration: null, reps: 15, icon: 'kaya-jump-twist', description: 'กระโดดพร้อมบิดลำตัว ฝึกความคล่องแคล่ว', kayaExercise: 'jump_twist' },
+    { name: 'Sprint Knee Raises', nameTh: 'วิ่งสปรินต์ยกเข่า', duration: null, reps: 40, icon: 'kaya-sprint', description: 'วิ่งยกเข่าอย่างรวดเร็ว ท้าทายที่สุด', kayaExercise: 'sprint_knee_raises' },
   ],
   hiit: [
     { name: 'Jumping Jacks', nameTh: 'กระโดดตบ', duration: 30, reps: null, icon: 'run', description: 'กระโดดกางขา-แขน' },

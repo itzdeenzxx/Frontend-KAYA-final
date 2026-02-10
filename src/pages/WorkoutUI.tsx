@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Play, Pause, SkipForward, SkipBack, X, Volume2, MessageCircle, Dumbbell, Flame, PersonStanding, Heart, Brain, Sparkles, Target, Zap, Camera, CameraOff, Activity, Bone, EyeOff, Music, Wind, Waves, Footprints, ArrowUp, RotateCcw, ArrowUpFromLine, Mic, MicOff, Send, Loader2 } from "lucide-react";
+import { Play, Pause, SkipForward, SkipBack, X, Volume2, MessageCircle, Dumbbell, Flame, PersonStanding, Heart, Brain, Sparkles, Target, Zap, Camera, CameraOff, Activity, Bone, Eye, EyeOff, Music, Wind, Waves, Footprints, ArrowUp, RotateCcw, ArrowUpFromLine, Mic, MicOff, Send, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMediaPipePose } from "@/hooks/useMediaPipePose";
 import { SkeletonOverlay } from "@/components/shared/SkeletonOverlay";
@@ -13,6 +13,8 @@ import { AICoachPopup } from "@/components/workout/AICoachPopup";
 import { ExerciseType } from "@/lib/exerciseConfig";
 import { WorkoutLoader } from "@/components/shared/WorkoutLoader";
 import { useAuth } from "@/contexts/AuthContext";
+import { getUserSettings, DEFAULT_TTS_SETTINGS } from "@/lib/firestore";
+import { getCoachById, Coach } from "@/lib/coachConfig";
 
 // Rep count messages - only speak at 1, 5, 9, 10
 const REP_MESSAGES: Record<number, string> = {
@@ -40,6 +42,14 @@ const exerciseIcons: Record<string, React.ReactNode> = {
   'kaya-squat-arm': <Dumbbell className="w-16 h-16" />,
   'kaya-squat-twist': <RotateCcw className="w-16 h-16" />,
   'kaya-high-knee': <Zap className="w-16 h-16" />,
+  // Advanced KAYA icons
+  'kaya-jump-squat': <Zap className="w-16 h-16" />,
+  'kaya-standing-twist': <RotateCcw className="w-16 h-16" />,
+  'kaya-running': <PersonStanding className="w-16 h-16" />,
+  // Expert KAYA icons
+  'kaya-burpee': <Flame className="w-16 h-16" />,
+  'kaya-jump-twist': <RotateCcw className="w-16 h-16" />,
+  'kaya-sprint': <Zap className="w-16 h-16" />,
 };
 
 // Larger icons for big screen
@@ -57,6 +67,14 @@ const exerciseIconsLarge: Record<string, React.ReactNode> = {
   'kaya-squat-arm': <Dumbbell className="w-20 h-20" />,
   'kaya-squat-twist': <RotateCcw className="w-20 h-20" />,
   'kaya-high-knee': <Zap className="w-20 h-20" />,
+  // Advanced KAYA icons
+  'kaya-jump-squat': <Zap className="w-20 h-20" />,
+  'kaya-standing-twist': <RotateCcw className="w-20 h-20" />,
+  'kaya-running': <PersonStanding className="w-20 h-20" />,
+  // Expert KAYA icons
+  'kaya-burpee': <Flame className="w-20 h-20" />,
+  'kaya-jump-twist': <RotateCcw className="w-20 h-20" />,
+  'kaya-sprint': <Zap className="w-20 h-20" />,
 };
 
 // Style icons for header
@@ -66,6 +84,8 @@ const styleIcons: Record<string, React.ReactNode> = {
   stretch: <PersonStanding className="w-5 h-5" />,
   'kaya-stretch': <Target className="w-5 h-5" />,
   'kaya-intermediate': <Target className="w-5 h-5" />,
+  'kaya-advanced': <Zap className="w-5 h-5" />,
+  'kaya-expert': <Flame className="w-5 h-5" />,
   hiit: <Flame className="w-5 h-5" />,
   strength: <Dumbbell className="w-5 h-5" />,
   cardio: <Heart className="w-5 h-5" />,
@@ -94,8 +114,8 @@ export default function WorkoutUI() {
   const selectedStyle = getWorkoutStyle(selectedStyleId);
   const exercises = getExercisesForStyle(selectedStyleId);
   
-  // Check if this is a KAYA workout (treat intermediate the same as kaya-stretch)
-  const isKayaWorkout = selectedStyleId === 'kaya-stretch' || selectedStyleId === 'kaya-intermediate';
+  // Check if this is a KAYA workout (all KAYA levels)
+  const isKayaWorkout = selectedStyleId === 'kaya-stretch' || selectedStyleId === 'kaya-intermediate' || selectedStyleId === 'kaya-advanced' || selectedStyleId === 'kaya-expert';
   
   const [currentExercise, setCurrentExercise] = useState(0);
   const [timeLeft, setTimeLeft] = useState(exercises[0]?.duration || 0);
@@ -170,16 +190,63 @@ export default function WorkoutUI() {
   const [showOpticalFlow, setShowOpticalFlow] = useState(false);
   const [videoDimensions, setVideoDimensions] = useState({ width: 1920, height: 1080 });
   
+  // MediaPipe toggle - enabled by default for KAYA workouts
+  const [mediaPipeEnabled, setMediaPipeEnabled] = useState(true);
+  
   // Music player state
   const [showMusicPlayer, setShowMusicPlayer] = useState(false);
   
   // Visual guide state for KAYA - hidden by default for clean UI
   const [showVisualGuide, setShowVisualGuide] = useState(false);
   
-  // MediaPipe pose detection - always enabled for KAYA workouts
+  // TTS speaker setting
+  const [ttsSpeaker, setTtsSpeaker] = useState(DEFAULT_TTS_SETTINGS.speaker);
+  const [ttsCoach, setTtsCoach] = useState<Coach | null>(null);
+  const [ttsCoachId, setTtsCoachId] = useState<string>('coach-nana');
+  const [customCoachForLLM, setCustomCoachForLLM] = useState<{ name: string; personality: string; gender: 'male' | 'female' } | null>(null);
+  
+  // Load TTS speaker setting from user preferences
+  useEffect(() => {
+    const loadTTSSettings = async () => {
+      if (userProfile?.lineUserId) {
+        try {
+          const settings = await getUserSettings(userProfile.lineUserId);
+          if (settings?.tts?.speaker) {
+            setTtsSpeaker(settings.tts.speaker);
+          }
+          if (settings?.selectedCoachId) {
+            setTtsCoachId(settings.selectedCoachId);
+            
+            if (settings.selectedCoachId === 'coach-custom') {
+              // Load custom coach data
+              const { getCustomCoach, } = await import('@/lib/firestore');
+              const { buildCoachFromCustom } = await import('@/lib/coachConfig');
+              const custom = await getCustomCoach(userProfile.lineUserId);
+              if (custom) {
+                setTtsCoach(buildCoachFromCustom(custom));
+                setCustomCoachForLLM({
+                  name: custom.name,
+                  personality: custom.personality,
+                  gender: custom.gender,
+                });
+              }
+            } else {
+              const coach = getCoachById(settings.selectedCoachId);
+              if (coach) setTtsCoach(coach);
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to load TTS settings:', err);
+        }
+      }
+    };
+    loadTTSSettings();
+  }, [userProfile?.lineUserId]);
+  
+  // MediaPipe pose detection - can be toggled on/off
   const { landmarks, opticalFlowPoints, getFlowHistory, isLoading: mediaPipeLoading, error: mediaPipeError } = useMediaPipePose(
     videoRef,
-    { enabled: cameraReady && cameraEnabled && isKayaWorkout }
+    { enabled: cameraReady && cameraEnabled && isKayaWorkout && mediaPipeEnabled }
   );
   
   // Current KAYA exercise type
@@ -187,9 +254,9 @@ export default function WorkoutUI() {
   
   // KAYA exercise analysis hook
   const kayaAnalysis = useExerciseAnalysis(
-    isKayaWorkout ? landmarks : [],
+    isKayaWorkout && mediaPipeEnabled ? landmarks : [],
     {
-      enabled: isKayaWorkout && !!currentKayaExercise && !showLoader,
+      enabled: isKayaWorkout && mediaPipeEnabled && !!currentKayaExercise && !showLoader,
       difficulty: 'beginner',
       exerciseType: currentKayaExercise,
     }
@@ -470,14 +537,41 @@ export default function WorkoutUI() {
     try {
       isTtsSpeakingRef.current = true;
       
-      const response = await fetch('/api/aift/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, speaker: 'nana' }),
-      });
+      // Priority 1: Gemini TTS with coach voice + instruction
+      let response: Response | null = null;
+      try {
+        const geminiController = new AbortController();
+        const geminiTimeout = setTimeout(() => geminiController.abort(), 30000);
+        response = await fetch('/api/gemini/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text,
+            voiceName: ttsCoach?.geminiVoice || ttsSpeaker || 'Kore',
+            instruction: ttsCoach?.ttsInstruction || '',
+          }),
+          signal: geminiController.signal,
+        });
+        clearTimeout(geminiTimeout);
+        if (!response?.ok) response = null;
+      } catch (e: any) {
+        console.warn('Gemini TTS failed:', e.name === 'AbortError' ? 'timeout' : e.message);
+        response = null;
+      }
+
+      // Priority 2: VAJA TTS fallback
+      if (!response) {
+        try {
+          response = await fetch('/api/aift/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, speaker: ttsSpeaker }),
+          });
+        } catch { response = null; }
+      }
       
-      if (!response.ok) {
-        console.error('TTS API error:', response.status);
+      if (!response?.ok) {
+        console.error('TTS API error');
         isTtsSpeakingRef.current = false;
         return;
       }
@@ -850,6 +944,8 @@ export default function WorkoutUI() {
             message: transcript,
             imageBase64: screenshot,
             userContext,
+            coachId: ttsCoachId,
+            customCoach: customCoachForLLM || undefined,
           }),
         });
         
@@ -885,11 +981,35 @@ export default function WorkoutUI() {
     console.log('TTS: Calling API with text:', instruction);
     
     try {
-      const response = await fetch('/api/aift/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: instruction, speaker: 'nana' }),
-      });
+      // Use Gemini TTS with coach voice
+      let response: Response | null = null;
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        response = await fetch('/api/gemini/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: instruction,
+            voiceName: ttsCoach?.geminiVoice || ttsSpeaker || 'Kore',
+            instruction: ttsCoach?.ttsInstruction || '',
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        if (!response?.ok) response = null;
+      } catch {
+        response = null;
+      }
+
+      // Fallback to VAJA
+      if (!response) {
+        response = await fetch('/api/aift/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: instruction, speaker: ttsSpeaker }),
+        });
+      }
       
       console.log('TTS: Response status:', response.status);
       
@@ -953,6 +1073,26 @@ export default function WorkoutUI() {
     }
   }, []);
 
+  // Fallback: Use Web Speech API when TTS API fails
+  const speakWithWebSpeechFallback = useCallback((text: string): Promise<void> => {
+    return new Promise((resolve) => {
+      if (typeof window === 'undefined' || !window.speechSynthesis) {
+        resolve();
+        return;
+      }
+      
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'th-TH';
+      utterance.rate = 1.0;
+      
+      utterance.onend = () => resolve();
+      utterance.onerror = () => resolve();
+      
+      window.speechSynthesis.speak(utterance);
+    });
+  }, []);
+
   // Speak coach introduction
   const speakCoachIntroduction = useCallback(async () => {
     const userName = userProfile?.nickname || userProfile?.displayName || 'คุณ';
@@ -960,21 +1100,46 @@ export default function WorkoutUI() {
     
     console.log('TTS Coach Intro: Calling API with text:', introText);
     
+    // Helper function to speak first exercise after intro
+    const speakFirstExercise = () => {
+      const exercise = exercises[0];
+      if (exercise) {
+        setTimeout(() => {
+          speakExerciseInstruction(exercise);
+        }, 500);
+      }
+    };
+    
     try {
-      const response = await fetch('/api/aift/tts', {
+      // Add timeout for fetch to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 35000); // 35s timeout
+      
+      const response = await fetch('/api/gemini/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: introText, speaker: 'nana' }),
+        body: JSON.stringify({
+          text: introText,
+          voiceName: ttsCoach?.geminiVoice || ttsSpeaker || 'Kore',
+          instruction: ttsCoach?.ttsInstruction || '',
+        }),
+        signal: controller.signal,
       });
       
+      clearTimeout(timeoutId);
+      
       if (!response.ok) {
-        console.error('TTS Coach Intro API error:', response.status);
+        console.warn('TTS Coach Intro API error:', response.status, '- using fallback');
+        await speakWithWebSpeechFallback(introText);
+        speakFirstExercise();
         return;
       }
       
       const result = await response.json();
       if (!result.audio_base64) {
-        console.error('TTS Coach Intro: No audio_base64');
+        console.warn('TTS Coach Intro: No audio_base64 - using fallback');
+        await speakWithWebSpeechFallback(introText);
+        speakFirstExercise();
         return;
       }
       
@@ -1002,19 +1167,19 @@ export default function WorkoutUI() {
         console.log('TTS Coach Intro: Ended');
         URL.revokeObjectURL(audioUrl);
         ttsAudioRef.current = null;
-        
-        // After intro ends, speak first exercise instruction
-        const exercise = exercises[0];
-        if (exercise) {
-          setTimeout(() => {
-            speakExerciseInstruction(exercise);
-          }, 500);
-        }
+        speakFirstExercise();
       };
-    } catch (error) {
-      console.error('TTS Coach Intro error:', error);
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.warn('TTS Coach Intro timeout - using fallback');
+      } else {
+        console.error('TTS Coach Intro error:', error);
+      }
+      // Use Web Speech API as fallback
+      await speakWithWebSpeechFallback(introText);
+      speakFirstExercise();
     }
-  }, [userProfile, exercises, speakExerciseInstruction]);
+  }, [userProfile, exercises, speakExerciseInstruction, speakWithWebSpeechFallback]);
 
   // Speak coach introduction when workout starts
   useEffect(() => {
@@ -1453,7 +1618,20 @@ export default function WorkoutUI() {
             <div className="text-white text-lg font-mono bg-black/30 backdrop-blur-sm rounded-full px-3 py-1">
               {formatTime(totalTime)}
             </div>
-            {/* Settings Menu */}
+            {/* Skeleton Toggle - Desktop */}
+            {isKayaWorkout && (
+              <button
+                onClick={() => setShowSkeleton(!showSkeleton)}
+                className={cn(
+                  "w-10 h-10 rounded-full backdrop-blur-sm flex items-center justify-center transition-colors",
+                  showSkeleton ? "bg-green-500 text-white" : "bg-black/30 text-white/70 hover:bg-black/50"
+                )}
+                title={showSkeleton ? "ซ่อนโครงกระดูก" : "แสดงโครงกระดูก"}
+              >
+                {showSkeleton ? <Bone className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+              </button>
+            )}
+            {/* Music Toggle */}
             <button
               onClick={() => setShowMusicPlayer(!showMusicPlayer)}
               className={cn(
@@ -1689,16 +1867,18 @@ export default function WorkoutUI() {
                 <Music className="w-5 h-5" />
               </button>
               {/* Skeleton Toggle for Mobile */}
-              <button 
-                onClick={() => setShowSkeleton(!showSkeleton)}
-                className={cn(
-                  "w-10 h-10 rounded-xl backdrop-blur-sm flex items-center justify-center transition-colors",
-                  showSkeleton ? "bg-primary/80 text-white" : "bg-white/10 text-white/60"
-                )}
-                title={showSkeleton ? "ซ่อนโครงกระดูก" : "แสดงโครงกระดูก"}
-              >
-                {showSkeleton ? <Bone className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
-              </button>
+              {isKayaWorkout && (
+                <button 
+                  onClick={() => setShowSkeleton(!showSkeleton)}
+                  className={cn(
+                    "w-10 h-10 rounded-xl backdrop-blur-sm flex items-center justify-center transition-colors",
+                    showSkeleton ? "bg-green-500/80 text-white" : "bg-white/10 text-white/60"
+                  )}
+                  title={showSkeleton ? "ซ่อนโครงกระดูก" : "แสดงโครงกระดูก"}
+                >
+                  {showSkeleton ? <Bone className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
+                </button>
+              )}
               {/* Screenshot Button for Mobile */}
               <button
                 onClick={captureScreenshot}
