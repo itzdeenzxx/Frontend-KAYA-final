@@ -20,6 +20,7 @@ import {
   Footprints,
   Brain,
   Target,
+  Zap,
   ArrowUp,
   RotateCcw,
   ArrowUpFromLine,
@@ -54,13 +55,22 @@ const exerciseIcons: Record<string, React.ReactNode> = {
   weight: <Dumbbell className="w-20 h-20" />,
   fire: <Flame className="w-20 h-20" />,
   yoga: <Heart className="w-20 h-20" />,
+  // Beginner KAYA icons
   'kaya-arm': <ArrowUp className="w-20 h-20" />,
   'kaya-torso': <RotateCcw className="w-20 h-20" />,
   'kaya-knee': <ArrowUpFromLine className="w-20 h-20" />,
   // Intermediate KAYA icons
   'kaya-squat-arm': <Dumbbell className="w-20 h-20" />,
-  'kaya-squat-twist': <RotateCcw className="w-20 h-20" />,
-  'kaya-high-knee': <Flame className="w-20 h-20" />,
+  'kaya-pushup': <Dumbbell className="w-20 h-20" />,
+  'kaya-lunge': <PersonStanding className="w-20 h-20" />,
+  // Advanced KAYA icons
+  'kaya-jump-squat': <Zap className="w-20 h-20" />,
+  'kaya-plank': <Activity className="w-20 h-20" />,
+  'kaya-mountain': <Flame className="w-20 h-20" />,
+  // Expert KAYA icons
+  'kaya-pistol': <Target className="w-20 h-20" />,
+  'kaya-pushup-tap': <Dumbbell className="w-20 h-20" />,
+  'kaya-burpee': <Flame className="w-20 h-20" />,
 };
 
 // Style icons for header
@@ -70,6 +80,8 @@ const styleIcons: Record<string, React.ReactNode> = {
   stretch: <PersonStanding className="w-6 h-6" />,
   'kaya-stretch': <Target className="w-6 h-6" />,
   'kaya-intermediate': <Target className="w-6 h-6" />,
+  'kaya-advanced': <Zap className="w-6 h-6" />,
+  'kaya-expert': <Flame className="w-6 h-6" />,
   hiit: <Flame className="w-6 h-6" />,
   strength: <Dumbbell className="w-6 h-6" />,
   cardio: <Heart className="w-6 h-6" />,
