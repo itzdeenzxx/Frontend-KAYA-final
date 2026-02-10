@@ -161,6 +161,7 @@ export interface Challenge {
   reward: number; // points
   endDate: Date;
   type: 'daily' | 'weekly' | 'monthly';
+  rewardClaimed?: boolean; // Track if reward has been claimed
 }
 
 export interface LeaderboardEntry {

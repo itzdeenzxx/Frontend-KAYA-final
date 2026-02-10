@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import type { WorkoutResults } from '@/types/workout';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { addWorkoutToDailyStats, incrementChallengeProgress, updateUserPoints, updateUserStreak } from '@/lib/firestore';
 
 // Calculate calories based on workout intensity and duration
@@ -428,7 +429,7 @@ export default function WorkoutComplete() {
 
         {/* Exercise Details */}
         <div className="max-w-md mx-auto mb-8">
-          <h3 className="font-semibold mb-4 flex items-center gap-2">
+          <h3 className="font-semibold mb-4 flex items-center gap-2 text-foreground">
             <Activity className="w-5 h-5 text-primary" />
             รายละเอียดท่าออกกำลังกาย
           </h3>
@@ -443,7 +444,7 @@ export default function WorkoutComplete() {
                     <span className="text-lg font-bold text-primary">{idx + 1}</span>
                   </div>
                   <div>
-                    <p className="font-medium">{exercise.nameTh}</p>
+                    <p className="font-medium text-foreground">{exercise.nameTh}</p>
                     <p className="text-sm text-muted-foreground">
                       {exercise.reps}/{exercise.targetReps} ครั้ง
                     </p>

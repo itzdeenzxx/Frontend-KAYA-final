@@ -58,7 +58,7 @@ export default function Dashboard() {
   const { lineProfile, userProfile, healthData, isAuthenticated, isLoading, isInitialized } = useAuth();
   const { stats } = useWorkoutHistory();
   const { logs: nutritionLogs } = useNutrition();
-  const { challenges } = useChallenges();
+  const { challenges, claimReward, refreshChallenges } = useChallenges();
   const { todayStats, cumulativeStats, addWater, removeWater } = useDailyStats();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
@@ -127,6 +127,8 @@ export default function Dashboard() {
     setIsAddingWater(true);
     try {
       await addWater();
+      // Refresh challenges to update water challenge progress
+      await refreshChallenges();
     } finally {
       setIsAddingWater(false);
     }
@@ -139,6 +141,8 @@ export default function Dashboard() {
     setIsRemovingWater(true);
     try {
       await removeWater();
+      // Refresh challenges to update water challenge progress
+      await refreshChallenges();
     } finally {
       setIsRemovingWater(false);
     }
@@ -364,7 +368,7 @@ export default function Dashboard() {
                         "p-4 rounded-2xl border transition-all hover:scale-[1.02] cursor-pointer",
                         isDark ? "bg-white/5 border-white/10 hover:border-primary/50" : "bg-gray-50 border-gray-200 hover:border-primary/50"
                       )}>
-                        <ChallengeCard challenge={challenge} />
+                        <ChallengeCard challenge={challenge} onClaimReward={claimReward} />
                       </div>
                     ))
                   ) : (
@@ -787,7 +791,7 @@ export default function Dashboard() {
                       ? "bg-white/5 border-white/10 hover:border-primary/30" 
                       : "bg-white border-gray-200 shadow-sm hover:border-primary/30"
                   )}>
-                    <ChallengeCard challenge={challenge} />
+                    <ChallengeCard challenge={challenge} onClaimReward={claimReward} />
                   </div>
                 ))
               ) : (

@@ -19,6 +19,8 @@ import {
   updateChallengeProgress,
   initializeUserChallenges,
   incrementChallengeProgress,
+  syncWaterChallengeProgress,
+  claimChallengeReward,
   getDailyStats,
   initializeDailyStats,
   updateDailyStats,
@@ -407,7 +409,7 @@ export const useUserProfile = () => {
 
 // Hook for challenges
 export const useChallenges = () => {
-  const { lineProfile } = useAuth();
+  const { lineProfile, refreshUser } = useAuth();
   const [challenges, setChallenges] = useState<Challenge[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -475,6 +477,29 @@ export const useChallenges = () => {
     }
   }, [lineProfile?.userId, fetchChallenges]);
 
+  // Claim reward for completed challenge
+  const claimReward = useCallback(async (challengeId: string) => {
+    if (!lineProfile?.userId) return { success: false, points: 0, message: 'Not logged in' };
+    
+    try {
+      const result = await claimChallengeReward(lineProfile.userId, challengeId);
+      
+      if (result.success) {
+        // Refresh challenges to update UI
+        await fetchChallenges();
+        // Refresh user profile to update points
+        if (refreshUser) {
+          await refreshUser();
+        }
+      }
+      
+      return result;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to claim reward');
+      return { success: false, points: 0, message: 'Failed to claim reward' };
+    }
+  }, [lineProfile?.userId, fetchChallenges, refreshUser]);
+
   useEffect(() => {
     if (lineProfile?.userId) {
       initializeChallenges();
@@ -485,6 +510,7 @@ export const useChallenges = () => {
     challenges,
     updateProgress,
     incrementProgress,
+    claimReward,
     refreshChallenges: fetchChallenges,
     isLoading,
     error,
@@ -539,8 +565,8 @@ export const useDailyStats = () => {
       // Update local state
       setTodayStats(prev => prev ? { ...prev, waterIntake: newWater } : null);
       
-      // Also increment water challenge
-      await incrementChallengeProgress(lineProfile.userId, 'water', 1);
+      // Sync water challenge progress with actual water intake
+      await syncWaterChallengeProgress(lineProfile.userId, newWater);
       
       return newWater;
     } catch (err) {
@@ -557,6 +583,9 @@ export const useDailyStats = () => {
       
       // Update local state
       setTodayStats(prev => prev ? { ...prev, waterIntake: newWater } : null);
+      
+      // Sync water challenge progress with actual water intake
+      await syncWaterChallengeProgress(lineProfile.userId, newWater);
       
       return newWater;
     } catch (err) {
