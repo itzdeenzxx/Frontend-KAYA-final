@@ -14,6 +14,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { getCalculatedStreak } from "@/lib/firestore";
 
 const tierConfig = {
   bronze: { name: 'BRONZE', color: 'from-amber-700 to-amber-900', icon: Star },
@@ -39,7 +40,7 @@ export function DesktopSidebar() {
   
   const displayName = userProfile?.nickname || lineProfile?.displayName || "User";
   const userTier = (userProfile?.tier || "silver") as keyof typeof tierConfig;
-  const streakDays = userProfile?.streakDays || 0;
+  const streakDays = getCalculatedStreak(userProfile?.streakDays || 0, userProfile?.lastActivityDate);
   const userPoints = userProfile?.points || 0;
   const tier = tierConfig[userTier] || tierConfig.silver;
   const TierIcon = tier.icon;

@@ -598,7 +598,13 @@ export default function Profile() {
                 return (
                   <button
                     key={item.id}
-                    onClick={() => setActiveSection(item.id as typeof activeSection)}
+                    onClick={() => {
+                      if (item.id === 'settings') {
+                        navigate('/settings');
+                      } else {
+                        setActiveSection(item.id as typeof activeSection);
+                      }
+                    }}
                     className={cn(
                       "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-left text-base",
                       isActive 

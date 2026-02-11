@@ -55,7 +55,7 @@ const tierConfig = {
 export default function Dashboard() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const { lineProfile, userProfile, healthData, isAuthenticated, isLoading, isInitialized } = useAuth();
+  const { lineProfile, userProfile, healthData, isAuthenticated, isLoading, isInitialized, refreshUser } = useAuth();
   const { stats } = useWorkoutHistory();
   const { logs: nutritionLogs } = useNutrition();
   const { challenges, claimReward, refreshChallenges } = useChallenges();
@@ -66,6 +66,13 @@ export default function Dashboard() {
   const [isRemovingWater, setIsRemovingWater] = useState(false);
   const [showCoachPopup, setShowCoachPopup] = useState(false);
   const [hasCheckedCoach, setHasCheckedCoach] = useState(false);
+  
+  // Refresh user profile on Dashboard mount to get latest streak/points
+  useEffect(() => {
+    if (isAuthenticated && refreshUser) {
+      refreshUser();
+    }
+  }, [isAuthenticated, refreshUser]);
   
   // Check if user has selected a coach
   useEffect(() => {
