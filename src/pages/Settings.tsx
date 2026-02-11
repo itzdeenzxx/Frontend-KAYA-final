@@ -59,7 +59,7 @@ export default function Settings() {
     )}>
       {/* Animated Background for Dark Theme */}
       {isDark && (
-        <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="fixed inset-0 lg:left-72 overflow-hidden pointer-events-none z-0">
           <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gray-900 via-black to-black" />
           <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary/10 rounded-full blur-[100px] animate-pulse" />
         </div>

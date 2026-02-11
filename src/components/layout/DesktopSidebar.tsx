@@ -46,11 +46,14 @@ export function DesktopSidebar() {
 
   return (
     <aside className={cn(
-      "w-72 flex-shrink-0 h-screen border-r flex flex-col fixed top-0 left-0 overflow-y-auto",
-      isDark ? "bg-[#12121a] border-white/10" : "bg-white border-gray-200"
+      "w-72 flex-shrink-0 h-screen border-r flex flex-col fixed top-0 left-0 overflow-y-auto z-50",
+      isDark ? "bg-[#18181f] border-white/20" : "bg-white border-gray-200"
     )}>
       {/* Logo & Brand */}
-      <div className="p-6 border-b border-white/10">
+      <div className={cn(
+        "p-6 border-b",
+        isDark ? "border-white/10" : "border-gray-200"
+      )}>
         <Link to="/dashboard" className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-orange-500 flex items-center justify-center">
             <Flame className="w-7 h-7 text-white" />

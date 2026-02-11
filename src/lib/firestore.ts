@@ -382,7 +382,7 @@ export const createOrUpdateUserFromLine = async (
       displayName,
       pictureUrl,
       nickname: displayName,
-      tier: 'silver',
+      tier: 'bronze',
       points: 0,
       streakDays: 0,
       createdAt: serverTimestamp() as Timestamp,
@@ -483,6 +483,24 @@ const getYesterdayDateString = (): string => {
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   return `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+};
+
+// Calculate real-time streak (returns 0 if no activity within last 24 hours)
+export const getCalculatedStreak = (streakDays: number, lastActivityDate?: string): number => {
+  if (!lastActivityDate || streakDays === 0) {
+    return 0;
+  }
+  
+  const today = getTodayDateString();
+  const yesterday = getYesterdayDateString();
+  
+  // If last activity was today or yesterday, streak is valid
+  if (lastActivityDate === today || lastActivityDate === yesterday) {
+    return streakDays;
+  }
+  
+  // More than 24 hours since last activity, streak is broken
+  return 0;
 };
 
 // Add game stats (for games like Mouse Running, Whack-a-Mole, Fishing)
@@ -1067,6 +1085,7 @@ export const getActiveChallenges = async (userId: string): Promise<Challenge[]> 
       reward: data.reward,
       endDate: data.endDate?.toDate() || new Date(),
       type: data.type,
+      rewardClaimed: data.rewardClaimed || false,
     };
   }) as Challenge[];
 };
@@ -1110,4 +1129,60 @@ export const incrementChallengeProgress = async (
       await updateChallengeProgress(challenge.id, newProgress);
     }
   }
+};
+
+// Sync water challenge progress with actual water intake
+export const syncWaterChallengeProgress = async (
+  userId: string,
+  waterIntake: number
+): Promise<void> => {
+  const challenges = await getActiveChallenges(userId);
+  
+  for (const challenge of challenges) {
+    // Match water challenges
+    if (challenge.name.includes('Water') || challenge.nameTh.includes('น้ำ')) {
+      // Set progress to actual water intake (not increment)
+      const newProgress = Math.min(waterIntake, challenge.target);
+      await updateChallengeProgress(challenge.id, newProgress);
+    }
+  }
+};
+
+// Claim challenge reward and add points to user
+export const claimChallengeReward = async (
+  userId: string,
+  challengeId: string
+): Promise<{ success: boolean; points: number; message: string }> => {
+  const challengeRef = doc(db, COLLECTIONS.CHALLENGES, challengeId);
+  const challengeSnap = await getDoc(challengeRef);
+  
+  if (!challengeSnap.exists()) {
+    return { success: false, points: 0, message: 'Challenge not found' };
+  }
+  
+  const challengeData = challengeSnap.data();
+  
+  // Check if challenge is complete
+  if ((challengeData.current || 0) < challengeData.target) {
+    return { success: false, points: 0, message: 'Challenge not completed yet' };
+  }
+  
+  // Check if reward already claimed
+  if (challengeData.rewardClaimed) {
+    return { success: false, points: 0, message: 'Reward already claimed' };
+  }
+  
+  // Mark reward as claimed
+  await updateDoc(challengeRef, {
+    rewardClaimed: true,
+  });
+  
+  // Add points to user
+  await updateUserPoints(userId, challengeData.reward);
+  
+  return { 
+    success: true, 
+    points: challengeData.reward, 
+    message: `Claimed ${challengeData.reward} points!` 
+  };
 };

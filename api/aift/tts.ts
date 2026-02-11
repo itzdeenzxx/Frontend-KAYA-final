@@ -1,6 +1,6 @@
 export const config = { 
   runtime: 'edge',
-  maxDuration: 60, // Allow up to 60 seconds for TTS processing
+  maxDuration: 55, // Keep buffer under Vercel limit
 };
 
 declare const process: {
@@ -9,7 +9,7 @@ declare const process: {
 
 type TTSRequest = {
   text: string;
-  speaker?: string;  // "nana", "nara", etc.
+  speaker?: string;
 };
 
 export default async function handler(req: Request): Promise<Response> {
@@ -38,61 +38,42 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
-  const text = (body.text || '').trim();
+  // VAJA has a 400-character limit
+  let text = (body.text || '').trim();
   if (!text) {
     return new Response(JSON.stringify({ error: 'Missing text' }), {
       status: 400,
       headers: { 'content-type': 'application/json' },
     });
   }
+  if (text.length > 400) {
+    text = text.substring(0, 397) + '...';
+  }
 
-  // Use VAJA API (same as KAYA) - speaker name like "nana"
   const speaker = body.speaker || 'nana';
   const vajaUrl = 'https://api.aiforthai.in.th/vaja';
 
-  // Helper function to make request with timeout
-  async function makeRequestWithRetry(maxRetries = 3): Promise<Response> {
-    let lastError: any = null;
-    
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      const controller = new AbortController();
-      // Increase timeout significantly: 40s first, 50s retry, 55s final
-      const timeout = 40000 + (attempt * 10000);
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
-      
-      try {
-        console.log(`TTS attempt ${attempt + 1}/${maxRetries} with ${timeout}ms timeout`);
-        const response = await fetch(vajaUrl, {
-          method: 'POST',
-          headers: {
-            'Apikey': apiKey as string,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ text, speaker }),
-          signal: controller.signal,
-        });
-        clearTimeout(timeoutId);
-        return response;
-      } catch (err: any) {
-        clearTimeout(timeoutId);
-        lastError = err;
-        if (err.name === 'AbortError' && attempt < maxRetries - 1) {
-          console.log(`TTS attempt ${attempt + 1} timed out, retrying...`);
-          continue;
-        }
-        throw err;
-      }
-    }
-    throw lastError;
-  }
-
   try {
-    // Step 1: Request TTS synthesis with retry
-    const synthRes = await makeRequestWithRetry();
+    // Step 1: Request TTS synthesis (single attempt, 10s timeout)
+    // VAJA normally responds in 2-5s; if >10s it's likely down
+    const ctrl1 = new AbortController();
+    const t1 = setTimeout(() => ctrl1.abort(), 10000);
+
+    console.log(`[VAJA TTS] Synthesizing: speaker=${speaker}, text=${text.substring(0, 50)}...`);
+    const synthRes = await fetch(vajaUrl, {
+      method: 'POST',
+      headers: {
+        'Apikey': apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ text, speaker }),
+      signal: ctrl1.signal,
+    });
+    clearTimeout(t1);
 
     if (!synthRes.ok) {
       const errText = await synthRes.text();
-      console.error('VAJA API error:', synthRes.status, errText);
+      console.error('[VAJA TTS] Synthesis error:', synthRes.status, errText);
       return new Response(JSON.stringify({ 
         error: 'VAJA API error', 
         status: synthRes.status, 
@@ -103,10 +84,11 @@ export default async function handler(req: Request): Promise<Response> {
       });
     }
 
-    const result = await synthRes.json() as any;
+    const result = await synthRes.json() as { msg?: string; audio_url?: string };
     const audioUrl = result?.audio_url || '';
 
     if (!audioUrl) {
+      console.error('[VAJA TTS] No audio_url in response:', JSON.stringify(result));
       return new Response(JSON.stringify({ 
         error: 'Missing audio_url from VAJA', 
         details: JSON.stringify(result) 
@@ -116,21 +98,21 @@ export default async function handler(req: Request): Promise<Response> {
       });
     }
 
-    // Step 2: Download audio file with longer timeout
-    const controller2 = new AbortController();
-    const timeoutId2 = setTimeout(() => controller2.abort(), 20000);
+    console.log('[VAJA TTS] Got audio_url:', audioUrl);
+
+    // Step 2: Download audio file (10s timeout)
+    const ctrl2 = new AbortController();
+    const t2 = setTimeout(() => ctrl2.abort(), 10000);
 
     const audioRes = await fetch(audioUrl, {
-      headers: {
-        'Apikey': apiKey,
-      },
-      signal: controller2.signal,
+      headers: { 'Apikey': apiKey },
+      signal: ctrl2.signal,
     });
-
-    clearTimeout(timeoutId2);
+    clearTimeout(t2);
 
     if (!audioRes.ok) {
       const audioErr = await audioRes.text();
+      console.error('[VAJA TTS] Audio download error:', audioRes.status, audioErr);
       return new Response(JSON.stringify({ 
         error: 'Failed to download audio', 
         status: audioRes.status, 
@@ -141,11 +123,16 @@ export default async function handler(req: Request): Promise<Response> {
       });
     }
 
-    // Convert to base64 for easier handling in frontend
+    // Convert to base64 for frontend
     const audioBuffer = await audioRes.arrayBuffer();
-    const base64Audio = btoa(
-      new Uint8Array(audioBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-    );
+    const bytes = new Uint8Array(audioBuffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const base64Audio = btoa(binary);
+
+    console.log('[VAJA TTS] Success, audio size:', bytes.length, 'bytes');
 
     return new Response(JSON.stringify({ 
       success: true, 
@@ -159,15 +146,17 @@ export default async function handler(req: Request): Promise<Response> {
       },
     });
 
-  } catch (err: any) {
-    console.error('TTS error:', err);
-    if (err.name === 'AbortError') {
+  } catch (err: unknown) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    console.error('[VAJA TTS] Error:', error.message);
+    
+    if (error.name === 'AbortError') {
       return new Response(JSON.stringify({ error: 'TTS request timeout' }), {
         status: 504,
         headers: { 'content-type': 'application/json' },
       });
     }
-    return new Response(JSON.stringify({ error: 'TTS request failed', details: err.message }), {
+    return new Response(JSON.stringify({ error: 'TTS request failed', details: error.message }), {
       status: 500,
       headers: { 'content-type': 'application/json' },
     });

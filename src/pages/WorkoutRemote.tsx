@@ -216,37 +216,18 @@ export default function WorkoutRemote() {
     try {
       setVoiceStatus("speaking");
       
-      console.log('Calling TTS API...');
-      // Priority 1: Gemini TTS with coach voice
-      let response: Response | null = null;
-      try {
-        const geminiController = new AbortController();
-        const geminiTimeout = setTimeout(() => geminiController.abort(), 30000);
-        response = await fetch('/api/gemini/tts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text,
-            voiceName: ttsCoach?.geminiVoice || ttsSpeaker || 'Kore',
-            instruction: ttsCoach?.ttsInstruction || '',
-          }),
-          signal: geminiController.signal,
-        });
-        clearTimeout(geminiTimeout);
-        if (!response?.ok) response = null;
-      } catch (e: any) {
-        console.warn('Gemini TTS failed:', e.name === 'AbortError' ? 'timeout' : e.message);
-        response = null;
-      }
-
-      // Priority 2: VAJA TTS fallback
-      if (!response) {
-        response = await fetch('/api/aift/tts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, speaker: ttsSpeaker }),
-        });
-      }
+      console.log('Calling VAJA TTS API...');
+      // Use VAJA TTS with coach voice
+      const vajaSpeaker = ttsCoach?.voiceId || ttsSpeaker || 'nana';
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000);
+      const response = await fetch('/api/aift/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, speaker: vajaSpeaker }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
       
       console.log('TTS API response status:', response.status);
       

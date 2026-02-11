@@ -28,7 +28,9 @@ interface AICoachPopupProps {
   isMuted?: boolean;
   onMuteToggle?: () => void;
   className?: string;
-  speaker?: string;  // VAJA speaker voice
+  speaker?: string;  // VAJA speaker voice ID
+  ttsEnabled?: boolean; // From user settings
+  ttsSpeed?: number; // From user settings
 }
 
 // TTS State
@@ -37,6 +39,7 @@ interface TTSState {
   queue: string[];
   currentAudio: HTMLAudioElement | null;
   speaker: string;
+  ttsSpeed: number;
 }
 
 const ttsState: TTSState = {
@@ -44,6 +47,7 @@ const ttsState: TTSState = {
   queue: [],
   currentAudio: null,
   speaker: 'nana',
+  ttsSpeed: 1.0,
 };
 
 /**
@@ -53,6 +57,7 @@ function playAudio(base64Audio: string): Promise<void> {
   return new Promise((resolve) => {
     const audio = new Audio('data:audio/wav;base64,' + base64Audio);
     ttsState.currentAudio = audio;
+    audio.playbackRate = ttsState.ttsSpeed || 1.0;
     
     // Timeout 10 seconds to prevent hanging
     const timeout = setTimeout(() => {
@@ -95,52 +100,49 @@ async function processQueue(): Promise<void> {
   if (!text) return;
   
   ttsState.isSpeaking = true;
-  console.log(`🔊 Speaking: "${text}"`);
+  console.log(`🔊 [CoachPopup] VAJA speaking: "${text}" | speaker: ${ttsState.speaker}`);
   
   try {
-    // Add timeout for fetch to prevent hanging
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 35000); // 35s total timeout
-    
-    const response = await fetch('/api/aift/tts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        text: text,
-        speaker: ttsState.speaker
-      }),
-      signal: controller.signal,
-    });
-    
-    clearTimeout(timeoutId);
-    
-    if (!response.ok) {
-      console.warn(`TTS API error: ${response.status}, using fallback`);
-      await speakWithWebSpeech(text);
-      return;
+    let audioBase64: string | null = null;
+
+    // Call VAJA TTS API
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      const vajaRes = await fetch('/api/aift/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, speaker: ttsState.speaker }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (vajaRes.ok) {
+        const result = await vajaRes.json();
+        if (result.success && result.audio_base64) {
+          audioBase64 = result.audio_base64;
+          console.log('🔊 [CoachPopup] VAJA TTS success');
+        }
+      } else {
+        console.warn(`🔊 [CoachPopup] VAJA TTS failed: ${vajaRes.status}`);
+      }
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? (e.name === 'AbortError' ? 'timeout' : e.message) : 'unknown';
+      console.warn('🔊 [CoachPopup] VAJA TTS error:', errMsg);
     }
-    
-    const result = await response.json();
-    
-    if (result.success && result.audio_base64) {
-      await playAudio(result.audio_base64);
+
+    // Play audio if we got it, otherwise use Web Speech
+    if (audioBase64) {
+      await playAudio(audioBase64);
     } else {
-      console.warn('TTS API returned no audio:', result);
-      // Fallback to Web Speech API
+      console.warn('🔊 [CoachPopup] VAJA TTS failed, using Web Speech fallback');
       await speakWithWebSpeech(text);
     }
     
-  } catch (error: any) {
-    if (error.name === 'AbortError') {
-      console.warn('TTS request timed out, using fallback');
-    } else {
-      console.error('TTS Error:', error);
-    }
-    // Fallback to Web Speech API
+  } catch (error: unknown) {
+    console.error('TTS Error:', error);
     await speakWithWebSpeech(text);
   } finally {
     ttsState.isSpeaking = false;
-    // Process next message in queue with small delay
     setTimeout(() => processQueue(), 100);
   }
 }
@@ -208,16 +210,20 @@ export function AICoachPopup({
   onMuteToggle,
   className = '',
   speaker = 'nana',
+  ttsEnabled = true,
+  ttsSpeed = 1.0,
 }: AICoachPopupProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [displayedMessage, setDisplayedMessage] = useState<CoachMessage | null>(null);
   const lastMessageIdRef = useRef<string>('');
   const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Update speaker in TTS state
+  // Update TTS state from props
   useEffect(() => {
     ttsState.speaker = speaker;
-  }, [speaker]);
+    ttsState.ttsSpeed = ttsSpeed;
+    console.log('🔊 [CoachPopup] TTS settings updated (VAJA only):', { speaker, ttsEnabled, ttsSpeed });
+  }, [speaker, ttsSpeed]);
 
   // Handle new messages
   useEffect(() => {
@@ -229,9 +235,11 @@ export function AICoachPopup({
     setDisplayedMessage(currentMessage);
     setIsVisible(true);
 
-    // Speak the message if not muted
-    if (!isMuted) {
+    // Speak the message if not muted AND TTS is enabled in settings
+    if (!isMuted && ttsEnabled) {
       speakText(currentMessage.text, speaker);
+    } else if (!ttsEnabled) {
+      console.log('🔇 [CoachPopup] TTS disabled in settings, not speaking');
     }
 
     // Clear previous timeout

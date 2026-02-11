@@ -199,11 +199,14 @@ export default function WorkoutUI() {
   // Visual guide state for KAYA - hidden by default for clean UI
   const [showVisualGuide, setShowVisualGuide] = useState(false);
   
-  // TTS speaker setting
+  // TTS settings
+  const [ttsEnabled, setTtsEnabled] = useState(DEFAULT_TTS_SETTINGS.enabled);
+  const [ttsSpeed, setTtsSpeed] = useState(DEFAULT_TTS_SETTINGS.speed);
   const [ttsSpeaker, setTtsSpeaker] = useState(DEFAULT_TTS_SETTINGS.speaker);
   const [ttsCoach, setTtsCoach] = useState<Coach | null>(null);
   const [ttsCoachId, setTtsCoachId] = useState<string>('coach-nana');
   const [customCoachForLLM, setCustomCoachForLLM] = useState<{ name: string; personality: string; gender: 'male' | 'female' } | null>(null);
+  const ttsSettingsLoadedRef = useRef(false);
   
   // Load TTS speaker setting from user preferences
   useEffect(() => {
@@ -211,8 +214,18 @@ export default function WorkoutUI() {
       if (userProfile?.lineUserId) {
         try {
           const settings = await getUserSettings(userProfile.lineUserId);
-          if (settings?.tts?.speaker) {
-            setTtsSpeaker(settings.tts.speaker);
+          if (settings?.tts) {
+            const loadedEnabled = settings.tts.enabled ?? DEFAULT_TTS_SETTINGS.enabled;
+            const loadedSpeed = settings.tts.speed ?? DEFAULT_TTS_SETTINGS.speed;
+            const loadedSpeaker = settings.tts.speaker || DEFAULT_TTS_SETTINGS.speaker;
+            
+            setTtsEnabled(loadedEnabled);
+            setTtsSpeed(loadedSpeed);
+            if (settings.tts.speaker) {
+              setTtsSpeaker(loadedSpeaker);
+            }
+            
+            console.log('🔊 [TTS] Loaded settings (VAJA only):', { enabled: loadedEnabled, speed: loadedSpeed, speaker: loadedSpeaker });
           }
           if (settings?.selectedCoachId) {
             setTtsCoachId(settings.selectedCoachId);
@@ -235,9 +248,14 @@ export default function WorkoutUI() {
               if (coach) setTtsCoach(coach);
             }
           }
+          ttsSettingsLoadedRef.current = true;
+          console.log('🔊 [TTS] Settings fully loaded, ttsSettingsLoaded = true');
         } catch (err) {
           console.warn('Failed to load TTS settings:', err);
+          ttsSettingsLoadedRef.current = true; // mark as loaded even on error so we don't wait forever
         }
+      } else {
+        ttsSettingsLoadedRef.current = true; // no user profile, use defaults
       }
     };
     loadTTSSettings();
@@ -507,9 +525,25 @@ export default function WorkoutUI() {
     isTtsSpeakingRef.current = false;
   }, []);
 
+  // Use refs to avoid stale closures in speakTTS
+  const ttsCoachRef = useRef(ttsCoach);
+  const ttsSpeakerRef = useRef(ttsSpeaker);
+  const ttsEnabledRef = useRef(ttsEnabled);
+  const ttsSpeedRef = useRef(ttsSpeed);
+  useEffect(() => { ttsCoachRef.current = ttsCoach; }, [ttsCoach]);
+  useEffect(() => { ttsSpeakerRef.current = ttsSpeaker; }, [ttsSpeaker]);
+  useEffect(() => { ttsEnabledRef.current = ttsEnabled; }, [ttsEnabled]);
+  useEffect(() => { ttsSpeedRef.current = ttsSpeed; }, [ttsSpeed]);
+
   // Speak text using TTS (returns Promise)
   // forcePlay = true will play even if user is recording (used for LLM response)
   const speakTTS = useCallback(async (text: string, forcePlay: boolean = false): Promise<void> => {
+    // Don't speak if TTS is disabled in settings
+    if (!ttsEnabledRef.current) {
+      console.log('🔇 [TTS] Skipped: TTS is disabled in settings');
+      return;
+    }
+
     // Don't speak if user is recording (unless forced)
     if (isRecording && !forcePlay) {
       console.log('TTS skipped: user is recording');
@@ -537,50 +571,34 @@ export default function WorkoutUI() {
     try {
       isTtsSpeakingRef.current = true;
       
-      // Priority 1: Gemini TTS with coach voice + instruction
-      let response: Response | null = null;
-      try {
-        const geminiController = new AbortController();
-        const geminiTimeout = setTimeout(() => geminiController.abort(), 30000);
-        response = await fetch('/api/gemini/tts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text,
-            voiceName: ttsCoach?.geminiVoice || ttsSpeaker || 'Kore',
-            instruction: ttsCoach?.ttsInstruction || '',
-          }),
-          signal: geminiController.signal,
-        });
-        clearTimeout(geminiTimeout);
-        if (!response?.ok) response = null;
-      } catch (e: any) {
-        console.warn('Gemini TTS failed:', e.name === 'AbortError' ? 'timeout' : e.message);
-        response = null;
-      }
+      // Read current coach/speaker from refs (avoids stale closure)
+      const currentCoach = ttsCoachRef.current;
+      const currentSpeaker = currentCoach?.voiceId || ttsSpeakerRef.current || 'nana';
+      
+      console.log('🔊 [TTS] VAJA speaking with speaker:', currentSpeaker, '| coach:', currentCoach?.name || 'none', '| speed:', ttsSpeedRef.current);
 
-      // Priority 2: VAJA TTS fallback
-      if (!response) {
-        try {
-          response = await fetch('/api/aift/tts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text, speaker: ttsSpeaker }),
-          });
-        } catch { response = null; }
-      }
+      // Call VAJA TTS API (12s timeout — fallback to Web Speech if slow)
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000);
+      const response = await fetch('/api/aift/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, speaker: currentSpeaker }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
       
       if (!response?.ok) {
-        console.error('TTS API error');
+        console.error('🔊 [TTS] VAJA API error:', response.status);
         isTtsSpeakingRef.current = false;
         return;
       }
       
       const result = await response.json();
-      console.log('TTS API response:', result.audio_base64 ? 'has audio' : 'no audio', result);
+      console.log('🔊 [TTS] VAJA response:', result.audio_base64 ? 'has audio' : 'no audio');
       
       if (!result.audio_base64) {
-        console.error('TTS API returned no audio');
+        console.error('🔊 [TTS] VAJA returned no audio');
         isTtsSpeakingRef.current = false;
         return;
       }
@@ -608,6 +626,9 @@ export default function WorkoutUI() {
       return new Promise((resolve) => {
         const audio = new Audio(audioUrl);
         ttsAudioRef.current = audio;
+        
+        // Apply speed setting from user preferences
+        audio.playbackRate = ttsSpeedRef.current || 1.0;
         
         audio.onended = () => {
           URL.revokeObjectURL(audioUrl);
@@ -981,34 +1002,32 @@ export default function WorkoutUI() {
     console.log('TTS: Calling API with text:', instruction);
     
     try {
-      // Use Gemini TTS with coach voice
-      let response: Response | null = null;
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 30000);
-        response = await fetch('/api/gemini/tts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text: instruction,
-            voiceName: ttsCoach?.geminiVoice || ttsSpeaker || 'Kore',
-            instruction: ttsCoach?.ttsInstruction || '',
-          }),
-          signal: controller.signal,
-        });
-        clearTimeout(timeout);
-        if (!response?.ok) response = null;
-      } catch {
-        response = null;
+      // Use refs for current coach/speaker (avoid stale closure)
+      const currentCoach = ttsCoachRef.current;
+      const currentSpeaker = currentCoach?.voiceId || ttsSpeakerRef.current || 'nana';
+      
+      // Skip if TTS disabled
+      if (!ttsEnabledRef.current) {
+        console.log('🔇 [TTS] Exercise instruction skipped: TTS disabled');
+        return;
       }
 
-      // Fallback to VAJA
-      if (!response) {
-        response = await fetch('/api/aift/tts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: instruction, speaker: ttsSpeaker }),
-        });
+      console.log('🔊 [ExerciseInstruction] VAJA speaker:', currentSpeaker, '| coach:', currentCoach?.name || 'none');
+
+      // Call VAJA TTS API (12s timeout — fallback to Web Speech if slow)
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000);
+      const response = await fetch('/api/aift/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: instruction, speaker: currentSpeaker }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (!response || !response.ok) {
+        console.error('🔊 [ExerciseInstruction] VAJA API error:', response?.status);
+        return;
       }
       
       console.log('TTS: Response status:', response.status);
@@ -1048,6 +1067,9 @@ export default function WorkoutUI() {
       const audio = new Audio(audioUrl);
       ttsAudioRef.current = audio;
       
+      // Apply speed setting from user preferences
+      audio.playbackRate = ttsSpeedRef.current || 1.0;
+      
       audio.oncanplaythrough = () => {
         console.log('TTS: Audio ready to play');
       };
@@ -1057,7 +1079,7 @@ export default function WorkoutUI() {
       };
       
       audio.play().then(() => {
-        console.log('TTS: Audio playing');
+        console.log('TTS: Audio playing at speed:', audio.playbackRate);
       }).catch((err) => {
         console.error('TTS: Play error:', err);
       });
@@ -1095,8 +1117,20 @@ export default function WorkoutUI() {
 
   // Speak coach introduction
   const speakCoachIntroduction = useCallback(async () => {
+    // Skip if TTS disabled
+    if (!ttsEnabledRef.current) {
+      console.log('🔇 [TTS] Coach intro skipped: TTS disabled');
+      // Still speak the first exercise instruction (it will also check ttsEnabled)
+      const exercise = exercises[0];
+      if (exercise) setTimeout(() => speakExerciseInstruction(exercise), 500);
+      return;
+    }
+
+    const currentCoach = ttsCoachRef.current;
+    const speakerFromSettings = ttsSpeakerRef.current;
     const userName = userProfile?.nickname || userProfile?.displayName || 'คุณ';
-    const introText = `สวัสดีครับ ผมชื่อน้องกาย วันนี้จะมาเป็นโค้ชให้คุณ${userName}นะครับ พร้อมออกกำลังกายไปด้วยกันไหมครับ เริ่มกันเลย!`;
+    const coachName = currentCoach?.nameTh || 'น้องกาย';
+    const introText = `สวัสดีครับ ผมชื่อ${coachName} วันนี้จะมาเป็นโค้ชให้คุณ${userName}นะครับ พร้อมออกกำลังกายไปด้วยกันไหมครับ เริ่มกันเลย!`;
     
     console.log('TTS Coach Intro: Calling API with text:', introText);
     
@@ -1111,25 +1145,23 @@ export default function WorkoutUI() {
     };
     
     try {
-      // Add timeout for fetch to prevent hanging
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 35000); // 35s timeout
+      const currentSpeaker = currentCoach?.voiceId || speakerFromSettings || 'nana';
       
-      const response = await fetch('/api/gemini/tts', {
+      console.log('🔊 [CoachIntro] VAJA speaker:', currentSpeaker, '| coach:', currentCoach?.name || 'none');
+
+      // Call VAJA TTS API (12s timeout — fallback to Web Speech if slow)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      const response = await fetch('/api/aift/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: introText,
-          voiceName: ttsCoach?.geminiVoice || ttsSpeaker || 'Kore',
-          instruction: ttsCoach?.ttsInstruction || '',
-        }),
+        body: JSON.stringify({ text: introText, speaker: currentSpeaker }),
         signal: controller.signal,
       });
-      
       clearTimeout(timeoutId);
       
-      if (!response.ok) {
-        console.warn('TTS Coach Intro API error:', response.status, '- using fallback');
+      if (!response || !response.ok) {
+        console.warn('🔊 [CoachIntro] VAJA API error:', response?.status, '- using Web Speech fallback');
         await speakWithWebSpeechFallback(introText);
         speakFirstExercise();
         return;
@@ -1159,8 +1191,11 @@ export default function WorkoutUI() {
       const audio = new Audio(audioUrl);
       ttsAudioRef.current = audio;
       
+      // Apply speed setting from user preferences
+      audio.playbackRate = ttsSpeedRef.current || 1.0;
+      
       audio.play().then(() => {
-        console.log('TTS Coach Intro: Playing');
+        console.log('TTS Coach Intro: Playing at speed:', audio.playbackRate);
       }).catch(console.error);
       
       audio.onended = () => {
@@ -1188,9 +1223,21 @@ export default function WorkoutUI() {
     
     coachIntroSpokenRef.current = true;
     
-    // Speak introduction first
-    const timeout = setTimeout(() => {
+    // Wait for TTS settings to load before speaking intro
+    // This prevents race condition where coach speaker ref is still default
+    const waitAndSpeak = async () => {
+      // Wait up to 3 seconds for settings to load
+      let waited = 0;
+      while (!ttsSettingsLoadedRef.current && waited < 3000) {
+        await new Promise(r => setTimeout(r, 100));
+        waited += 100;
+      }
+      console.log('🔊 [CoachIntro] Settings loaded after', waited, 'ms, speaker:', ttsCoachRef.current?.voiceId || ttsSpeakerRef.current);
       speakCoachIntroduction();
+    };
+    
+    const timeout = setTimeout(() => {
+      waitAndSpeak();
     }, 500);
     
     return () => clearTimeout(timeout);
@@ -1559,6 +1606,9 @@ export default function WorkoutUI() {
         {isKayaWorkout && (
           <AICoachPopup
             currentMessage={kayaAnalysis.coachMessage}
+            speaker={ttsCoach?.voiceId || ttsSpeaker}
+            ttsEnabled={ttsEnabled}
+            ttsSpeed={ttsSpeed}
           />
         )}
 

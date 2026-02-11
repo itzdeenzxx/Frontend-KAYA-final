@@ -3,19 +3,36 @@
 
 export type CoachGender = 'male' | 'female';
 
-// Gemini TTS voice names
-// Female: Aoede (Breezy), Kore (Firm), Leda (Youthful), Zephyr (Bright)
-// Male: Charon (Informative), Fenrir (Excitable), Orus (Firm), Perseus (Composed), Puck (Upbeat)
-export type GeminiVoice = 'Aoede' | 'Kore' | 'Leda' | 'Zephyr' | 'Charon' | 'Fenrir' | 'Orus' | 'Perseus' | 'Puck';
+// VAJA TTS speakers available:
+// Female: nana (Animation), noina (Auto-reply), farah (Documentary), mewzy (Spot Ad),
+//         farsai (Animation), prim (Announcer), ped (Announcer),
+//         namphueng (Anchor-style), toon (Broadcast-style), sanooch (Teacher-style)
+// Male:   poom (Spot Ad/Auto-reply), thanwa (Broadcast-style), doikham (Northern dialect)
+// Child:  praw (Girl), wayu (Boy)
+export const VAJA_SPEAKERS = [
+  { id: 'nana', label: 'นาน่า', gender: 'female' as const, style: 'พากย์การ์ตูน / Animation' },
+  { id: 'noina', label: 'น้อยหน่า', gender: 'female' as const, style: 'สปอตโฆษณา / ระบบตอบรับ' },
+  { id: 'farah', label: 'ฟาราห์', gender: 'female' as const, style: 'สารคดี / Presentation' },
+  { id: 'mewzy', label: 'มิวซี่', gender: 'female' as const, style: 'สปอตโฆษณา' },
+  { id: 'farsai', label: 'ฟ้าใส', gender: 'female' as const, style: 'พากย์การ์ตูน / Animation' },
+  { id: 'prim', label: 'พริม', gender: 'female' as const, style: 'Announcer' },
+  { id: 'ped', label: 'เป็ด', gender: 'female' as const, style: 'Announcer' },
+  { id: 'namphueng', label: 'น้ำผึ้ง', gender: 'female' as const, style: 'Anchor-style' },
+  { id: 'toon', label: 'ตูน', gender: 'female' as const, style: 'Broadcast-style' },
+  { id: 'sanooch', label: 'สนุช', gender: 'female' as const, style: 'Teacher-style' },
+  { id: 'poom', label: 'ภูมิ', gender: 'male' as const, style: 'สปอตโฆษณา / ระบบตอบรับ' },
+  { id: 'thanwa', label: 'ธันวา', gender: 'male' as const, style: 'Broadcast-style' },
+  { id: 'doikham', label: 'ดอยคำ', gender: 'male' as const, style: 'ภาษาเหนือ' },
+  { id: 'praw', label: 'พราว', gender: 'female' as const, style: 'เด็กผู้หญิง' },
+  { id: 'wayu', label: 'วายุ', gender: 'male' as const, style: 'เด็กผู้ชาย' },
+] as const;
 
 export interface Coach {
   id: string;
   name: string;
   nameTh: string;
   gender: CoachGender;
-  voiceId: string;        // VAJA TTS speaker ID (fallback)
-  geminiVoice: GeminiVoice;  // Gemini TTS voice name (primary)
-  ttsInstruction: string;    // Gemini TTS speaking style instruction
+  voiceId: string;        // VAJA TTS speaker ID
   personality: string;
   description: string;
   descriptionTh: string;
@@ -35,9 +52,7 @@ export const COACHES: Coach[] = [
     name: 'Nana',
     nameTh: 'โค้ชนาน่า',
     gender: 'female',
-    voiceId: 'nana',
-    geminiVoice: 'Aoede',
-    ttsInstruction: 'พูดด้วยน้ำเสียงร่าเริง สนุกสนาน กระตือรือร้น เหมือนกำลังชวนเพื่อนไปเล่น เน้นความสดใส มีชีวิตชีวา ภาษาไทย',
+    voiceId: 'nana',  // VAJA: ผู้หญิง | พากย์การ์ตูน | Animation
     personality: 'cheerful',
     description: 'Energetic and fun coach who makes workouts feel like a party',
     descriptionTh: 'โค้ชสาวร่าเริง ทำให้การออกกำลังกายสนุกเหมือนปาร์ตี้',
@@ -59,9 +74,7 @@ export const COACHES: Coach[] = [
     name: 'Farsai',
     nameTh: 'โค้ชฟ้าใส',
     gender: 'female',
-    voiceId: 'farsai',
-    geminiVoice: 'Leda',
-    ttsInstruction: 'พูดด้วยน้ำเสียงอ่อนโยน นุ่มนวล อบอุ่น เหมือนพี่สาวใจดีที่คอยดูแล เน้นความนุ่มนวลและเอาใจใส่ ภาษาไทย',
+    voiceId: 'farsai',  // VAJA: ผู้หญิง | พากย์การ์ตูน | Animation
     personality: 'gentle',
     description: 'Calm and supportive coach with a nurturing approach',
     descriptionTh: 'โค้ชสาวใจดี อ่อนโยน ดูแลเอาใจใส่ทุกรายละเอียด',
@@ -83,9 +96,7 @@ export const COACHES: Coach[] = [
     name: 'Prim',
     nameTh: 'โค้ชพริม',
     gender: 'female',
-    voiceId: 'prim',
-    geminiVoice: 'Kore',
-    ttsInstruction: 'พูดด้วยน้ำเสียงมั่นใจ เป็นมืออาชีพ ชัดเจน หนักแน่น เหมือนผู้เชี่ยวชาญที่มีประสบการณ์ ภาษาไทย',
+    voiceId: 'prim',  // VAJA: ผู้หญิง | Announcer
     personality: 'professional',
     description: 'Professional and motivating coach focused on results',
     descriptionTh: 'โค้ชมืออาชีพ มุ่งเน้นผลลัพธ์ กระตุ้นให้ทำได้ดีขึ้น',
@@ -107,9 +118,7 @@ export const COACHES: Coach[] = [
     name: 'Mint',
     nameTh: 'โค้ชมิ้นท์',
     gender: 'female',
-    voiceId: 'noina',
-    geminiVoice: 'Zephyr',
-    ttsInstruction: 'พูดด้วยน้ำเสียงเข้มงวด จริงจัง ดุนิดหน่อย แต่หวังดี เหมือนครูฝึกที่ไม่ยอมให้ขี้เกียจ ภาษาไทย',
+    voiceId: 'noina',  // VAJA: ผู้หญิง | สปอตโฆษณา | ระบบตอบรับ
     personality: 'strict',
     description: 'Strict but caring coach who pushes you to your limits',
     descriptionTh: 'โค้ชดุแต่รักลูกศิษย์ ผลักดันให้ทำได้ดีที่สุด',
@@ -133,9 +142,7 @@ export const COACHES: Coach[] = [
     name: 'Poom',
     nameTh: 'โค้ชภูมิ',
     gender: 'male',
-    voiceId: 'poom',
-    geminiVoice: 'Puck',
-    ttsInstruction: 'พูดด้วยน้ำเสียงเป็นกันเอง อบอุ่น เป็นมิตร เหมือนพี่ชายใจดีที่คอยเป็นกำลังใจ ภาษาไทย',
+    voiceId: 'poom',  // VAJA: ผู้ชาย | สปอตโฆษณา | ระบบตอบรับ
     personality: 'friendly',
     description: 'Friendly and supportive bro who works out with you',
     descriptionTh: 'โค้ชพี่ชายใจดี เหมือนเพื่อนออกกำลังกายด้วยกัน',
@@ -157,9 +164,7 @@ export const COACHES: Coach[] = [
     name: 'Ton',
     nameTh: 'โค้ชต้น',
     gender: 'male',
-    voiceId: 'thanwa',
-    geminiVoice: 'Fenrir',
-    ttsInstruction: 'พูดด้วยน้ำเสียงจริงจัง ทรงพลัง หนักแน่น เหมือนทหารผ่านศึก กระตุ้นให้สู้สุดตัว ภาษาไทย',
+    voiceId: 'thanwa',  // VAJA: ผู้ชาย | Broadcast-style
     personality: 'intense',
     description: 'Intense and hardcore trainer for serious athletes',
     descriptionTh: 'โค้ชจริงจัง สายฮาร์ดคอร์ สำหรับคนที่ต้องการผลลัพธ์จริง',
@@ -182,9 +187,7 @@ export const COACHES: Coach[] = [
     name: 'Bank',
     nameTh: 'โค้ชแบงค์',
     gender: 'male',
-    voiceId: 'poom',
-    geminiVoice: 'Perseus',
-    ttsInstruction: 'พูดด้วยน้ำเสียงสบายๆ ชิลล์ ผ่อนคลาย ไม่เร่งรีบ เหมือนเพื่อนสนิทที่ชวนออกกำลังกาย ภาษาไทย',
+    voiceId: 'doikham',  // VAJA: ผู้ชาย | ภาษาเหนือ — สบายๆ ชิลล์
     personality: 'chill',
     description: 'Chill and relaxed coach for stress-free workouts',
     descriptionTh: 'โค้ชชิลล์ๆ สบายๆ ไม่กดดัน เน้นความสนุก',
@@ -207,9 +210,7 @@ export const COACHES: Coach[] = [
     name: 'Kai',
     nameTh: 'โค้ชไก่',
     gender: 'male',
-    voiceId: 'thanwa',
-    geminiVoice: 'Charon',
-    ttsInstruction: 'พูดด้วยน้ำเสียงสนุกสนาน ตลก มีอารมณ์ขัน เหมือนนักแสดงตลกที่ชอบทำให้คนหัวเราะ ภาษาไทย',
+    voiceId: 'wayu',  // VAJA: เด็กผู้ชาย — สนุกซน ตลก
     personality: 'humorous',
     description: 'Funny coach who makes you laugh while working out',
     descriptionTh: 'โค้ชตลก ทำให้หัวเราะระหว่างออกกำลังกาย',
@@ -312,11 +313,7 @@ export const buildCoachFromCustom = (custom: CustomCoach): Coach => {
     name: custom.name,
     nameTh: custom.name,
     gender: custom.gender,
-    voiceId: isFemale ? 'nana' : 'pong', // VAJA fallback
-    geminiVoice: isFemale ? 'Kore' : 'Puck',
-    ttsInstruction: custom.personality 
-      ? `พูดตามบุคลิกนี้: ${custom.personality}. ภาษาไทย`
-      : 'พูดด้วยน้ำเสียงเป็นกันเอง อบอุ่น ภาษาไทย',
+    voiceId: isFemale ? 'nana' : 'poom', // VAJA speaker
     personality: 'กำหนดเอง',
     description: custom.personality || 'โค้ชที่คุณสร้างเอง',
     descriptionTh: custom.personality || 'โค้ชที่คุณสร้างเอง',

@@ -142,7 +142,7 @@ export function TTSSettings({ isDark }: TTSSettingsProps) {
     try {
       // Try TTS API first (VAJA)
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
       
       const response = await fetch('/api/aift/tts', {
         method: 'POST',

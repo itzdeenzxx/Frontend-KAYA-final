@@ -372,6 +372,23 @@ export function getExercisesForStyle(styleId: string | null): WorkoutExercise[] 
       { name: 'Cool Down Stretch', nameTh: 'ยืดคูลดาวน์', duration: 60, reps: null, icon: 'yoga', description: 'ยืดกล้ามเนื้อผ่อนคลาย' },
     ];
   }
+
+  // For AI-personalized: read exercises from localStorage (saved by AIWorkoutQuiz)
+  if (styleId === 'ai-personalized') {
+    try {
+      const savedExercises = localStorage.getItem('kaya_ai_recommended_exercises');
+      if (savedExercises) {
+        const parsed = JSON.parse(savedExercises) as WorkoutExercise[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to parse AI recommended exercises:', e);
+    }
+    // Fall through to default ai-personalized exercises
+  }
+
   return workoutExercises[styleId] || workoutExercises['strength'];
 }
 

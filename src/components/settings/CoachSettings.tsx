@@ -200,23 +200,22 @@ export function CoachSettings({ isDark }: CoachSettingsProps) {
               return;
             }
           }
-          console.warn('VAJAX preview failed, falling back to Gemini');
+          console.warn('VAJAX preview failed, falling back to VAJA standard');
         } catch (err: any) {
           console.warn('VAJAX preview error:', err.name === 'AbortError' ? 'timeout' : err.message);
         }
       }
 
-      // Fallback: Gemini TTS (for preset coaches or custom without voice refs)
+      // Fallback: VAJA TTS (for preset coaches or custom without voice refs)
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
       
-      const response = await fetch('/api/gemini/tts', {
+      const response = await fetch('/api/aift/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: previewText,
-          voiceName: selectedCoach.geminiVoice || 'Kore',
-          instruction: selectedCoach.ttsInstruction || '',
+          speaker: selectedCoach.voiceId || 'nana',
         }),
         signal: controller.signal,
       });
