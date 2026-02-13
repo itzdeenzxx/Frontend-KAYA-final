@@ -21,6 +21,7 @@ import {
   incrementChallengeProgress,
   syncWaterChallengeProgress,
   claimChallengeReward,
+  removeDuplicateChallengeTemplates,
   getDailyStats,
   initializeDailyStats,
   updateDailyStats,
@@ -451,8 +452,9 @@ export const useChallenges = () => {
   }, [lineProfile?.userId, fetchChallenges]);
 
   const updateProgress = useCallback(async (challengeId: string, progress: number) => {
+    if (!lineProfile?.userId) return false;
     try {
-      await updateChallengeProgress(challengeId, progress);
+      await updateChallengeProgress(lineProfile.userId, challengeId, progress);
       await fetchChallenges();
       return true;
     } catch (err) {
@@ -500,6 +502,25 @@ export const useChallenges = () => {
     }
   }, [lineProfile?.userId, fetchChallenges, refreshUser]);
 
+  // Clean up duplicate challenge templates
+  const cleanDuplicates = useCallback(async () => {
+    if (!lineProfile?.userId) {
+      setError('User not authenticated');
+      return false;
+    }
+    
+    setError(null);
+    
+    try {
+      await removeDuplicateChallengeTemplates();
+      await fetchChallenges(); // Refresh after cleanup
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to clean duplicates');
+      return false;
+    }
+  }, [lineProfile?.userId, fetchChallenges]);
+
   useEffect(() => {
     if (lineProfile?.userId) {
       initializeChallenges();
@@ -511,6 +532,7 @@ export const useChallenges = () => {
     updateProgress,
     incrementProgress,
     claimReward,
+    cleanDuplicates,
     refreshChallenges: fetchChallenges,
     isLoading,
     error,

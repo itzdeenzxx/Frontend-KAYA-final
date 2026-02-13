@@ -150,6 +150,29 @@ export interface Badge {
   requirement: string;
 }
 
+// Challenge template stored in Firestore (one-time setup)
+export interface ChallengeTemplate {
+  id: string;
+  name: string;
+  nameEn: string;
+  nameTh: string;
+  description: string;
+  target: number;
+  reward: number; // points
+  type: 'daily' | 'weekly' | 'monthly';
+  category: 'workout' | 'calories' | 'water';
+  active: boolean;
+}
+
+// User's progress for a challenge template
+export interface ChallengeProgress {
+  templateId: string;
+  current: number;
+  rewardClaimed: boolean;
+  lastResetDate: string; // YYYY-MM-DD - tracks when progress was last reset
+}
+
+// Combined view for UI (template + user progress)
 export interface Challenge {
   id: string;
   name: string;
@@ -161,6 +184,7 @@ export interface Challenge {
   reward: number; // points
   endDate: Date;
   type: 'daily' | 'weekly' | 'monthly';
+  category: 'workout' | 'calories' | 'water';
   rewardClaimed?: boolean; // Track if reward has been claimed
 }
 

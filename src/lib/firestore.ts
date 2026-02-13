@@ -15,6 +15,7 @@ import {
   serverTimestamp,
   Timestamp,
   DocumentReference,
+  writeBatch,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type { 
@@ -23,6 +24,8 @@ import type {
   WorkoutSession, 
   Badge, 
   Challenge,
+  ChallengeTemplate,
+  ChallengeProgress,
   LeaderboardEntry 
 } from './types';
 
@@ -35,6 +38,7 @@ export const COLLECTIONS = {
   NUTRITION_LOGS: 'nutritionLogs',
   BADGES: 'badges',
   CHALLENGES: 'challenges',
+  CHALLENGE_TEMPLATES: 'challengeTemplates',
   LEADERBOARD: 'leaderboard',
   SETTINGS: 'userSettings',
   DAILY_STATS: 'dailyStats',
@@ -947,186 +951,462 @@ export const getCustomVoiceSettings = async (userId: string) => {
   };
 };
 
-// ==================== CHALLENGE OPERATIONS ====================
+// ==================== CHALLENGE OPERATIONS (Template-based) ====================
 
-// Default challenges templates
-const DEFAULT_CHALLENGES = [
+// Default challenge templates - used to seed Firestore once
+const DEFAULT_CHALLENGE_TEMPLATES: Omit<ChallengeTemplate, 'id'>[] = [
+  // === DAILY CHALLENGES ===
   {
     name: 'Daily Workout',
-    nameEn: 'Complete 1 Workout',
-    nameTh: 'ออกกำลังกาย 1 ครั้ง',
-    description: 'ออกกำลังกายอย่างน้อย 1 ครั้งวันนี้',
+    nameEn: 'Complete 1 Workout Today',
+    nameTh: 'ออกกำลังกาย 1 ครั้งวันนี้',
+    description: 'ออกกำลังกายอย่างน้อย 1 ครั้งในวันนี้',
     target: 1,
     reward: 50,
-    type: 'daily' as const,
+    type: 'daily',
+    category: 'workout',
+    active: true,
   },
   {
-    name: 'Burn Calories',
-    nameEn: 'Burn 100 Calories',
-    nameTh: 'เผาผลาญ 100 แคลอรี่',
-    description: 'เผาผลาญแคลอรี่ให้ได้ 100 แคลอรี่',
-    target: 100,
-    reward: 100,
-    type: 'daily' as const,
+    name: 'Daily Burn',
+    nameEn: 'Burn 150 Calories Today',
+    nameTh: 'เผาผลาญ 150 แคลอรี่วันนี้',
+    description: 'เผาผลาญแคลอรี่ให้ได้ 150 แคลอรี่ในวันนี้',
+    target: 150,
+    reward: 75,
+    type: 'daily',
+    category: 'calories',
+    active: true,
   },
   {
-    name: 'Drink Water',
+    name: 'Daily Hydration',
     nameEn: 'Drink 8 Glasses of Water',
-    nameTh: 'ดื่มน้ำ 8 แก้ว',
-    description: 'ดื่มน้ำให้ครบ 8 แก้ววันนี้',
+    nameTh: 'ดื่มน้ำ 8 แก้ววันนี้',
+    description: 'ดื่มน้ำให้ครบ 8 แก้วในวันนี้เพื่อสุขภาพที่ดี',
     target: 8,
     reward: 30,
-    type: 'daily' as const,
+    type: 'daily',
+    category: 'water',
+    active: true,
   },
   {
+    name: 'Perfect Day',
+    nameEn: 'Complete 3 Workouts Today',
+    nameTh: 'ออกกำลังกาย 3 ครั้งวันนี้',
+    description: 'ออกกำลังกายให้ครบ 3 ครั้งในวันเดียว',
+    target: 3,
+    reward: 120,
+    type: 'daily',
+    category: 'workout',
+    active: true,
+  },
+  {
+    name: 'Calorie Blaster',
+    nameEn: 'Burn 250 Calories Today',
+    nameTh: 'เผาผลาญ 250 แคลอรี่วันนี้',
+    description: 'เผาผลาญแคลอรี่สูงให้ได้ 250 แคลอรี่ในวันนี้',
+    target: 250,
+    reward: 100,
+    type: 'daily',
+    category: 'calories',
+    active: true,
+  },
+
+  // === WEEKLY CHALLENGES ===
+  {
     name: 'Weekly Warrior',
-    nameEn: 'Complete 5 Workouts This Week',
-    nameTh: 'ออกกำลังกาย 5 ครั้งในสัปดาห์นี้',
-    description: 'ออกกำลังกายให้ครบ 5 ครั้งในสัปดาห์นี้',
-    target: 5,
-    reward: 200,
-    type: 'weekly' as const,
+    nameEn: 'Complete 7 Workouts This Week',
+    nameTh: 'ออกกำลังกาย 7 ครั้งในสัปดาห์นี้',
+    description: 'ออกกำลังกายให้ครบ 7 ครั้งในสัปดาห์นี้',
+    target: 7,
+    reward: 300,
+    type: 'weekly',
+    category: 'workout',
+    active: true,
   },
   {
     name: 'Calorie Crusher',
-    nameEn: 'Burn 500 Calories This Week',
-    nameTh: 'เผาผลาญ 500 แคลอรี่ในสัปดาห์นี้',
-    description: 'เผาผลาญแคลอรี่รวม 500 แคลอรี่ในสัปดาห์นี้',
-    target: 500,
-    reward: 250,
-    type: 'weekly' as const,
+    nameEn: 'Burn 1000 Calories This Week',
+    nameTh: 'เผาผลาญ 1000 แคลอรี่ในสัปดาห์นี้',
+    description: 'เผาผลาญแคลอรี่รวม 1000 แคลอรี่ในสัปดาห์นี้',
+    target: 1000,
+    reward: 400,
+    type: 'weekly',
+    category: 'calories',
+    active: true,
   },
   {
-    name: 'Monthly Master',
-    nameEn: 'Complete 20 Workouts This Month',
-    nameTh: 'ออกกำลังกาย 20 ครั้งในเดือนนี้',
-    description: 'ออกกำลังกายให้ครบ 20 ครั้งในเดือนนี้',
-    target: 20,
+    name: 'Hydration Hero',
+    nameEn: 'Drink 50 Glasses This Week',
+    nameTh: 'ดื่มน้ำ 50 แก้วในสัปดาห์นี้',
+    description: 'ดื่มน้ำให้ครบ 50 แก้วในสัปดาห์นี้',
+    target: 50,
+    reward: 200,
+    type: 'weekly',
+    category: 'water',
+    active: true,
+  },
+  {
+    name: 'Fitness Streak',
+    nameEn: 'Workout 5 Days in a Row',
+    nameTh: 'ออกกำลังกาย 5 วันติดต่อกัน',
+    description: 'ออกกำลังกายติดต่อกัน 5 วันในสัปดาห์นี้',
+    target: 5,
+    reward: 250,
+    type: 'weekly',
+    category: 'workout',
+    active: true,
+  },
+  {
+    name: 'Intense Week',
+    nameEn: 'Burn 1500 Calories This Week',
+    nameTh: 'เผาผลาญ 1500 แคลอรี่ในสัปดาห์นี้',
+    description: 'เผาผลาญแคลอรี่สูงให้ได้ 1500 แคลอรี่ในสัปดาห์นี้',
+    target: 1500,
     reward: 500,
-    type: 'monthly' as const,
+    type: 'weekly',
+    category: 'calories',
+    active: true,
+  },
+
+  // === MONTHLY CHALLENGES ===
+  {
+    name: 'Monthly Master',
+    nameEn: 'Complete 25 Workouts This Month',
+    nameTh: 'ออกกำลังกาย 25 ครั้งในเดือนนี้',
+    description: 'ออกกำลังกายให้ครบ 25 ครั้งในเดือนนี้',
+    target: 25,
+    reward: 750,
+    type: 'monthly',
+    category: 'workout',
+    active: true,
+  },
+  {
+    name: 'Calorie Machine',
+    nameEn: 'Burn 5000 Calories This Month',
+    nameTh: 'เผาผลาญ 5000 แคลอรี่ในเดือนนี้',
+    description: 'เผาผลาญแคลอรี่รวม 5000 แคลอรี่ในเดือนนี้',
+    target: 5000,
+    reward: 1000,
+    type: 'monthly',
+    category: 'calories',
+    active: true,
+  },
+  {
+    name: 'Hydration Champion',
+    nameEn: 'Drink 200 Glasses This Month',
+    nameTh: 'ดื่มน้ำ 200 แก้วในเดือนนี้',
+    description: 'ดื่มน้ำให้ครบ 200 แก้วในเดือนนี้',
+    target: 200,
+    reward: 600,
+    type: 'monthly',
+    category: 'water',
+    active: true,
+  },
+  {
+    name: 'Fitness Dedication',
+    nameEn: 'Workout 20 Days This Month',
+    nameTh: 'ออกกำลังกาย 20 วันในเดือนนี้',
+    description: 'ออกกำลังกายอย่างน้อย 20 วันในเดือนนี้',
+    target: 20,
+    reward: 800,
+    type: 'monthly',
+    category: 'workout',
+    active: true,
+  },
+  {
+    name: 'Ultimate Burn',
+    nameEn: 'Burn 7500 Calories This Month',
+    nameTh: 'เผาผลาญ 7500 แคลอรี่ในเดือนนี้',
+    description: 'เผาผลาญแคลอรี่สูงสุด 7500 แคลอรี่ในเดือนนี้',
+    target: 7500,
+    reward: 1200,
+    type: 'monthly',
+    category: 'calories',
+    active: true,
   },
 ];
 
-// Calculate end date based on challenge type
+// Calculate end date based on challenge type (for display purposes)
 const getEndDate = (type: 'daily' | 'weekly' | 'monthly'): Date => {
   const now = new Date();
   switch (type) {
     case 'daily':
-      // End of today
       return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-    case 'weekly':
-      // End of this week (Sunday)
+    case 'weekly': {
       const daysUntilSunday = 7 - now.getDay();
       const endOfWeek = new Date(now);
       endOfWeek.setDate(now.getDate() + daysUntilSunday);
       endOfWeek.setHours(23, 59, 59);
       return endOfWeek;
+    }
     case 'monthly':
-      // End of this month
       return new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
   }
 };
 
-// Create a challenge for user
-export const createChallenge = async (
-  userId: string,
-  challenge: Omit<Challenge, 'id' | 'current' | 'endDate'> & { type: 'daily' | 'weekly' | 'monthly' }
-): Promise<string> => {
-  const challengeRef = collection(db, COLLECTIONS.CHALLENGES);
-  const docRef = await addDoc(challengeRef, {
-    ...challenge,
-    userId,
-    current: 0,
-    endDate: Timestamp.fromDate(getEndDate(challenge.type)),
-    createdAt: serverTimestamp(),
-  });
-  return docRef.id;
-};
-
-// Initialize default challenges for a user (run once per period)
-export const initializeUserChallenges = async (userId: string): Promise<void> => {
-  // Check if user already has active challenges
-  const existingChallenges = await getActiveChallenges(userId);
-  
-  // Get existing challenge types
-  const existingTypes = new Set(existingChallenges.map(c => `${c.type}-${c.name}`));
-  
-  // Create missing challenges
-  for (const template of DEFAULT_CHALLENGES) {
-    const key = `${template.type}-${template.name}`;
-    if (!existingTypes.has(key)) {
-      await createChallenge(userId, template);
+// Get the current period key for reset tracking (YYYY-MM-DD for daily, YYYY-Www for weekly, YYYY-MM for monthly)
+const getPeriodKey = (type: 'daily' | 'weekly' | 'monthly'): string => {
+  const now = new Date();
+  switch (type) {
+    case 'daily':
+      return getTodayDateString();
+    case 'weekly': {
+      // ISO week number
+      const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+      const dayNum = d.getUTCDay() || 7;
+      d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+      const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+      const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+      return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
     }
+    case 'monthly':
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   }
 };
 
-// Get active challenges
-export const getActiveChallenges = async (userId: string): Promise<Challenge[]> => {
-  const challengeRef = collection(db, COLLECTIONS.CHALLENGES);
-  const now = new Date();
+// Seed challenge templates to Firestore (run once or when adding new templates)
+export const seedChallengeTemplates = async (): Promise<void> => {
+  // First, clean up any duplicates
+  await removeDuplicateChallengeTemplates();
   
-  const q = query(
-    challengeRef,
-    where('userId', '==', userId),
-    where('endDate', '>=', Timestamp.fromDate(now))
+  const templatesRef = collection(db, COLLECTIONS.CHALLENGE_TEMPLATES);
+  const snapshot = await getDocs(templatesRef);
+  
+  // Use more specific key to prevent duplicates: "name-type-category"
+  const existingKeys = new Set(
+    snapshot.docs.map(d => {
+      const data = d.data();
+      return `${data.name}-${data.type}-${data.category}`;
+    })
   );
-  
-  const querySnap = await getDocs(q);
-  return querySnap.docs.map(doc => {
-    const data = doc.data();
-    return {
-      id: doc.id,
-      name: data.name,
-      nameEn: data.nameEn,
-      nameTh: data.nameTh,
-      description: data.description,
-      target: data.target,
-      current: data.current || 0,
-      reward: data.reward,
-      endDate: data.endDate?.toDate() || new Date(),
-      type: data.type,
-      rewardClaimed: data.rewardClaimed || false,
-    };
-  }) as Challenge[];
+
+  const batch = writeBatch(db);
+  let hasNewTemplates = false;
+
+  for (const template of DEFAULT_CHALLENGE_TEMPLATES) {
+    const templateKey = `${template.name}-${template.type}-${template.category}`;
+    
+    if (!existingKeys.has(templateKey)) {
+      const docRef = doc(templatesRef);
+      batch.set(docRef, {
+        ...template,
+        createdAt: serverTimestamp(),
+      });
+      hasNewTemplates = true;
+      console.log(`Added new challenge template: ${template.name} (${template.type})`);
+    }
+  }
+
+  if (hasNewTemplates) {
+    await batch.commit();
+    console.log('Challenge templates seeded successfully');
+  } else {
+    console.log('All challenge templates already exist');
+  }
 };
 
-// Update challenge progress
+// Remove duplicate challenge templates (cleanup function)
+export const removeDuplicateChallengeTemplates = async (): Promise<void> => {
+  const templatesRef = collection(db, COLLECTIONS.CHALLENGE_TEMPLATES);
+  const snapshot = await getDocs(templatesRef);
+  
+  if (snapshot.empty) {
+    console.log('No templates to check for duplicates');
+    return;
+  }
+
+  // Group templates by unique key (name-type-category)
+  const templateGroups = new Map<string, any[]>();
+  
+  snapshot.docs.forEach(doc => {
+    const data = doc.data();
+    const key = `${data.name}-${data.type}-${data.category}`;
+    
+    if (!templateGroups.has(key)) {
+      templateGroups.set(key, []);
+    }
+    templateGroups.get(key)!.push({ id: doc.id, data, ref: doc.ref });
+  });
+
+  // Find duplicates and keep only the newest one
+  const duplicatesToDelete: any[] = [];
+  
+  templateGroups.forEach((templates, key) => {
+    if (templates.length > 1) {
+      console.log(`Found ${templates.length} duplicates for: ${key}`);
+      
+      // Sort by createdAt, keep the newest (last), delete the rest
+      templates.sort((a, b) => {
+        const aTime = a.data.createdAt?.seconds || 0;
+        const bTime = b.data.createdAt?.seconds || 0;
+        return aTime - bTime;
+      });
+      
+      // Add all but the last (newest) to deletion list
+      duplicatesToDelete.push(...templates.slice(0, -1));
+    }
+  });
+
+  if (duplicatesToDelete.length === 0) {
+    console.log('No duplicate challenge templates found');
+    return;
+  }
+
+  // Batch delete duplicates
+  const batch = writeBatch(db);
+  duplicatesToDelete.forEach(template => {
+    console.log(`Deleting duplicate template: ${template.data.name} (${template.id})`);
+    batch.delete(template.ref);
+  });
+  
+  await batch.commit();
+  console.log(`Deleted ${duplicatesToDelete.length} duplicate challenge templates`);
+};
+
+// Force cleanup all challenge templates (admin function - use with caution)
+export const resetAllChallengeTemplates = async (): Promise<void> => {
+  const templatesRef = collection(db, COLLECTIONS.CHALLENGE_TEMPLATES);
+  const snapshot = await getDocs(templatesRef);
+  
+  if (snapshot.empty) {
+    console.log('No templates to delete');
+    return;
+  }
+
+  const batch = writeBatch(db);
+  snapshot.docs.forEach(doc => {
+    batch.delete(doc.ref);
+  });
+  
+  await batch.commit();
+  console.log(`Deleted all ${snapshot.docs.length} challenge templates`);
+  
+  // Re-seed with fresh templates
+  await seedChallengeTemplates();
+  console.log('Re-seeded challenge templates');
+};
+
+// Get all active challenge templates from Firestore
+export const getChallengeTemplates = async (): Promise<ChallengeTemplate[]> => {
+  const templatesRef = collection(db, COLLECTIONS.CHALLENGE_TEMPLATES);
+  const q = query(templatesRef, where('active', '==', true));
+  const snapshot = await getDocs(q);
+
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+  })) as ChallengeTemplate[];
+};
+
+// Get user's challenge progress (subcollection under user)
+const getUserChallengeProgress = async (userId: string): Promise<Record<string, ChallengeProgress>> => {
+  const progressRef = collection(db, COLLECTIONS.USERS, userId, 'challengeProgress');
+  const snapshot = await getDocs(progressRef);
+
+  const progressMap: Record<string, ChallengeProgress> = {};
+  snapshot.docs.forEach(doc => {
+    progressMap[doc.id] = doc.data() as ChallengeProgress;
+  });
+  return progressMap;
+};
+
+// Get active challenges: merge templates + user progress (auto-reset expired progress)
+export const getActiveChallenges = async (userId: string): Promise<Challenge[]> => {
+  const [templates, progressMap] = await Promise.all([
+    getChallengeTemplates(),
+    getUserChallengeProgress(userId),
+  ]);
+
+  const challenges: Challenge[] = [];
+
+  for (const template of templates) {
+    const progress = progressMap[template.id];
+    const currentPeriod = getPeriodKey(template.type);
+
+    let current = 0;
+    let rewardClaimed = false;
+
+    if (progress && progress.lastResetDate === currentPeriod) {
+      // Progress is for the current period — use it
+      current = progress.current;
+      rewardClaimed = progress.rewardClaimed;
+    } else if (progress) {
+      // Progress is from a previous period — auto-reset
+      const progressRef = doc(db, COLLECTIONS.USERS, userId, 'challengeProgress', template.id);
+      await setDoc(progressRef, {
+        templateId: template.id,
+        current: 0,
+        rewardClaimed: false,
+        lastResetDate: currentPeriod,
+      });
+    }
+
+    challenges.push({
+      id: template.id,
+      name: template.name,
+      nameEn: template.nameEn,
+      nameTh: template.nameTh,
+      description: template.description,
+      target: template.target,
+      current,
+      reward: template.reward,
+      endDate: getEndDate(template.type),
+      type: template.type,
+      category: template.category,
+      rewardClaimed,
+    });
+  }
+
+  return challenges;
+};
+
+// Initialize challenges for a user (seeds templates if needed)
+export const initializeUserChallenges = async (userId: string): Promise<void> => {
+  // Clean up duplicates and seed fresh templates
+  await removeDuplicateChallengeTemplates();
+  await seedChallengeTemplates();
+  
+  // getActiveChallenges handles auto-reset, so just calling it is enough
+  await getActiveChallenges(userId);
+};
+
+// Update challenge progress (set exact value)
 export const updateChallengeProgress = async (
-  challengeId: string,
+  userId: string,
+  templateId: string,
   progress: number
 ): Promise<void> => {
-  const challengeRef = doc(db, COLLECTIONS.CHALLENGES, challengeId);
-  await updateDoc(challengeRef, {
-    current: progress,
-  });
+  const currentPeriod = getPeriodKey(
+    (await getDoc(doc(db, COLLECTIONS.CHALLENGE_TEMPLATES, templateId))).data()?.type || 'daily'
+  );
+  const progressRef = doc(db, COLLECTIONS.USERS, userId, 'challengeProgress', templateId);
+  const progressSnap = await getDoc(progressRef);
+
+  if (progressSnap.exists()) {
+    await updateDoc(progressRef, { current: progress });
+  } else {
+    await setDoc(progressRef, {
+      templateId,
+      current: progress,
+      rewardClaimed: false,
+      lastResetDate: currentPeriod,
+    });
+  }
 };
 
-// Increment challenge progress (for workout completion, etc.)
+// Increment challenge progress (for workout completion, calories, etc.)
 export const incrementChallengeProgress = async (
   userId: string,
-  challengeType: 'workout' | 'calories' | 'water',
+  challengeCategory: 'workout' | 'calories' | 'water',
   amount: number = 1
 ): Promise<void> => {
   const challenges = await getActiveChallenges(userId);
-  
+
   for (const challenge of challenges) {
-    let shouldUpdate = false;
-    
-    // Match challenge to type
-    if (challengeType === 'workout' && 
-        (challenge.name.includes('Workout') || challenge.nameTh.includes('ออกกำลังกาย'))) {
-      shouldUpdate = true;
-    } else if (challengeType === 'calories' && 
-               (challenge.name.includes('Calorie') || challenge.nameTh.includes('แคลอรี่'))) {
-      shouldUpdate = true;
-    } else if (challengeType === 'water' && 
-               (challenge.name.includes('Water') || challenge.nameTh.includes('น้ำ'))) {
-      shouldUpdate = true;
-    }
-    
-    if (shouldUpdate && challenge.current < challenge.target) {
+    if (challenge.category === challengeCategory && challenge.current < challenge.target) {
       const newProgress = Math.min(challenge.current + amount, challenge.target);
-      await updateChallengeProgress(challenge.id, newProgress);
+      await updateChallengeProgress(userId, challenge.id, newProgress);
     }
   }
 };
@@ -1137,13 +1417,11 @@ export const syncWaterChallengeProgress = async (
   waterIntake: number
 ): Promise<void> => {
   const challenges = await getActiveChallenges(userId);
-  
+
   for (const challenge of challenges) {
-    // Match water challenges
-    if (challenge.name.includes('Water') || challenge.nameTh.includes('น้ำ')) {
-      // Set progress to actual water intake (not increment)
+    if (challenge.category === 'water') {
       const newProgress = Math.min(waterIntake, challenge.target);
-      await updateChallengeProgress(challenge.id, newProgress);
+      await updateChallengeProgress(userId, challenge.id, newProgress);
     }
   }
 };
@@ -1153,36 +1431,45 @@ export const claimChallengeReward = async (
   userId: string,
   challengeId: string
 ): Promise<{ success: boolean; points: number; message: string }> => {
-  const challengeRef = doc(db, COLLECTIONS.CHALLENGES, challengeId);
-  const challengeSnap = await getDoc(challengeRef);
-  
-  if (!challengeSnap.exists()) {
-    return { success: false, points: 0, message: 'Challenge not found' };
+  // Get challenge progress
+  const progressRef = doc(db, COLLECTIONS.USERS, userId, 'challengeProgress', challengeId);
+  const progressSnap = await getDoc(progressRef);
+
+  if (!progressSnap.exists()) {
+    return { success: false, points: 0, message: 'Challenge progress not found' };
   }
-  
-  const challengeData = challengeSnap.data();
-  
-  // Check if challenge is complete
-  if ((challengeData.current || 0) < challengeData.target) {
-    return { success: false, points: 0, message: 'Challenge not completed yet' };
-  }
-  
+
+  const progressData = progressSnap.data();
+
   // Check if reward already claimed
-  if (challengeData.rewardClaimed) {
+  if (progressData.rewardClaimed) {
     return { success: false, points: 0, message: 'Reward already claimed' };
   }
-  
+
+  // Get template to check target and reward
+  const templateRef = doc(db, COLLECTIONS.CHALLENGE_TEMPLATES, challengeId);
+  const templateSnap = await getDoc(templateRef);
+
+  if (!templateSnap.exists()) {
+    return { success: false, points: 0, message: 'Challenge template not found' };
+  }
+
+  const templateData = templateSnap.data();
+
+  // Check if challenge is complete
+  if ((progressData.current || 0) < templateData.target) {
+    return { success: false, points: 0, message: 'Challenge not completed yet' };
+  }
+
   // Mark reward as claimed
-  await updateDoc(challengeRef, {
-    rewardClaimed: true,
-  });
-  
+  await updateDoc(progressRef, { rewardClaimed: true });
+
   // Add points to user
-  await updateUserPoints(userId, challengeData.reward);
-  
-  return { 
-    success: true, 
-    points: challengeData.reward, 
-    message: `Claimed ${challengeData.reward} points!` 
+  await updateUserPoints(userId, templateData.reward);
+
+  return {
+    success: true,
+    points: templateData.reward,
+    message: `Claimed ${templateData.reward} points!`,
   };
 };
