@@ -152,9 +152,9 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
-  const apiKey = process.env.GOOGLE_API_KEY;
+  const apiKey = process.env.OPENROUTER_API_KEY || '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';
   if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'Server misconfigured: missing GOOGLE_API_KEY' }), {
+    return new Response(JSON.stringify({ error: 'Server misconfigured: missing OPENROUTER_API_KEY' }), {
       status: 500,
       headers: { 'content-type': 'application/json' },
     });
@@ -235,68 +235,51 @@ ${quizSummary}
 
   try {
     const requestBody = {
-      contents: [
+      model: 'google/gemma-3n-e4b-it:free',
+      messages: [
         {
-          parts: [{ text: systemPrompt }],
+          role: 'user',
+          content: systemPrompt,
         },
       ],
-      generationConfig: {
-        temperature: 0.3,
-        maxOutputTokens: 1024,
-        topP: 0.8,
-        topK: 40,
-      },
+      temperature: 0.3,
+      max_tokens: 1024,
+      top_p: 0.8,
     };
 
-    // Try multiple models in order of preference
-    const models = [
-      'gemini-2.0-flash',
-      'gemini-1.5-flash',
-      'gemma-3-27b-it',
-      'gemma-3-12b-it',
-      'gemma-3-4b-it',
-    ];
+    const openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
 
     let response: Response | null = null;
     let lastError = '';
 
-    for (const model of models) {
-      const gemmaUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    try {
+      response = await fetch(openRouterUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+          'HTTP-Referer': 'https://kaya-fitness.vercel.app',
+          'X-Title': 'KAYA Fitness',
+        },
+        body: JSON.stringify(requestBody),
+      });
 
-      try {
-        response = await fetch(gemmaUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody),
-        });
-
-        if (response.ok) {
-          console.log(`Successfully used model: ${model}`);
-          break;
-        }
-
-        // If rate limited (429), try next model
-        if (response.status === 429) {
-          lastError = `${model}: rate limited (429)`;
-          console.warn(`Model ${model} rate limited, trying next...`);
-          response = null;
-          continue;
-        }
-
-        // Other errors - still try next model
+      if (!response.ok) {
         const errText = await response.text();
-        lastError = `${model}: ${response.status} - ${errText}`;
-        console.warn(`Model ${model} failed (${response.status}), trying next...`);
+        lastError = `OpenRouter: ${response.status} - ${errText}`;
+        console.warn(`OpenRouter API failed (${response.status})`);
         response = null;
-      } catch (fetchErr) {
-        lastError = `${model}: fetch error - ${fetchErr}`;
-        console.warn(`Model ${model} fetch error, trying next...`);
-        response = null;
+      } else {
+        console.log('Successfully used OpenRouter with google/gemma-3n-e4b-it:free');
       }
+    } catch (fetchErr) {
+      lastError = `OpenRouter: fetch error - ${fetchErr}`;
+      console.warn('OpenRouter fetch error');
+      response = null;
     }
 
     if (!response || !response.ok) {
-      console.error('All models failed. Last error:', lastError);
+      console.error('OpenRouter API failed. Last error:', lastError);
       // Return fallback instead of error
       const fallback = getFallbackRecommendation(quizAnswers);
       const enrichedFallback = fallback.recommended_exercises.map(
@@ -317,14 +300,14 @@ ${quizSummary}
     }
 
     const result = await response.json() as {
-      candidates?: Array<{
-        content?: {
-          parts?: Array<{ text?: string }>;
+      choices?: Array<{
+        message?: {
+          content?: string;
         };
       }>;
     };
 
-    const responseText = result?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const responseText = result?.choices?.[0]?.message?.content || '';
 
     // Try to parse the JSON response
     let parsedResponse;
@@ -337,7 +320,7 @@ ${quizSummary}
         throw new Error('No JSON found in response');
       }
     } catch (parseError) {
-      console.error('Failed to parse Gemma response:', responseText);
+      console.error('Failed to parse OpenRouter response:', responseText);
       // Return a fallback recommendation
       parsedResponse = getFallbackRecommendation(quizAnswers);
     }
@@ -388,7 +371,7 @@ ${quizSummary}
     });
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-    console.error('Gemma workout recommend error:', err);
+    console.error('OpenRouter workout recommend error:', err);
     return new Response(JSON.stringify({
       error: 'Request failed',
       details: errorMessage,

@@ -83,9 +83,9 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   // Get API key from environment
-  const apiKey = process.env.GOOGLE_API_KEY;
+  const apiKey = process.env.OPENROUTER_API_KEY || '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';
   if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'Server misconfigured: missing GOOGLE_API_KEY' }), {
+    return new Response(JSON.stringify({ error: 'Server misconfigured: missing OPENROUTER_API_KEY' }), {
       status: 500,
       headers: { 'content-type': 'application/json' },
     });
@@ -224,54 +224,55 @@ ${bmiTip ? `- ${bmiTip}` : ''}
   const fullPrompt = `${systemPrompt}${contextStr}\n\nคำถามจากผู้ใช้: ${message}`;
 
   try {
-    // Build request body for Gemma-3 via Google GenAI API
-    const requestBody: Record<string, unknown> = {
-      contents: [
-        {
-          parts: [] as Array<Record<string, unknown>>,
-        },
-      ],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 200,
-        topP: 0.8,
-        topK: 40,
-      },
-    };
-
-    const parts = (requestBody.contents as Array<{ parts: Array<Record<string, unknown>> }>)[0].parts;
+    // Build request body for OpenRouter API (OpenAI-compatible)
+    const contentParts: Array<Record<string, unknown>> = [];
 
     // Add image if provided
     if (imageBase64) {
       // Remove data URL prefix if present
       const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-      parts.push({
-        inlineData: {
-          mimeType: 'image/jpeg',
-          data: base64Data,
+      contentParts.push({
+        type: 'image_url',
+        image_url: {
+          url: `data:image/jpeg;base64,${base64Data}`,
         },
       });
     }
 
     // Add text prompt
-    parts.push({ text: fullPrompt });
+    contentParts.push({ type: 'text', text: fullPrompt });
 
-    // Use gemma-3-27b-it model
-    const gemmaUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemma-3-27b-it:generateContent?key=${apiKey}`;
+    const requestBody = {
+      model: 'google/gemma-3n-e4b-it:free',
+      messages: [
+        {
+          role: 'user',
+          content: contentParts,
+        },
+      ],
+      temperature: 0.7,
+      max_tokens: 200,
+      top_p: 0.8,
+    };
 
-    const response = await fetch(gemmaUrl, {
+    const openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
+
+    const response = await fetch(openRouterUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': 'https://kaya-fitness.vercel.app',
+        'X-Title': 'KAYA Fitness',
       },
       body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Gemma API error:', response.status, errorText);
+      console.error('OpenRouter API error:', response.status, errorText);
       return new Response(JSON.stringify({ 
-        error: 'Gemma API error', 
+        error: 'OpenRouter API error', 
         status: response.status,
         details: errorText 
       }), {
@@ -281,15 +282,15 @@ ${bmiTip ? `- ${bmiTip}` : ''}
     }
 
     const result = await response.json() as {
-      candidates?: Array<{
-        content?: {
-          parts?: Array<{ text?: string }>;
+      choices?: Array<{
+        message?: {
+          content?: string;
         };
       }>;
     };
     
     // Extract text from response
-    const responseText = result?.candidates?.[0]?.content?.parts?.[0]?.text || 
+    const responseText = result?.choices?.[0]?.message?.content || 
                          'ขอโทษครับ ผมไม่เข้าใจคำถาม ลองถามใหม่อีกครั้งนะครับ';
 
     return new Response(JSON.stringify({ 
@@ -305,7 +306,7 @@ ${bmiTip ? `- ${bmiTip}` : ''}
 
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-    console.error('Gemma request error:', err);
+    console.error('OpenRouter request error:', err);
     return new Response(JSON.stringify({ 
       error: 'Request failed', 
       details: errorMessage 
