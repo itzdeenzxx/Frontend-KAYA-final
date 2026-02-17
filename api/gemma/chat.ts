@@ -83,7 +83,7 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   // Get API key from environment
-  const apiKey = process.env.OPENROUTER_API_KEY || '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';
+  const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     return new Response(JSON.stringify({ error: 'Server misconfigured: missing OPENROUTER_API_KEY' }), {
       status: 500,
