@@ -25,6 +25,7 @@ import WhackAMoleGame from "./pages/WhackAMoleGame";
 import FishingGame from "./pages/FishingGame";
 import WorkoutComplete from "./pages/WorkoutComplete";
 import Challenges from "./pages/Challenges";
+import WorkoutHistory from "./pages/WorkoutHistory";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
@@ -83,6 +84,7 @@ const AppRoutes = () => {
           <Route path="/settings" element={<Settings />} />
           <Route path="/game-mode" element={<GameMode />} />
           <Route path="/challenges" element={<Challenges />} />
+          <Route path="/workout-history" element={<WorkoutHistory />} />
         </Route>
         
         {/* Full Screen Routes */}

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Trophy, Clock, Target, Calendar, Star, Gift, RefreshCw, Trash2 } from 'lucide-react';
+import { ArrowLeft, Trophy, Clock, Target, Calendar, Star, Gift, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -15,12 +15,11 @@ const Challenges = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { theme } = useTheme();
-  const { challenges, claimReward, refreshChallenges, cleanDuplicates, isLoading, error } = useChallenges();
+  const { challenges, claimReward, refreshChallenges, isLoading, error } = useChallenges();
   
   const isDark = theme === 'dark';
   const [selectedFilter, setSelectedFilter] = useState<ChallengeFilter>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isCleaningDuplicates, setIsCleaningDuplicates] = useState(false);
 
   // Initialize challenges on mount
   useEffect(() => {
@@ -82,19 +81,6 @@ const Challenges = () => {
     return result;
   };
 
-  const handleCleanDuplicates = async () => {
-    setIsCleaningDuplicates(true);
-    try {
-      const success = await cleanDuplicates();
-      if (success) {
-        // Show success feedback and refresh
-        await refreshChallenges();
-      }
-    } finally {
-      setIsCleaningDuplicates(false);
-    }
-  };
-
   return (
     <div className={cn(
       "min-h-screen pb-20",
@@ -140,29 +126,6 @@ const Challenges = () => {
             </div>
 
             <div className="flex items-center gap-2">
-              <button
-                onClick={handleCleanDuplicates}
-                disabled={isCleaningDuplicates}
-                className={cn(
-                  "flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium transition-all",
-                  isDark 
-                    ? "bg-red-500/20 text-red-300 hover:bg-red-500/30 disabled:bg-red-500/10 disabled:text-red-500" 
-                    : "bg-red-100 text-red-700 hover:bg-red-200 disabled:bg-red-50 disabled:text-red-400"
-                )}
-              >
-                {isCleaningDuplicates ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    กำลังลบข้อมูลซ้ำ...
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="w-4 h-4" />
-                    ลบข้อมูลซ้ำ
-                  </>
-                )}
-              </button>
-              
               <div className={cn(
                 "px-3 py-2 rounded-full text-sm font-medium",
                 isDark ? "bg-white/10 text-white" : "bg-gray-100 text-gray-700"

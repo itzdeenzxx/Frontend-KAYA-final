@@ -221,22 +221,25 @@ export interface FirestoreHealthData {
   updatedAt: Timestamp;
 }
 
+// ==================== WORKOUT HISTORY OPERATIONS ====================
+
 export interface FirestoreWorkoutHistory {
   id?: string;
   userId: string;
-  workoutId: string;
-  workoutName: string;
-  category: string;
-  duration: number; // seconds
+  styleName?: string;
+  styleNameTh?: string;
+  totalTime: number; // seconds
+  totalReps: number;
   caloriesBurned: number;
-  accuracyScore: number;
-  repsCounted: number;
+  completionPercentage: number;
+  averageFormScore: number;
   exercises: {
-    exerciseId: string;
-    name: string;
-    repsCompleted: number;
-    duration: number;
-    accuracyScore: number;
+    name?: string;
+    nameTh?: string;
+    reps: number;
+    targetReps: number;
+    formScore: number;
+    duration?: number;
   }[];
   completedAt: Timestamp;
 }
@@ -584,7 +587,7 @@ export const saveWorkoutSession = async (
   });
   
   // Update user points based on workout
-  const pointsEarned = Math.floor(data.caloriesBurned / 10) + Math.floor(data.accuracyScore);
+  const pointsEarned = Math.floor(data.caloriesBurned / 10) + Math.floor(data.totalReps / 5);
   await updateUserPoints(data.userId, pointsEarned);
   
   return docRef.id;
@@ -625,9 +628,9 @@ export const getUserWorkoutStats = async (userId: string): Promise<{
   
   const totalWorkouts = workouts.length;
   const totalCalories = workouts.reduce((sum, w) => sum + w.caloriesBurned, 0);
-  const totalDuration = workouts.reduce((sum, w) => sum + w.duration, 0);
+  const totalDuration = workouts.reduce((sum, w) => sum + w.totalTime, 0);
   const averageAccuracy = workouts.length > 0
-    ? workouts.reduce((sum, w) => sum + w.accuracyScore, 0) / workouts.length
+    ? workouts.reduce((sum, w) => sum + w.averageFormScore, 0) / workouts.length
     : 0;
     
   return {
@@ -636,6 +639,136 @@ export const getUserWorkoutStats = async (userId: string): Promise<{
     totalDuration,
     averageAccuracy: Math.round(averageAccuracy * 10) / 10,
   };
+};
+
+// Create sample workout data (for testing purposes)
+export const createSampleWorkoutHistory = async (userId: string): Promise<void> => {
+  const sampleWorkouts: Omit<FirestoreWorkoutHistory, 'userId' | 'completedAt'>[] = [
+    {
+      styleName: 'Full Body Beginner',
+      styleNameTh: 'โปรแกรมผู้เริ่มต้น',
+      totalTime: 900, // 15 minutes
+      totalReps: 30,
+      caloriesBurned: 120,
+      completionPercentage: 100,
+      averageFormScore: 85,
+      exercises: [
+        {
+          name: 'Push Ups',
+          nameTh: 'วิดพื้น',
+          reps: 10,
+          targetReps: 10,
+          formScore: 90,
+          duration: 300,
+        },
+        {
+          name: 'Squats',
+          nameTh: 'สควอต',
+          reps: 15,
+          targetReps: 15,
+          formScore: 80,
+          duration: 400,
+        },
+        {
+          name: 'Plank',
+          nameTh: 'แพลงก์',
+          reps: 5,
+          targetReps: 5,
+          formScore: 85,
+          duration: 200,
+        },
+      ],
+    },
+    {
+      styleName: 'Upper Body Strength',
+      styleNameTh: 'เสริมกล้ามเนื้อส่วนบน',
+      totalTime: 1200, // 20 minutes
+      totalReps: 45,
+      caloriesBurned: 180,
+      completionPercentage: 95,
+      averageFormScore: 78,
+      exercises: [
+        {
+          name: 'Push Ups',
+          nameTh: 'วิดพื้น',
+          reps: 15,
+          targetReps: 15,
+          formScore: 85,
+          duration: 400,
+        },
+        {
+          name: 'Pull Ups',
+          nameTh: 'ดึงตัว',
+          reps: 8,
+          targetReps: 10,
+          formScore: 70,
+          duration: 300,
+        },
+        {
+          name: 'Dumbbell Press',
+          nameTh: 'กดดัมเบล',
+          reps: 12,
+          targetReps: 12,
+          formScore: 80,
+          duration: 300,
+        },
+        {
+          name: 'Bicep Curls',
+          nameTh: 'บิเซ็บเคิร์ล',
+          reps: 10,
+          targetReps: 12,
+          formScore: 75,
+          duration: 200,
+        },
+      ],
+    },
+    {
+      styleName: 'Cardio Blast',
+      styleNameTh: 'เผาผลาญแคลลอรี่',
+      totalTime: 1800, // 30 minutes
+      totalReps: 60,
+      caloriesBurned: 300,
+      completionPercentage: 100,
+      averageFormScore: 92,
+      exercises: [
+        {
+          name: 'Jumping Jacks',
+          nameTh: 'กระโดดแจ็ค',
+          reps: 20,
+          targetReps: 20,
+          formScore: 95,
+          duration: 600,
+        },
+        {
+          name: 'Burpees',
+          nameTh: 'เบอร์ปี้',
+          reps: 15,
+          targetReps: 15,
+          formScore: 88,
+          duration: 600,
+        },
+        {
+          name: 'High Knees',
+          nameTh: 'ยกเข่าสูง',
+          reps: 25,
+          targetReps: 25,
+          formScore: 93,
+          duration: 600,
+        },
+      ],
+    },
+  ];
+
+  try {
+    for (const workout of sampleWorkouts) {
+      await saveWorkoutSession({ ...workout, userId });
+      // Add delay to ensure different timestamps
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    console.log('Sample workout history created successfully');
+  } catch (error) {
+    console.error('Error creating sample workout history:', error);
+  }
 };
 
 // ==================== NUTRITION LOG OPERATIONS ====================
