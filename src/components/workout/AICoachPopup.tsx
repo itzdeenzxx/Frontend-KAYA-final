@@ -364,14 +364,19 @@ export class AICoachService {
     const now = Date.now();
     
     // Different intervals for different message types
+    // Priority: warnings (1) > hold/count (2) > encouragement (3)
     const intervals: Partial<Record<CoachEventType, number>> = {
-      good_form: 5000,      // Every 5 seconds max
-      warn_form: 4000,      // Every 4 seconds max
-      bad_form: 3000,       // Every 3 seconds max
-      rep_completed: 1000,  // Every second (for counting)
-      movement_too_fast: 5000,
-      movement_too_slow: 5000,
-      movement_smooth: 10000,
+      // PRIORITY 1: Warnings - show more frequently
+      bad_form: 2000,       // Every 2 seconds (most urgent)
+      warn_form: 2500,      // Every 2.5 seconds
+      // PRIORITY 2: Hold/Count feedback
+      hold_form: 600,       // Very frequent for "hold it" feedback
+      rep_completed: 800,   // Quick counting feedback
+      // PRIORITY 3: Encouragement - less frequent
+      good_form: 8000,      // Every 8 seconds (low priority)
+      movement_too_fast: 4000,
+      movement_too_slow: 4000,
+      movement_smooth: 15000, // Very rare encouragement
     };
 
     const interval = intervals[type] || this.minMessageInterval;
@@ -448,7 +453,12 @@ export class AICoachService {
     quality: FormQuality,
     suggestions: string[]
   ): CoachMessage | null {
+    // Check if this is a "hold it" feedback (always show these immediately)
+    const isHoldFeedback = suggestions.length > 0 && suggestions[0].includes('ค้างไว้');
+    
+    // Use hold_form event type for hold feedback (shorter cooldown)
     const eventType: CoachEventType = 
+      isHoldFeedback ? 'hold_form' :
       quality === 'good' ? 'good_form' :
       quality === 'warn' ? 'warn_form' : 'bad_form';
 
@@ -456,38 +466,42 @@ export class AICoachService {
       return null;
     }
 
-    // Track consecutive issues
-    if (quality !== 'good') {
-      this.consecutiveFormIssues++;
-    } else {
-      this.consecutiveFormIssues = 0;
-    }
+    // Track consecutive issues (skip for hold feedback)
+    if (!isHoldFeedback) {
+      if (quality !== 'good') {
+        this.consecutiveFormIssues++;
+      } else {
+        this.consecutiveFormIssues = 0;
+      }
 
-    // Only show warnings after consecutive issues
-    if (quality === 'warn' && this.consecutiveFormIssues < 3) {
-      return null;
-    }
+      // PRIORITY 1: Show warnings quickly (after fewer issues)
+      // Only show warnings after consecutive issues
+      if (quality === 'warn' && this.consecutiveFormIssues < 2) {
+        return null;
+      }
 
-    if (quality === 'bad' && this.consecutiveFormIssues < 2) {
-      return null;
-    }
-
-    // For good form, only 20% chance to show
-    if (quality === 'good' && Math.random() > 0.2) {
-      return null;
+      if (quality === 'bad' && this.consecutiveFormIssues < 1) {
+        return null;
+      }
+      
+      // PRIORITY 3: Good form encouragement - very rare (only 10% chance)
+      if (quality === 'good' && Math.random() > 0.1) {
+        return null;
+      }
     }
 
     let text: string;
-    if (quality === 'good') {
-      text = getRandomMessage(COACH_MESSAGES.good_form);
+    if (isHoldFeedback || quality === 'good') {
+      // Use specific suggestion if available (like "ค้างไว้"), otherwise random
+      text = suggestions[0] || getRandomMessage(COACH_MESSAGES.good_form);
     } else if (quality === 'warn') {
       text = suggestions[0] || getRandomMessage(COACH_MESSAGES.warn_form);
     } else {
       text = suggestions[0] || getRandomMessage(COACH_MESSAGES.bad_form);
     }
 
-    // Avoid repeats
-    if (this.isRepeatedMessage(text)) {
+    // Avoid repeats (but allow hold feedback to repeat since it's guidance)
+    if (!isHoldFeedback && this.isRepeatedMessage(text)) {
       return null;
     }
 
@@ -496,7 +510,7 @@ export class AICoachService {
     return {
       id: this.generateId(),
       text,
-      type: eventType,
+      type: isHoldFeedback ? 'good_form' : eventType, // Display as good_form style
       timestamp: Date.now(),
       priority: quality === 'bad' ? 'high' : 'medium',
     };

@@ -26,7 +26,7 @@ export type DifficultyLevel = 'beginner' | 'intermediate' | 'advanced' | 'expert
 export type FormQuality = 'good' | 'warn' | 'bad';
 export type TempoQuality = 'perfect' | 'good' | 'too_fast' | 'too_slow' | 'inconsistent';
 export type ExerciseStage = 'up' | 'down' | 'center' | 'left' | 'right' | 'idle' | 'transition' 
-  | 'left_up' | 'right_up' | 'squat' | 'plank' | 'jump' | 'hold' | 'tap_left' | 'tap_right';
+  | 'left_up' | 'right_up' | 'squat' | 'plank' | 'jump' | 'hold' | 'tap_left' | 'tap_right' | 'tap';
 
 // Camera orientation for each exercise
 export type CameraOrientation = 'front' | 'side';
@@ -41,6 +41,7 @@ export type CoachEventType =
   | 'good_form'
   | 'warn_form'
   | 'bad_form'
+  | 'hold_form'
   | 'halfway'
   | 'almost_done'
   | 'exercise_complete'
@@ -84,9 +85,10 @@ export const EXERCISES: Record<ExerciseType, ExerciseDefinition> = {
     camera: 'front',
     stages: ['up', 'down'],
     thresholds: {
-      up_angle: 150,      // angle >= 150° means arms fully up
-      down_angle: 50,     // angle <= 50° means arms down
-      symmetry_diff: 30,  // max angle diff between arms for symmetry check
+      up_angle: 120,      // angle >= 120° means arms up (easier: was 135)
+      down_angle: 60,     // angle <= 60° means arms down (easier: was 50)
+      symmetry_diff: 45,  // max angle diff between arms (easier: was 35)
+      min_rom: 50,        // minimum Range of Motion required (easier: was 70)
     }
   },
   
@@ -95,14 +97,15 @@ export const EXERCISES: Record<ExerciseType, ExerciseDefinition> = {
     name: 'Torso Twist',
     nameTh: 'บิดลำตัวซ้าย-ขวา',
     description: 'Twist torso left and right. Measure angle between shoulder line and hip line.',
-    descriptionTh: 'บิดลำตัวไปซ้ายและขวา เน้นคลายหลังและเอว วัดมุมระหว่างเส้นไหล่กับเส้นสะโพก 20-40°',
+    descriptionTh: 'บิดลำตัวไปซ้ายและขวา เน้นคลายหลังและเอว วัดมุมระหว่างเส้นไหล่กับเส้นสะโพก 8-45°',
     icon: 'torso',
     camera: 'front',
     stages: ['center', 'left', 'right'],
     thresholds: {
-      min_twist_angle: 20,  // minimum twist angle in degrees
-      max_twist_angle: 40,  // maximum twist angle for good form
-      twist_threshold: 0.12, // horizontal offset for twist detection
+      min_twist_angle: 25,   // minimum twist angle to count (must be clearly twisted)
+      max_twist_angle: 50,  // maximum twist angle
+      twist_threshold: 0.03, // horizontal offset for direction
+      center_threshold: 12,  // center when angle < 12° (must clearly return to center)
     }
   },
   
@@ -110,14 +113,15 @@ export const EXERCISES: Record<ExerciseType, ExerciseDefinition> = {
     id: 'knee_raise',
     name: 'Knee Raise',
     nameTh: 'ยกเข่าสลับ',
-    description: 'Alternate knee raises. Hip flexion angle > 80° to pass.',
-    descriptionTh: 'ยกเข่าสลับซ้ายขวา ใช้เตรียมร่างกาย/คาร์ดิโอเบาๆ มุมสะโพก > 80°',
+    description: 'Alternate knee raises. Hip flexion angle < 120° to pass.',
+    descriptionTh: 'ยกเข่าสลับซ้ายขวา ใช้เตรียมร่างกาย/คาร์ดิโอเบาๆ มุมสะโพก < 120°',
     icon: 'leg',
     camera: 'side', // Side camera is more accurate
     stages: ['up', 'down'],
     thresholds: {
-      up_angle: 80,      // hip flexion angle > 80° means knee is raised
-      down_angle: 160,   // hip flexion angle > 160° means leg is down
+      up_angle: 120,     // hip flexion angle < 120° (easier: was 90)
+      down_angle: 140,   // hip flexion angle > 140° (easier: was 150)
+      min_hold_frames: 1, // hold for 1 frame (easier: was 2)
     }
   },
 
@@ -129,16 +133,17 @@ export const EXERCISES: Record<ExerciseType, ExerciseDefinition> = {
     id: 'squat_arm_raise',
     name: 'Squat with Arm Raise',
     nameTh: 'สควอตพร้อมยกแขน',
-    description: 'Squat while raising arms. Knee < 95° down, > 150° up, arms > 140°.',
+    description: 'Squat while raising arms. Knee < 145° down, > 150° up, arms > 80°.',
     descriptionTh: 'นั่งสควอตพร้อมยกแขนขึ้น ฝึกกล้ามเนื้อขา สะโพก และไหล่',
     icon: 'squat-arm',
     camera: 'side',
     stages: ['down', 'up'],
     thresholds: {
-      knee_down_angle: 95,   // knee angle < 95° when squatting down
-      knee_up_angle: 150,    // knee angle > 150° when standing up
-      arm_up_angle: 140,     // arm angle > 140° when raised
-      arm_down_angle: 60,    // arm angle < 60° when down
+      knee_down_angle: 145,  // knee angle < 145° (ง่ายมาก)
+      knee_up_angle: 150,    // knee angle > 150°
+      arm_up_angle: 80,      // arm angle > 80°
+      arm_down_angle: 60,    // arm angle < 60°
+      min_squat_depth: 0.03,
     }
   },
 
@@ -146,31 +151,33 @@ export const EXERCISES: Record<ExerciseType, ExerciseDefinition> = {
     id: 'push_up',
     name: 'Push-up',
     nameTh: 'วิดพื้น',
-    description: 'Standard push-up. Elbow < 90° down, > 160° up. Focus on chest, arms, and core.',
-    descriptionTh: 'วิดพื้น เน้นอก แขน และ core ศอก < 90° ตอนลง / > 160° ตอนขึ้น',
+    description: 'Standard push-up. Elbow < 130° down (bent arms), > 150° up (straight arms).',
+    descriptionTh: 'วิดพื้น เน้นอก แขน และ core',
     icon: 'pushup',
     camera: 'side',
     stages: ['down', 'up'],
     thresholds: {
-      elbow_down_angle: 90,   // elbow angle < 90° when down
-      elbow_up_angle: 160,    // elbow angle > 160° when up
-      body_alignment: 15,      // max deviation from straight line
+      elbow_down_angle: 145,  // elbow angle < 145° = arms bent = down position (easier)
+      elbow_up_angle: 155,    // elbow angle > 155° = arms straight = up/plank position
+      body_alignment: 45,
     }
   },
 
   static_lunge: {
     id: 'static_lunge',
     name: 'Static Lunge',
-    nameTh: 'ลันจ์ยืน',
-    description: 'Static lunge position. Front knee ~90°. Trains legs and balance.',
-    descriptionTh: 'ท่าลันจ์ค้าง ฝึกขาและการทรงตัว เข่าหน้า ~90°',
+    nameTh: 'ลันจ์ค้าง',
+    description: 'Lunge hold - time-based. 60 seconds total (2x30s per leg).',
+    descriptionTh: 'ค้างท่าลันจ์ จับเวลา 60 วินาที (2 ครั้ง ครั้งละ 30 วิ)',
     icon: 'lunge',
     camera: 'side',
-    stages: ['down', 'up'],
+    isTimeBased: true, // Time-based: hold for 60 seconds
+    stages: ['hold', 'idle'],
     thresholds: {
-      front_knee_angle: 90,   // target front knee angle
-      knee_tolerance: 15,     // ±15° tolerance
-      back_knee_angle: 100,   // back knee angle reference
+      front_knee_angle: 130,   // target front knee angle
+      knee_tolerance: 30,      // ±30° tolerance (accepts 100-160°)
+      back_knee_angle: 130,   // back knee angle reference
+      body_alignment_max: 20, // max deviation from straight
     }
   },
 
@@ -182,16 +189,16 @@ export const EXERCISES: Record<ExerciseType, ExerciseDefinition> = {
     id: 'jump_squat',
     name: 'Jump Squat',
     nameTh: 'กระโดดสควอต',
-    description: 'Jump squat with explosive power. Knee < 95° + detect airborne phase.',
+    description: 'Jump squat with explosive power. Knee < 130° + detect airborne phase.',
     descriptionTh: 'กระโดดพร้อมทำสควอต ตรวจจับช่วงลอยตัว ฝึกพลังระเบิด',
     icon: 'jump-squat',
     camera: 'side',
     stages: ['squat', 'jump', 'down'],
     thresholds: {
-      knee_squat_angle: 95,     // knee angle < 95° in squat
-      knee_standing_angle: 160,  // knee angle > 160° when standing
-      jump_height_ratio: 0.05,   // vertical movement threshold for jump detection
-      land_threshold: 0.02,      // landing detection threshold
+      knee_squat_angle: 150,    // knee angle < 150° (ง่ายมากมากมาก - แค่ย่อเข่าเบาๆ)
+      knee_standing_angle: 160, // knee angle > 160°
+      jump_height_ratio: 0.01,  // vertical movement (ง่ายมาก)
+      land_threshold: 0.008,    // landing detection threshold (ง่ายขึ้น)
     }
   },
 
@@ -206,7 +213,7 @@ export const EXERCISES: Record<ExerciseType, ExerciseDefinition> = {
     isTimeBased: true,
     stages: ['hold', 'idle'],
     thresholds: {
-      body_alignment_max: 10,   // max deviation from straight line in degrees
+      body_alignment_max: 20,   // max deviation from straight line in degrees (ง่ายขึ้น: was 10)
       min_hold_time: 5,         // minimum seconds to count as valid hold
       shoulder_hip_angle: 180,  // target angle for straight body
       hip_ankle_angle: 180,     // target angle for straight body
@@ -223,10 +230,10 @@ export const EXERCISES: Record<ExerciseType, ExerciseDefinition> = {
     camera: 'side',
     stages: ['left_up', 'right_up', 'down'],
     thresholds: {
-      hip_flexion_angle: 70,    // hip flexion angle when knee is up
-      hip_extended_angle: 160,  // hip angle when leg is back
-      min_speed: 0.08,          // minimum movement speed
-      step_cooldown: 200,       // ms between steps
+      hip_flexion_angle: 130,   // hip flexion angle when knee is up (ง่ายมากมาก)
+      hip_extended_angle: 170,  // hip angle when leg is back (ไม่ต้องตรงมาก)
+      min_speed: 0.01,          // minimum movement speed (ง่ายมาก)
+      step_cooldown: 100,       // ms between steps (เร็วขึ้น)
     }
   },
 
@@ -238,15 +245,15 @@ export const EXERCISES: Record<ExerciseType, ExerciseDefinition> = {
     id: 'pistol_squat',
     name: 'Pistol Squat',
     nameTh: 'สควอตขาเดียว',
-    description: 'Single-leg squat. Knee < 90°. Requires excellent balance.',
-    descriptionTh: 'สควอตขาเดียว เข่า < 90° ต้อง balance ดี',
+    description: 'Single-leg squat. Knee < 130°. Requires balance. Alternate legs.',
+    descriptionTh: 'สควอตขาเดียวสลับข้าง เข่า < 130°',
     icon: 'pistol',
     camera: 'side',
     stages: ['down', 'up'],
     thresholds: {
-      knee_angle: 90,           // standing knee angle < 90° when down
-      extended_leg_angle: 160,  // extended leg should be straight
-      balance_threshold: 0.1,   // hip stability threshold
+      knee_angle: 130,          // knee angle < 130° (ง่ายมากมาก: was 110)
+      extended_leg_angle: 120,  // extended leg (ง่ายขึ้น: was 140)
+      balance_threshold: 0.2,   // hip stability (ง่ายขึ้น: was 0.15)
     }
   },
 
@@ -254,16 +261,15 @@ export const EXERCISES: Record<ExerciseType, ExerciseDefinition> = {
     id: 'pushup_shoulder_tap',
     name: 'Push-up + Shoulder Tap',
     nameTh: 'วิดพื้น + แตะไหล่',
-    description: 'Push-up followed by shoulder taps. Check symmetry and body tilt.',
-    descriptionTh: 'วิดพื้นแล้วแตะไหล่สลับ เช็คสมมาตรและการเอียงลำตัว',
+    description: 'Push-up followed by shoulder taps. Down first, then up and tap.',
+    descriptionTh: 'วิดพื้นลงก่อน แล้วขึ้นมาแตะไหล่สลับซ้าย-ขวา',
     icon: 'pushup-tap',
     camera: 'front',
-    stages: ['down', 'up', 'tap_left', 'tap_right'],
+    stages: ['down', 'up', 'tap'],
     thresholds: {
-      elbow_down_angle: 90,     // elbow angle < 90° when down
-      elbow_up_angle: 160,      // elbow angle > 160° when up
-      tilt_threshold: 0.1,      // body tilt threshold during tap
-      tap_height: 0.15,         // hand must rise this much for tap
+      elbow_down_angle: 145,    // elbow angle < 145° when down (arms bent) - easier
+      elbow_up_angle: 155,      // elbow angle > 155° when up (arms straight)
+      tilt_threshold: 0.15,     // body tilt threshold during tap
     }
   },
 
@@ -271,16 +277,16 @@ export const EXERCISES: Record<ExerciseType, ExerciseDefinition> = {
     id: 'burpee',
     name: 'Burpee',
     nameTh: 'เบอร์พี',
-    description: 'Full burpee with state machine: squat → plank → jump.',
-    descriptionTh: 'เบอร์พีเต็มรูปแบบ ใช้ state machine (squat → plank → jump)',
+    description: 'Simplified burpee: stand → go down (squat/plank) → stand back up = 1 rep. No jump required.',
+    descriptionTh: 'เบอร์พี: ยืน → ลงไป (สควอต/แพลงค์) → ยืนกลับ = 1 ครั้ง ไม่ต้องกระโดด',
     icon: 'burpee',
     camera: 'side',
-    stages: ['squat', 'plank', 'jump', 'up'],
+    stages: ['down', 'up'],
     thresholds: {
-      squat_knee_angle: 100,    // knee angle in squat position
-      plank_body_angle: 170,    // body should be relatively straight in plank
-      jump_height_ratio: 0.05,  // vertical movement for jump detection
-      phase_hold_time: 200,     // ms to confirm each phase
+      squat_knee_angle: 155,    // knee angle < 155° means squatting (ง่ายมากมาก)
+      plank_body_angle: 140,    // body angle > 140° means plank-ish (ง่ายมากมาก)
+      standing_knee_angle: 160, // knee angle > 160° means standing
+      hip_high_threshold: 0.35, // hip Y position threshold (ง่ายขึ้น: was 0.5)
     }
   }
 };

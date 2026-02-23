@@ -10,7 +10,7 @@ import MusicPlayer from "@/components/music/MusicPlayer";
 import { useExerciseAnalysis } from "@/hooks/useExerciseAnalysis";
 import { VisualPoseGuide, StageIndicator, BeatCounter } from "@/components/workout/VisualPoseGuide";
 import { AICoachPopup } from "@/components/workout/AICoachPopup";
-import { ExerciseType } from "@/lib/exerciseConfig";
+import { ExerciseType, EXERCISES } from "@/lib/exerciseConfig";
 import { WorkoutLoader } from "@/components/shared/WorkoutLoader";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -370,15 +370,26 @@ export default function WorkoutUI() {
     if (!exerciseData) return;
 
     const duration = Math.floor((Date.now() - exerciseStartTimeRef.current) / 1000);
+    const reps = isKayaWorkout ? kayaAnalysis.reps : (exerciseData.reps || 0);
+    const targetReps = exerciseData.reps || 10;
+    const formScore = isKayaWorkout ? kayaAnalysis.formScore : 80;
     
     exerciseResultsRef.current[currentExercise] = {
       name: exerciseData.name,
       nameTh: exerciseData.nameTh,
-      reps: isKayaWorkout ? kayaAnalysis.reps : (exerciseData.reps || 0),
-      targetReps: exerciseData.reps || 10,
-      formScore: isKayaWorkout ? kayaAnalysis.formScore : 80,
+      reps,
+      targetReps,
+      formScore,
       duration,
     };
+    
+    // Log exercise completion
+    console.log('\n✅ ======== EXERCISE SAVED ========');
+    console.log(`🏋️ ท่า: ${exerciseData.nameTh || exerciseData.name}`);
+    console.log(`🔢 Rep: ${reps}/${targetReps}`);
+    console.log(`⭐ คะแนนฟอร์ม: ${formScore}%`);
+    console.log(`⏱️ เวลา: ${duration} วินาที`);
+    console.log('===================================\n');
     
     // Reset timer for next exercise
     exerciseStartTimeRef.current = Date.now();
@@ -399,6 +410,16 @@ export default function WorkoutUI() {
       (results.reduce((sum, e) => sum + Math.min(e?.reps || 0, e?.targetReps || 10), 0) /
        results.reduce((sum, e) => sum + (e?.targetReps || 10), 0)) * 100
     );
+
+    // Log workout summary
+    console.log('\n🏆 ======== WORKOUT COMPLETE ========');
+    console.log('📊 สรุปผลการออกกำลังกาย:');
+    console.log(`   💪 จำนวนท่าทั้งหมด: ${results.length} ท่า`);
+    console.log(`   🔢 จำนวน Rep ทั้งหมด: ${totalReps}`);
+    console.log(`   ⭐ คะแนนฟอร์มเฉลี่ย: ${avgFormScore}%`);
+    console.log(`   ✅ เปอร์เซ็นต์ความสำเร็จ: ${completionPct}%`);
+    console.log(`   ⏱️ เวลาทั้งหมด: ${Math.floor(totalTime / 60)}:${String(totalTime % 60).padStart(2, '0')}`);
+    console.log('=====================================\n');
 
     navigate('/workout-complete', {
       state: {
@@ -565,6 +586,9 @@ export default function WorkoutUI() {
   const speakRepCount = useCallback(async (rep: number) => {
     const message = REP_MESSAGES[rep];
     if (message && rep > lastSpokenRepRef.current) {
+      console.log('\n🎯 ======== REP SPEECH MESSAGE ========');
+      console.log(`💬 [Rep ${rep}] ข้อความที่ต้องพูด: "${message}"`);
+      console.log('=====================================\n');
       lastSpokenRepRef.current = rep;
       await speakTTS(message);
     }
@@ -573,13 +597,28 @@ export default function WorkoutUI() {
   // Show rep counter animation when rep increases (only up to target)
   useEffect(() => {
     const targetReps = exercises[currentExercise]?.reps || 10;
+    const exerciseName = exercises[currentExercise]?.nameTh || exercises[currentExercise]?.name || 'Unknown';
     
     // Only show animation if we haven't reached target yet
     if (isKayaWorkout && kayaAnalysis.reps > lastRepRef.current && kayaAnalysis.reps > 0 && kayaAnalysis.reps <= targetReps) {
+      // Log rep count
+      console.log('\n🏋️ ======== WORKOUT REP UPDATE ========');
+      console.log(`🎯 ท่า: ${exerciseName}`);
+      console.log(`🔢 นับครั้ง: ${kayaAnalysis.reps} / ${targetReps}`);
+      console.log(`📊 คะแนนฟอร์ม: ${kayaAnalysis.formScore}%`);
+      
+      // Check if this rep has a speech message
+      if (REP_MESSAGES[kayaAnalysis.reps]) {
+        console.log(`💬 ข้อความที่ต้องพูด: "${REP_MESSAGES[kayaAnalysis.reps]}"`);
+      } else {
+        console.log(`(ไม่มีข้อความสำหรับครั้งที่ ${kayaAnalysis.reps})`);
+      }
+      console.log('=====================================\n');
+      
       setDisplayRep(kayaAnalysis.reps);
       setShowRepCounter(true);
       
-      // Speak rep count (only 1,3,5,7,9,10)
+      // Speak rep count (only 1,5,9,10)
       if (REP_MESSAGES[kayaAnalysis.reps]) {
         speakRepCount(kayaAnalysis.reps);
       }
@@ -592,7 +631,7 @@ export default function WorkoutUI() {
       lastRepRef.current = kayaAnalysis.reps;
       return () => clearTimeout(timeout);
     }
-  }, [isKayaWorkout, kayaAnalysis.reps, currentExercise, exercises, speakRepCount]);
+  }, [isKayaWorkout, kayaAnalysis.reps, kayaAnalysis.formScore, currentExercise, exercises, speakRepCount]);
 
   // Reset lastRepRef and lastSpokenRepRef when exercise changes
   useEffect(() => {
@@ -898,36 +937,82 @@ export default function WorkoutUI() {
     mediaRecorderRef.current = null;
   }, [isRecording, pcmToWav, captureScreenshotForVoice, exercises, currentExercise, userProfile, healthData, isKayaWorkout, kayaAnalysis.reps, speakTTS]);
 
+  // Web Speech API fallback for TTS
+  const speakWithWebSpeech = useCallback((text: string, onEnd?: () => void) => {
+    console.log('📢 [WebSpeech] Starting fallback TTS for:', text);
+    
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      console.warn('❌ [WebSpeech] Web Speech API not available');
+      onEnd?.();
+      return;
+    }
+    
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'th-TH';
+    utterance.rate = 1.0;
+    
+    utterance.onstart = () => {
+      console.log('▶️ [WebSpeech] Speaking started');
+    };
+    
+    utterance.onend = () => {
+      console.log('✅ [WebSpeech] Speaking completed');
+      onEnd?.();
+    };
+    
+    utterance.onerror = (e) => {
+      console.error('❌ [WebSpeech] Error:', e.error);
+      onEnd?.();
+    };
+    
+    window.speechSynthesis.speak(utterance);
+    console.log('📤 [WebSpeech] Utterance queued');
+  }, []);
+
   // Speak exercise instruction when exercise changes
   const speakExerciseInstruction = useCallback(async (exercise: WorkoutExercise) => {
     if (!exercise) return;
     
-    // Build instruction text
-    const instruction = `ท่า${exercise.nameTh || exercise.name}. ${exercise.description || 'ทำตามท่าที่แสดง'}`;
+    // Build instruction text - shortened for faster TTS
+    const instruction = `ท่า${exercise.nameTh || exercise.name}`;
     
-    console.log('TTS: Calling API with text:', instruction);
+    console.log('🏋️ [TTS Exercise] Speaking instruction:', instruction);
+    
+    // Fallback function
+    const fallbackToWebSpeech = () => {
+      console.log('🔄 [TTS Exercise] Falling back to Web Speech API');
+      speakWithWebSpeech(instruction);
+    };
     
     try {
+      console.log('🚀 [TTS Exercise] Calling VAJA API...');
       const response = await fetch('/api/aift/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: instruction, speaker: 'nana' }),
       });
       
-      console.log('TTS: Response status:', response.status);
+      console.log('📥 [TTS Exercise] API Response status:', response.status);
       
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('TTS API error:', response.status, errorText);
+        console.error('❌ [TTS Exercise] API error:', response.status, errorText);
+        fallbackToWebSpeech();
         return;
       }
       
       // API returns JSON with base64 audio
       const result = await response.json();
-      console.log('TTS: Got response, has audio_base64:', !!result.audio_base64);
+      console.log('📦 [TTS Exercise] API result:', {
+        success: result.success,
+        hasAudio: !!result.audio_base64,
+        audioLength: result.audio_base64?.length || 0
+      });
       
       if (!result.audio_base64) {
-        console.error('TTS: No audio_base64 in response');
+        console.error('❌ [TTS Exercise] No audio_base64 in response');
+        fallbackToWebSpeech();
         return;
       }
       
@@ -940,7 +1025,7 @@ export default function WorkoutUI() {
       const audioBlob = new Blob([audioArray], { type: 'audio/wav' });
       const audioUrl = URL.createObjectURL(audioBlob);
       
-      console.log('TTS: Created audio blob, size:', audioBlob.size);
+      console.log('🎵 [TTS Exercise] Audio blob created, size:', audioBlob.size, 'bytes');
       
       // Stop previous audio if playing
       if (ttsAudioRef.current) {
@@ -952,52 +1037,83 @@ export default function WorkoutUI() {
       ttsAudioRef.current = audio;
       
       audio.oncanplaythrough = () => {
-        console.log('TTS: Audio ready to play');
+        console.log('⏳ [TTS Exercise] Audio ready to play');
       };
       
       audio.onerror = (e) => {
-        console.error('TTS: Audio error:', e);
+        console.error('❌ [TTS Exercise] Audio error:', e);
+        fallbackToWebSpeech();
       };
       
       audio.play().then(() => {
-        console.log('TTS: Audio playing');
+        console.log('▶️ [TTS Exercise] Audio playing successfully');
       }).catch((err) => {
-        console.error('TTS: Play error:', err);
+        console.error('❌ [TTS Exercise] Play error:', err);
+        fallbackToWebSpeech();
       });
       
       // Cleanup URL after audio ends
       audio.onended = () => {
-        console.log('TTS: Audio ended');
+        console.log('✅ [TTS Exercise] Audio playback completed');
         URL.revokeObjectURL(audioUrl);
         ttsAudioRef.current = null;
       };
     } catch (error) {
-      console.error('TTS error:', error);
+      console.error('❌ [TTS Exercise] Exception:', error);
+      fallbackToWebSpeech();
     }
-  }, []);
+  }, [speakWithWebSpeech]);
 
   // Speak coach introduction
   const speakCoachIntroduction = useCallback(async () => {
-    const userName = userProfile?.nickname || userProfile?.displayName || 'คุณ';
-    const introText = `สวัสดีครับ ผมชื่อน้องกาย วันนี้จะมาเป็นโค้ชให้คุณ${userName}นะครับ พร้อมออกกำลังกายไปด้วยกันไหมครับ เริ่มกันเลย!`;
+    const userName = userProfile?.nickname || userProfile?.displayName || '';
+    // Shortened intro text to reduce API timeout
+    const introText = userName ? `สวัสดีครับคุณ${userName} เริ่มออกกำลังกายกันเลย!` : 'สวัสดีครับ เริ่มออกกำลังกายกันเลย!';
     
-    console.log('TTS Coach Intro: Calling API with text:', introText);
+    console.log('🎯 [TTS Coach] Starting intro for user:', userName || '(anonymous)');
+    console.log('📝 [TTS Coach] Intro text:', introText);
+    
+    const speakFirstExercise = () => {
+      console.log('➡️ [TTS Coach] Intro done, moving to first exercise');
+      const exercise = exercises[0];
+      if (exercise) {
+        console.log('🏋️ [TTS] Will speak exercise:', exercise.nameTh || exercise.name);
+        setTimeout(() => {
+          speakExerciseInstruction(exercise);
+        }, 500);
+      }
+    };
     
     try {
+      console.log('🚀 [TTS Coach] Calling VAJA API...');
       const response = await fetch('/api/aift/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: introText, speaker: 'nana' }),
       });
       
+      console.log('📥 [TTS Coach] API Response status:', response.status);
+      
       if (!response.ok) {
-        console.error('TTS Coach Intro API error:', response.status);
+        console.error('❌ [TTS Coach] API error:', response.status);
+        // Fallback to Web Speech API
+        console.log('🔄 [TTS Coach] Falling back to Web Speech API');
+        speakWithWebSpeech(introText, speakFirstExercise);
         return;
       }
       
       const result = await response.json();
+      console.log('📦 [TTS Coach] API result:', {
+        success: result.success,
+        hasAudio: !!result.audio_base64,
+        audioLength: result.audio_base64?.length || 0
+      });
+      
       if (!result.audio_base64) {
-        console.error('TTS Coach Intro: No audio_base64');
+        console.error('❌ [TTS Coach] No audio_base64 in response');
+        // Fallback to Web Speech API
+        console.log('🔄 [TTS Coach] Falling back to Web Speech API');
+        speakWithWebSpeech(introText, speakFirstExercise);
         return;
       }
       
@@ -1009,6 +1125,8 @@ export default function WorkoutUI() {
       const audioBlob = new Blob([audioArray], { type: 'audio/wav' });
       const audioUrl = URL.createObjectURL(audioBlob);
       
+      console.log('🎵 [TTS Coach] Audio blob created, size:', audioBlob.size, 'bytes');
+      
       if (ttsAudioRef.current) {
         ttsAudioRef.current.pause();
         ttsAudioRef.current = null;
@@ -1018,26 +1136,27 @@ export default function WorkoutUI() {
       ttsAudioRef.current = audio;
       
       audio.play().then(() => {
-        console.log('TTS Coach Intro: Playing');
-      }).catch(console.error);
+        console.log('▶️ [TTS Coach] Audio playing successfully');
+      }).catch((err) => {
+        console.error('❌ [TTS Coach] Audio play failed:', err);
+        // Fallback to Web Speech API if audio play fails
+        console.log('🔄 [TTS Coach] Falling back to Web Speech API');
+        speakWithWebSpeech(introText, speakFirstExercise);
+      });
       
       audio.onended = () => {
-        console.log('TTS Coach Intro: Ended');
+        console.log('✅ [TTS Coach] Audio playback completed');
         URL.revokeObjectURL(audioUrl);
         ttsAudioRef.current = null;
-        
-        // After intro ends, speak first exercise instruction
-        const exercise = exercises[0];
-        if (exercise) {
-          setTimeout(() => {
-            speakExerciseInstruction(exercise);
-          }, 500);
-        }
+        speakFirstExercise();
       };
     } catch (error) {
-      console.error('TTS Coach Intro error:', error);
+      console.error('❌ [TTS Coach] Exception:', error);
+      // Fallback to Web Speech API
+      console.log('🔄 [TTS Coach] Falling back to Web Speech API due to error');
+      speakWithWebSpeech(introText, speakFirstExercise);
     }
-  }, [userProfile, exercises, speakExerciseInstruction]);
+  }, [userProfile, exercises, speakExerciseInstruction, speakWithWebSpeech]);
 
   // Speak coach introduction when workout starts
   useEffect(() => {
@@ -1083,9 +1202,20 @@ export default function WorkoutUI() {
   useEffect(() => {
     if (!isKayaWorkout || exerciseCompleted || showRestScreen) return;
     
+    // Get current exercise config to check if it's time-based
+    const currentExerciseConfig = exercises[currentExercise];
+    const exerciseDefinition = currentExerciseConfig?.id ? EXERCISES[currentExerciseConfig.id as ExerciseType] : null;
+    
+    // Skip auto-advance for time-based exercises (they use holdTime, not reps)
+    if (exerciseDefinition?.isTimeBased) {
+      console.log(`⏱️ Time-based exercise: ${currentExerciseConfig?.id} - skipping rep-based auto-advance`);
+      return;
+    }
+    
     const targetReps = exercises[currentExercise]?.reps || 10;
     
-    if (kayaAnalysis.reps >= targetReps) {
+    // Only auto-advance if targetReps > 0 and reps reached target
+    if (targetReps > 0 && kayaAnalysis.reps >= targetReps) {
       setExerciseCompleted(true);
       saveCurrentExerciseResult();
       
@@ -1172,9 +1302,11 @@ export default function WorkoutUI() {
       ctx.strokeText(text, 20, 40);
       ctx.fillText(text, 20, 40);
       
-      // Reps if KAYA workout
+      // Reps or time if KAYA workout
       if (isKayaWorkout) {
-        const repsText = `${kayaAnalysis.reps} ครั้ง`;
+        const currentEx2 = exercises[currentExercise];
+        const isTimeBasedEx = currentEx2?.duration && !currentEx2?.reps;
+        const repsText = isTimeBasedEx ? `${formatTime(timeLeft)} เหลือ` : `${kayaAnalysis.reps} ครั้ง`;
         ctx.strokeText(repsText, 20, 70);
         ctx.fillText(repsText, 20, 70);
       }
@@ -1580,8 +1712,17 @@ export default function WorkoutUI() {
                   <h2 className="text-xl font-bold text-white">{exercise?.nameTh || exercise?.name}</h2>
                   {isKayaWorkout ? (
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-2xl font-bold text-primary">{Math.min(kayaAnalysis.reps, exercise?.reps || 10)}</span>
-                      <span className="text-white/60 text-sm">/ {exercise?.reps || 10} ครั้ง</span>
+                      {exercise?.duration && !exercise?.reps ? (
+                        <>
+                          <span className="text-2xl font-bold text-primary">{formatTime(timeLeft)}</span>
+                          <span className="text-white/60 text-sm">เหลือ</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-2xl font-bold text-primary">{Math.min(kayaAnalysis.reps, exercise?.reps || 10)}</span>
+                          <span className="text-white/60 text-sm">/ {exercise?.reps || 10} ครั้ง</span>
+                        </>
+                      )}
                     </div>
                   ) : (
                     <p className="text-white/60 text-sm">

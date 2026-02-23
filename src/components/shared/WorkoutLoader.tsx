@@ -27,6 +27,7 @@ export function WorkoutLoader({ status, onComplete, className }: WorkoutLoaderPr
   const [message, setMessage] = useState('กำลังเตรียมกล้อง...');
   const [isComplete, setIsComplete] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
+  const [showStartButton, setShowStartButton] = useState(false);
   const animationRef = useRef<number>();
   const timeoutRef = useRef<NodeJS.Timeout>();
 
@@ -53,12 +54,12 @@ export function WorkoutLoader({ status, onComplete, className }: WorkoutLoaderPr
 
   // Smooth progress animation based on actual status
   useEffect(() => {
-    // If camera ready, complete immediately (don't wait for MediaPipe)
+    // If camera ready, show start button instead of auto-completing
+    // This ensures user interaction for audio autoplay policy
     if (status.cameraReady && !isComplete) {
       setCurrentStep(1);
-      setIsComplete(true);
-      setMessage('พร้อมแล้ว!');
-      setTimeout(onComplete, 500);
+      setMessage('พร้อมแล้ว! กดปุ่มเพื่อเริ่ม');
+      setShowStartButton(true);
       return;
     }
 
@@ -91,7 +92,14 @@ export function WorkoutLoader({ status, onComplete, className }: WorkoutLoaderPr
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [status.cameraReady, status.mediaPipeReady, currentStep, isComplete, onComplete]);
+  }, [status.cameraReady, status.mediaPipeReady, currentStep, isComplete]);
+
+  // Handle start button click - ensures user interaction for audio
+  const handleStart = () => {
+    setIsComplete(true);
+    setMessage('เริ่มออกกำลังกาย!');
+    onComplete();
+  };
 
   return (
     <div className={cn(
@@ -210,8 +218,19 @@ export function WorkoutLoader({ status, onComplete, className }: WorkoutLoaderPr
         {Math.round(displayProgress)}%
       </div>
 
+      {/* Start Button - Shows when ready, requires user click for audio autoplay */}
+      {showStartButton && !isComplete && (
+        <Button 
+          onClick={handleStart}
+          className="mt-4 px-8 py-3 text-lg animate-pulse"
+          size="lg"
+        >
+          🏃 เริ่มออกกำลังกาย
+        </Button>
+      )}
+
       {/* Skip Button (shows after timeout or error) */}
-      {(timedOut || status.cameraError) && (
+      {(timedOut || status.cameraError) && !showStartButton && (
         <Button 
           onClick={onComplete}
           className="mt-4"

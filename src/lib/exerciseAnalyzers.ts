@@ -337,17 +337,22 @@ export abstract class ExerciseAnalyzer {
 // === BEGINNER EXERCISES ===
 // ============================================
 
-// Arm Raise Analyzer - Front facing, shoulder angle > 150°
+// Arm Raise Analyzer - Front facing, shoulder angle > 120°
+// HOLD UP for 3 seconds before counting down
 export class ArmRaiseAnalyzer extends ExerciseAnalyzer {
   private keyLandmarks = [LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER, LM.LEFT_ELBOW, LM.RIGHT_ELBOW, LM.LEFT_WRIST, LM.RIGHT_WRIST, LM.LEFT_HIP, LM.RIGHT_HIP];
-  private waitingForDown = false;
   private reachedUp = false;
+  private upFrames = 0;
+  private downFrames = 0;
+  private holdStartTime: number = 0; // When arms reached up
+  private holdCompleted: boolean = false; // Whether 3-second hold is done
+  private holdDuration: number = 3000; // 3 seconds in ms
 
   constructor() {
     super('arm_raise');
-    this.repCooldown = 500;
-    this.minHoldTime = 200; // Increased for better stability
-    this.minFramesInStage = 4;
+    this.repCooldown = 250; // Faster cooldown
+    this.minHoldTime = 100; // 0.1 วินาที - ถึงปุ๊บนับเลย
+    this.minFramesInStage = 1; // Just 1 frame needed
   }
 
   analyze(landmarks: Landmark[]): ExerciseAnalysisResult {
@@ -360,7 +365,7 @@ export class ArmRaiseAnalyzer extends ExerciseAnalyzer {
         stage: this.currentStage,
         reps: this.reps,
         repCompleted: false,
-        formFeedback: { quality: 'good', score: 0, issues: [], suggestions: ['ยืนให้เห็นตัวเต็มๆ ครับ'] },
+        formFeedback: { quality: 'warn', score: 0, issues: ['ไม่เห็นตัวครบ'], suggestions: ['📷 หันหน้าเข้ากล้อง ถอยให้เห็นตั้งแต่ศีรษะถึงเอวครับ'] },
         angles: {},
         isVisible: false,
       };
@@ -384,41 +389,83 @@ export class ArmRaiseAnalyzer extends ExerciseAnalyzer {
     const avgArmAngle = (leftArmAngle + rightArmAngle) / 2;
     
     const thresholds = EXERCISES[this.exerciseType].thresholds;
-    const hysteresis = 15; // Increased hysteresis for better stability
+    const now = Date.now();
+
+    // Calculate hold countdown
+    let holdRemaining = 3;
+    if (this.reachedUp && this.holdStartTime > 0) {
+      const elapsed = now - this.holdStartTime;
+      holdRemaining = Math.max(0, Math.ceil((this.holdDuration - elapsed) / 1000));
+    }
+
+    // Always log for debugging
+    const upPass = avgArmAngle >= thresholds.up_angle ? '✓' : '✗';
+    const downPass = avgArmAngle <= thresholds.down_angle ? '✓' : '✗';
+    const holdText = this.reachedUp ? `| ค้าง=${holdRemaining}วิ ${this.holdCompleted ? '✓พร้อม' : '(รอ...)'}` : '';
+    console.log(`📊 ARM_RAISE: แขน=${avgArmAngle.toFixed(0)}° | ขึ้น(ต้อง≥${thresholds.up_angle})${upPass} | ลง(ต้อง≤${thresholds.down_angle})${downPass} ${holdText}`);
 
     let repCompleted = false;
+    let holdingCorrectForm = false;
     
-    // Determine raw stage with wider dead zone
-    let rawStage: ExerciseStage = this.currentStage;
+    // Simple state machine: detect UP → hold 3 seconds → DOWN to count
+    const prevStage = this.currentStage;
+    
     if (avgArmAngle >= thresholds.up_angle) {
-      rawStage = 'up';
-    } else if (avgArmAngle <= thresholds.down_angle) {
-      rawStage = 'down';
-    } else if (this.currentStage === 'up' && avgArmAngle < thresholds.up_angle - hysteresis) {
-      rawStage = 'transition';
-    } else if (this.currentStage === 'down' && avgArmAngle > thresholds.down_angle + hysteresis) {
-      rawStage = 'transition';
-    }
-
-    const stageConfirmed = this.confirmStageChange(rawStage);
-    
-    // Count rep when: confirmed UP -> confirmed DOWN
-    if (stageConfirmed && this.currentStage === 'up' && this.stageHeldLongEnough()) {
-      this.reachedUp = true;
-      this.waitingForDown = true;
-    }
-    
-    if (stageConfirmed && this.currentStage === 'down' && this.reachedUp && this.waitingForDown) {
-      if (this.canCountRep() && this.stageHeldLongEnough()) {
-        this.reps++;
-        repCompleted = true;
-        this.markRepCounted();
-        this.waitingForDown = false;
-        this.reachedUp = false;
+      this.upFrames++;
+      this.downFrames = 0;
+      if (this.upFrames >= this.minFramesInStage) {
+        this.currentStage = 'up';
+        
+        // Start hold timer if just reached up
+        if (!this.reachedUp) {
+          this.reachedUp = true;
+          this.holdStartTime = now;
+          this.holdCompleted = false;
+          console.log(`⬆️ ARM_RAISE ยกขึ้นแล้ว! ค้างไว้ 3 วินาที...`);
+        }
+        
+        // Check if hold duration completed
+        if (this.reachedUp && !this.holdCompleted) {
+          const elapsed = now - this.holdStartTime;
+          if (elapsed >= this.holdDuration) {
+            this.holdCompleted = true;
+            console.log(`✅ ARM_RAISE ค้างครบ 3 วินาที! เอาลงมาเพื่อนับ rep`);
+          } else {
+            holdingCorrectForm = true;
+            console.log(`⏳ ARM_RAISE ค้างไว้... เหลือ ${holdRemaining} วินาที`);
+          }
+        }
+        
+        if (this.holdCompleted) {
+          holdingCorrectForm = true;
+        }
       }
+    } else if (avgArmAngle <= thresholds.down_angle) {
+      this.downFrames++;
+      this.upFrames = 0;
+      if (this.downFrames >= this.minFramesInStage) {
+        this.currentStage = 'down';
+        
+        // Count rep when going from UP (after 3sec hold) to DOWN
+        if (this.reachedUp && this.holdCompleted && this.canCountRep()) {
+          console.log(`🏋️ ARM_RAISE Rep counted! Angle: ${avgArmAngle.toFixed(0)}°`);
+          this.reps++;
+          repCompleted = true;
+          this.markRepCounted();
+        } else if (this.reachedUp && !this.holdCompleted) {
+          console.log(`⚠️ ARM_RAISE: ลงเร็วเกินไป! ต้องค้างไว้ 3 วินาทีก่อน`);
+        }
+        this.reachedUp = false;
+        this.holdStartTime = 0;
+        this.holdCompleted = false;
+      }
+    } else {
+      // In transition zone - keep current state but don't reset hold timer
+      this.upFrames = 0;
+      this.downFrames = 0;
     }
 
-    const formFeedback = this.evaluateForm(landmarks);
+    const formFeedback = this.evaluateForm(landmarks, holdingCorrectForm, holdRemaining);
 
     return {
       stage: this.currentStage,
@@ -429,15 +476,35 @@ export class ArmRaiseAnalyzer extends ExerciseAnalyzer {
         leftArm: Math.round(leftArmAngle),
         rightArm: Math.round(rightArmAngle),
         average: Math.round(avgArmAngle),
+        holdRemaining: holdRemaining,
       },
       isVisible: true,
     };
   }
 
-  evaluateForm(landmarks: Landmark[]): FormFeedback {
+  evaluateForm(landmarks: Landmark[], holdingCorrectForm: boolean = false, holdRemaining: number = 3): FormFeedback {
     const issues: string[] = [];
     const suggestions: string[] = [];
     let score = 100;
+
+    // If holding correct form, give positive feedback with countdown
+    if (holdingCorrectForm) {
+      if (this.holdCompleted) {
+        return {
+          quality: 'good',
+          score: 95,
+          issues: [],
+          suggestions: ['✅ ครบ 3 วินาที! เอาลงมาเลย']
+        };
+      } else {
+        return {
+          quality: 'good',
+          score: 90,
+          issues: [],
+          suggestions: [`⏳ ค้างไว้... เหลือ ${holdRemaining} วินาที`]
+        };
+      }
+    }
 
     const leftShoulder = landmarks[LM.LEFT_SHOULDER];
     const rightShoulder = landmarks[LM.RIGHT_SHOULDER];
@@ -473,19 +540,32 @@ export class ArmRaiseAnalyzer extends ExerciseAnalyzer {
     this.lastFormQuality = quality;
     return { quality, score: Math.max(0, score), issues, suggestions };
   }
+
+  reset(): void {
+    super.reset();
+    this.reachedUp = false;
+    this.upFrames = 0;
+    this.downFrames = 0;
+    this.holdStartTime = 0;
+    this.holdCompleted = false;
+  }
 }
 
-// Torso Twist Analyzer - Front facing, 20-40° angle between shoulder and hip lines
+// Torso Twist Analyzer - Front facing, 8-50° angle between shoulder and hip lines
+// MUST ALTERNATE: left -> right -> left -> right (prevents counting same side twice)
 export class TorsoTwistAnalyzer extends ExerciseAnalyzer {
   private keyLandmarks = [LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER, LM.LEFT_HIP, LM.RIGHT_HIP];
   private lastTwistDirection: 'left' | 'right' | null = null;
+  private lastCountedDirection: 'left' | 'right' | null = null; // Track which side was last counted
   private completedTwist: boolean = false;
+  private twistFrames: number = 0;
+  private centerFrames: number = 0;
 
   constructor() {
     super('torso_twist');
-    this.repCooldown = 400;
-    this.minHoldTime = 150; // Increased for stability
-    this.minFramesInStage = 4;
+    this.repCooldown = 800; // Prevent double counting (800ms between reps)
+    this.minHoldTime = 200; // 0.2 seconds
+    this.minFramesInStage = 3; // Need 3 frames to confirm twist/center
   }
 
   analyze(landmarks: Landmark[]): ExerciseAnalysisResult {
@@ -498,7 +578,7 @@ export class TorsoTwistAnalyzer extends ExerciseAnalyzer {
         stage: this.currentStage,
         reps: this.reps,
         repCompleted: false,
-        formFeedback: { quality: 'good', score: 0, issues: [], suggestions: ['ยืนให้เห็นตัวเต็มๆ ครับ'] },
+        formFeedback: { quality: 'warn', score: 0, issues: ['ไม่เห็นตัวครบ'], suggestions: ['📷 หันหน้าเข้ากล้อง ถอยให้เห็นตั้งแต่ศีรษะถึงสะโพกครับ'] },
         angles: {},
         isVisible: false,
       };
@@ -521,43 +601,75 @@ export class TorsoTwistAnalyzer extends ExerciseAnalyzer {
 
     const thresholds = EXERCISES[this.exerciseType].thresholds;
     const minAngle = thresholds.min_twist_angle;
-    const hysteresis = 8; // Increased for better stability
+    const centerThreshold = thresholds.center_threshold || 20;
 
-    let rawStage: ExerciseStage = 'center';
-    
-    if (twistAngle >= minAngle) {
-      // Determine direction based on offset
-      if (twistOffset > 0.01) {
-        rawStage = 'left';
-      } else if (twistOffset < -0.01) {
-        rawStage = 'right';
-      }
-    } else if (this.currentStage === 'left' && twistAngle > minAngle - hysteresis && twistOffset > 0) {
-      rawStage = 'left';
-    } else if (this.currentStage === 'right' && twistAngle > minAngle - hysteresis && twistOffset < 0) {
-      rawStage = 'right';
-    }
+    // Determine next required direction
+    const nextRequired = this.lastCountedDirection === null ? 'ซ้ายหรือขวา' : 
+                         this.lastCountedDirection === 'left' ? 'ขวา (สลับ)' : 'ซ้าย (สลับ)';
 
-    const stageConfirmed = this.confirmStageChange(rawStage);
+    // Always log for debugging
+    const twistPass = twistAngle >= minAngle ? '✓' : '✗';
+    console.log(`📊 TORSO_TWIST: บิด=${twistAngle.toFixed(0)}° (ต้อง≥${minAngle})${twistPass} | ทิศ=${twistOffset > 0.01 ? 'ซ้าย' : twistOffset < -0.01 ? 'ขวา' : 'กลาง'} | ครั้งต่อไป: ${nextRequired}`);
 
     let repCompleted = false;
+    let holdingCorrectForm = false;
+    const prevStage = this.currentStage;
     
-    if (stageConfirmed && (this.currentStage === 'left' || this.currentStage === 'right') && this.stageHeldLongEnough()) {
-      this.lastTwistDirection = this.currentStage as 'left' | 'right';
-      this.completedTwist = true;
+    // Determine current twist direction
+    let currentDirection: 'left' | 'right' | 'center' = 'center';
+    if (twistAngle >= minAngle) {
+      if (twistOffset > 0.01) {
+        currentDirection = 'left';
+      } else if (twistOffset < -0.01) {
+        currentDirection = 'right';
+      }
     }
     
-    if (stageConfirmed && this.currentStage === 'center' && this.completedTwist && this.lastTwistDirection !== null) {
-      if (this.canCountRep() && this.stageHeldLongEnough()) {
-        this.reps++;
-        repCompleted = true;
-        this.markRepCounted();
-        this.completedTwist = false;
-        this.lastTwistDirection = null;
+    // Simple state machine with alternation check
+    if (currentDirection === 'left' || currentDirection === 'right') {
+      this.twistFrames++;
+      this.centerFrames = 0;
+      if (this.twistFrames >= this.minFramesInStage) {
+        this.currentStage = currentDirection;
+        this.completedTwist = true;
+        this.lastTwistDirection = currentDirection;
+        
+        // Check if this is a valid direction (alternates or first rep)
+        const canCount = this.lastCountedDirection === null || this.lastCountedDirection !== currentDirection;
+        if (canCount) {
+          holdingCorrectForm = true;
+          console.log(`✅ TORSO_TWIST ท่าถูก! บิด${currentDirection === 'left' ? 'ซ้าย' : 'ขวา'}: ${twistAngle.toFixed(0)}° → กลับมากลางเพื่อนับ`);
+        } else {
+          console.log(`⚠️ TORSO_TWIST: ต้องสลับทิศ! บิดไป${currentDirection === 'left' ? 'ขวา' : 'ซ้าย'}ก่อนครับ`);
+        }
+      }
+    } else if (twistAngle < centerThreshold) {
+      this.centerFrames++;
+      this.twistFrames = 0;
+      if (this.centerFrames >= this.minFramesInStage) {
+        this.currentStage = 'center';
+        
+        // Count rep when returning to center after a twist (with alternation check)
+        if (this.completedTwist && this.lastTwistDirection !== null && this.canCountRep()) {
+          // Check alternation: must be different from lastCountedDirection OR first rep
+          const canCount = this.lastCountedDirection === null || this.lastCountedDirection !== this.lastTwistDirection;
+          
+          if (canCount) {
+            console.log(`🔄 TORSO_TWIST Rep counted! Direction: ${this.lastTwistDirection}, Twist was: ${twistAngle.toFixed(1)}°`);
+            this.reps++;
+            repCompleted = true;
+            this.markRepCounted();
+            this.lastCountedDirection = this.lastTwistDirection;
+          } else {
+            console.log(`⚠️ TORSO_TWIST: ไม่นับ! ต้องสลับทิศ (ทำ${this.lastCountedDirection === 'left' ? 'ขวา' : 'ซ้าย'}ก่อน)`);
+          }
+          this.completedTwist = false;
+          this.lastTwistDirection = null;
+        }
       }
     }
 
-    const formFeedback = this.evaluateForm(landmarks);
+    const formFeedback = this.evaluateForm(landmarks, holdingCorrectForm);
 
     return {
       stage: this.currentStage,
@@ -567,15 +679,26 @@ export class TorsoTwistAnalyzer extends ExerciseAnalyzer {
       angles: {
         twistAngle: Math.round(twistAngle),
         direction: twistOffset > 0 ? 'left' : 'right',
+        nextRequired: nextRequired,
       },
       isVisible: true,
     };
   }
 
-  evaluateForm(landmarks: Landmark[]): FormFeedback {
+  evaluateForm(landmarks: Landmark[], holdingCorrectForm: boolean = false): FormFeedback {
     const issues: string[] = [];
     const suggestions: string[] = [];
     let score = 100;
+
+    // If holding correct form, give positive feedback
+    if (holdingCorrectForm) {
+      return {
+        quality: 'good',
+        score: 90,
+        issues: [],
+        suggestions: ['✅ ท่าถูกแล้ว! กลับมากลางเลย']
+      };
+    }
 
     const leftShoulder = landmarks[LM.LEFT_SHOULDER];
     const rightShoulder = landmarks[LM.RIGHT_SHOULDER];
@@ -585,22 +708,28 @@ export class TorsoTwistAnalyzer extends ExerciseAnalyzer {
     const twistAngle = calculateLinesToAngle(leftShoulder, rightShoulder, leftHip, rightHip);
     const thresholds = EXERCISES[this.exerciseType].thresholds;
 
-    // Check if twist is in good range (20-40°)
+    // Check if twist is in good range
     if (this.currentStage !== 'center') {
       if (twistAngle < thresholds.min_twist_angle) {
-        issues.push('บิดไม่ถึง 20°');
+        issues.push('บิดไม่ถึง');
         suggestions.push('บิดลำตัวให้มากกว่านี้ครับ');
         score -= 20;
       } else if (twistAngle > thresholds.max_twist_angle) {
-        issues.push('บิดเกิน 40°');
+        issues.push('บิดเกินไป');
         suggestions.push('ระวังบิดมากเกินไปครับ');
         score -= 15;
       }
     }
 
+    // Show alternation hint
+    if (this.lastCountedDirection !== null) {
+      const nextSide = this.lastCountedDirection === 'left' ? 'ขวา' : 'ซ้าย';
+      suggestions.push(`🔄 บิดไป${nextSide}ต่อครับ`);
+    }
+
     // Check hip stability
     const hipWidth = Math.abs(leftHip.x - rightHip.x);
-    if (hipWidth < 0.1) {
+    if (hipWidth < 0.08) {
       issues.push('สะโพกเคลื่อนที่');
       suggestions.push('ล็อคสะโพกไว้ บิดแค่ลำตัวครับ');
       score -= 25;
@@ -618,11 +747,15 @@ export class TorsoTwistAnalyzer extends ExerciseAnalyzer {
     super.reset();
     this.currentStage = 'center';
     this.lastTwistDirection = null;
+    this.lastCountedDirection = null;
     this.completedTwist = false;
+    this.twistFrames = 0;
+    this.centerFrames = 0;
   }
 }
 
 // Knee Raise Analyzer - Side camera, hip flexion > 80°
+// MUST ALTERNATE: left -> right -> left -> right (prevents counting same leg twice)
 export class KneeRaiseAnalyzer extends ExerciseAnalyzer {
   private keyLandmarks = [LM.LEFT_HIP, LM.RIGHT_HIP, LM.LEFT_KNEE, LM.RIGHT_KNEE, LM.LEFT_ANKLE, LM.RIGHT_ANKLE, LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER];
   private leftLegStage: 'up' | 'down' = 'down';
@@ -631,11 +764,15 @@ export class KneeRaiseAnalyzer extends ExerciseAnalyzer {
   private rightUpConfirmed: boolean = false;
   private leftUpFrames: number = 0;
   private rightUpFrames: number = 0;
+  private leftMaxFrames: number = 0; // Track max frames reached for counting
+  private rightMaxFrames: number = 0;
+  private lastCountedLeg: 'left' | 'right' | null = null; // Track which leg was last counted to prevent duplicate
 
   constructor() {
     super('knee_raise');
-    this.repCooldown = 400; // Increased to prevent double counting
-    this.minFramesInStage = 3; // Increased for stability
+    this.repCooldown = 250; // Faster cooldown
+    this.minFramesInStage = 1; // Just 1 frame needed
+    this.minHoldTime = 100; // 0.1 วินาที - ยกถึงปุ๊บนับเลย
   }
 
   analyze(landmarks: Landmark[]): ExerciseAnalysisResult {
@@ -648,7 +785,7 @@ export class KneeRaiseAnalyzer extends ExerciseAnalyzer {
         stage: this.currentStage,
         reps: this.reps,
         repCompleted: false,
-        formFeedback: { quality: 'good', score: 0, issues: [], suggestions: ['ยืนให้เห็นตัวเต็มๆ ครับ'] },
+        formFeedback: { quality: 'warn', score: 0, issues: ['ไม่เห็นตัวครบ'], suggestions: ['📷 หันข้างเข้ากล้อง ถอยให้เห็นตั้งแต่ศีรษะถึงเท้าครับ'] },
         angles: {},
         isVisible: false,
       };
@@ -669,41 +806,39 @@ export class KneeRaiseAnalyzer extends ExerciseAnalyzer {
     const rightHipFlexion = this.getSmoothedAngle('rightHip', rightHipFlexionRaw);
 
     const thresholds = EXERCISES[this.exerciseType].thresholds;
-    const hysteresis = 20; // Increased for better stability
+
+    // Always log for debugging
+    const leftPass = leftHipFlexion < thresholds.up_angle ? '✓' : '✗';
+    const rightPass = rightHipFlexion < thresholds.up_angle ? '✓' : '✗';
+    console.log(`📊 KNEE_RAISE: ซ้าย=${leftHipFlexion.toFixed(0)}°(ต้อง<${thresholds.up_angle})${leftPass} | ขวา=${rightHipFlexion.toFixed(0)}°(ต้อง<${thresholds.up_angle})${rightPass}`);
 
     const prevLeftStage = this.leftLegStage;
     const prevRightStage = this.rightLegStage;
 
-    // Detect left leg stage (hip flexion < 80° means leg is raised up)
+    // Detect left leg stage (hip flexion < up_angle means leg is raised up)
     if (leftHipFlexion < thresholds.up_angle) {
       this.leftUpFrames++;
+      this.leftMaxFrames = Math.max(this.leftMaxFrames, this.leftUpFrames);
       if (this.leftUpFrames >= this.minFramesInStage) {
         this.leftLegStage = 'up';
         this.leftUpConfirmed = true;
       }
     } else if (leftHipFlexion > thresholds.down_angle) {
-      this.leftUpFrames = 0;
       this.leftLegStage = 'down';
-    } else if (this.leftLegStage === 'up' && leftHipFlexion < thresholds.up_angle + hysteresis) {
-      // Keep up with hysteresis
-    } else {
-      this.leftUpFrames = 0;
+      // Don't reset frames until after checking for rep count
     }
 
     // Detect right leg stage
     if (rightHipFlexion < thresholds.up_angle) {
       this.rightUpFrames++;
+      this.rightMaxFrames = Math.max(this.rightMaxFrames, this.rightUpFrames);
       if (this.rightUpFrames >= this.minFramesInStage) {
         this.rightLegStage = 'up';
         this.rightUpConfirmed = true;
       }
     } else if (rightHipFlexion > thresholds.down_angle) {
-      this.rightUpFrames = 0;
       this.rightLegStage = 'down';
-    } else if (this.rightLegStage === 'up' && rightHipFlexion < thresholds.up_angle + hysteresis) {
-      // Keep up with hysteresis
-    } else {
-      this.rightUpFrames = 0;
+      // Don't reset frames until after checking for rep count
     }
 
     // Determine overall stage
@@ -714,25 +849,75 @@ export class KneeRaiseAnalyzer extends ExerciseAnalyzer {
       this.currentStage = 'down';
     }
 
-    // Rep counting with better debouncing
+    // Rep counting with better debouncing, logging, and ALTERNATION REQUIREMENT
     let repCompleted = false;
+    let holdingCorrectForm = false;
+    const minHoldFrames = thresholds.min_hold_frames || 1; // Just 1 frame needed
+    
+    // Determine next required leg
+    const nextRequired = this.lastCountedLeg === null ? 'ซ้ายหรือขวา' : 
+                         this.lastCountedLeg === 'left' ? 'ขวา (สลับ)' : 'ซ้าย (สลับ)';
+    
+    // Check if user is holding knee up but not yet confirmed
+    if ((leftHipFlexion < thresholds.up_angle && !this.leftUpConfirmed) ||
+        (rightHipFlexion < thresholds.up_angle && !this.rightUpConfirmed)) {
+      const isLeft = leftHipFlexion < thresholds.up_angle;
+      const leg = isLeft ? 'ซ้าย' : 'ขวา';
+      const currentLeg = isLeft ? 'left' : 'right';
+      const angle = isLeft ? leftHipFlexion : rightHipFlexion;
+      const frames = isLeft ? this.leftUpFrames : this.rightUpFrames;
+      
+      // Check if this is the correct leg (alternates or first rep)
+      const canCount = this.lastCountedLeg === null || this.lastCountedLeg !== currentLeg;
+      
+      if (canCount) {
+        holdingCorrectForm = true;
+        console.log(`✅ KNEE_RAISE ท่าถูก! ยกขา${leg}: ${angle.toFixed(0)}° | เฟรม: ${frames}/${this.minFramesInStage} ${frames >= this.minFramesInStage ? '✓พร้อม! ลงมาเพื่อนับ' : '(ค้างต่อ...)'}`);
+      } else {
+        console.log(`⚠️ KNEE_RAISE: ต้องสลับขา! ยกขา${this.lastCountedLeg === 'left' ? 'ขวา' : 'ซ้าย'}ก่อนครับ`);
+      }
+    }
+    
+    // Count rep when transitioning from up to down AND was confirmed (with alternation check)
     if (prevLeftStage === 'up' && this.leftLegStage === 'down' && this.leftUpConfirmed) {
-      if (this.canCountRep()) {
+      // Check alternation: must be different leg OR first rep
+      const canCount = this.lastCountedLeg === null || this.lastCountedLeg !== 'left';
+      
+      if (this.canCountRep() && this.leftMaxFrames >= minHoldFrames && canCount) {
+        console.log(`🦵 KNEE_RAISE Rep counted! Left leg, Hip flexion: ${leftHipFlexion.toFixed(1)}°, Held ${this.leftMaxFrames} frames`);
         this.reps++;
         repCompleted = true;
         this.markRepCounted();
+        this.lastCountedLeg = 'left';
+      } else if (!canCount) {
+        console.log(`⚠️ KNEE_RAISE: ไม่นับ! ต้องสลับขา (ทำขาขวาก่อน)`);
+      } else if (!this.canCountRep()) {
+        console.log(`⏳ KNEE_RAISE รอ cooldown`);
       }
       this.leftUpConfirmed = false;
+      this.leftUpFrames = 0;
+      this.leftMaxFrames = 0;
     } else if (prevRightStage === 'up' && this.rightLegStage === 'down' && this.rightUpConfirmed) {
-      if (this.canCountRep()) {
+      // Check alternation: must be different leg OR first rep
+      const canCount = this.lastCountedLeg === null || this.lastCountedLeg !== 'right';
+      
+      if (this.canCountRep() && this.rightMaxFrames >= minHoldFrames && canCount) {
+        console.log(`🦵 KNEE_RAISE Rep counted! Right leg, Hip flexion: ${rightHipFlexion.toFixed(1)}°, Held ${this.rightMaxFrames} frames`);
         this.reps++;
         repCompleted = true;
         this.markRepCounted();
+        this.lastCountedLeg = 'right';
+      } else if (!canCount) {
+        console.log(`⚠️ KNEE_RAISE: ไม่นับ! ต้องสลับขา (ทำขาซ้ายก่อน)`);
+      } else if (!this.canCountRep()) {
+        console.log(`⏳ KNEE_RAISE รอ cooldown`);
       }
       this.rightUpConfirmed = false;
+      this.rightUpFrames = 0;
+      this.rightMaxFrames = 0;
     }
 
-    const formFeedback = this.evaluateForm(landmarks);
+    const formFeedback = this.evaluateForm(landmarks, holdingCorrectForm);
 
     return {
       stage: this.currentStage,
@@ -747,10 +932,20 @@ export class KneeRaiseAnalyzer extends ExerciseAnalyzer {
     };
   }
 
-  evaluateForm(landmarks: Landmark[]): FormFeedback {
+  evaluateForm(landmarks: Landmark[], holdingCorrectForm: boolean = false): FormFeedback {
     const issues: string[] = [];
     const suggestions: string[] = [];
     let score = 100;
+
+    // If holding correct form, give positive feedback
+    if (holdingCorrectForm) {
+      return {
+        quality: 'good',
+        score: 90,
+        issues: [],
+        suggestions: ['✅ ท่าถูกแล้ว! ค้างไว้...']
+      };
+    }
 
     const leftShoulder = landmarks[LM.LEFT_SHOULDER];
     const rightShoulder = landmarks[LM.RIGHT_SHOULDER];
@@ -784,6 +979,9 @@ export class KneeRaiseAnalyzer extends ExerciseAnalyzer {
     this.rightUpConfirmed = false;
     this.leftUpFrames = 0;
     this.rightUpFrames = 0;
+    this.leftMaxFrames = 0;
+    this.rightMaxFrames = 0;
+    this.lastCountedLeg = null;
   }
 }
 
@@ -805,22 +1003,27 @@ export class SquatWithArmRaiseAnalyzer extends ExerciseAnalyzer {
 
   constructor() {
     super('squat_arm_raise');
-    this.repCooldown = 650; // Slightly increased for stability
-    this.minFramesInStage = 4;
+    this.repCooldown = 400;
+    this.minFramesInStage = 2;
+    this.minHoldTime = 200; // 0.2 วินาที - ลงถึงปุ๊บนับเลย
   }
 
   analyze(landmarks: Landmark[]): ExerciseAnalysisResult {
+    console.log('🔍 SQUAT_ARM_RAISE analyze() called');
+    
     // Update adaptive visibility threshold
     this.updateAdaptiveVisibility(landmarks, this.keyLandmarks);
     
     const isVisible = this.checkVisibility(landmarks, this.keyLandmarks);
+    console.log(`🔍 SQUAT_ARM_RAISE visibility: ${isVisible}`);
     
     if (!isVisible) {
+      console.log('🔍 SQUAT_ARM_RAISE: ไม่เห็นตัวครบ - return early');
       return {
         stage: this.currentStage,
         reps: this.reps,
         repCompleted: false,
-        formFeedback: { quality: 'good', score: 0, issues: [], suggestions: ['ยืนให้เห็นตัวเต็มๆ ครับ'] },
+        formFeedback: { quality: 'warn', score: 0, issues: ['ไม่เห็นตัวครบ'], suggestions: ['📷 หันข้างเข้ากล้อง และถอยให้เห็นตั้งแต่ศีรษะถึงเท้าครับ'] },
         angles: {},
         isVisible: false,
       };
@@ -853,41 +1056,68 @@ export class SquatWithArmRaiseAnalyzer extends ExerciseAnalyzer {
     const avgArmAngle = (leftArmAngle + rightArmAngle) / 2;
 
     const thresholds = EXERCISES[this.exerciseType].thresholds;
+    console.log(`🎯 SQUAT thresholds: knee<${thresholds.knee_down_angle}, arm>${thresholds.arm_up_angle}`);
+    console.log(`🎯 SQUAT current: knee=${avgKneeAngle.toFixed(0)}°, arm=${avgArmAngle.toFixed(0)}°`);
 
     this.previousStage = this.currentStage;
     let repCompleted = false;
+    let holdingCorrectForm = false; // Track if user is in correct position but not confirmed yet
 
-    // Detect squat position with hysteresis (knee < 95°)
+    // Detect squat position with hysteresis
     const inSquat = this.currentStage === 'down' 
       ? avgKneeAngle < thresholds.knee_down_angle + this.hysteresis
       : avgKneeAngle < thresholds.knee_down_angle;
     const isStanding = this.currentStage === 'up'
       ? avgKneeAngle > thresholds.knee_up_angle - this.hysteresis
       : avgKneeAngle > thresholds.knee_up_angle;
-    const armsUp = avgArmAngle > thresholds.arm_up_angle - 10; // Slightly relaxed arm threshold
+    const armsUp = avgArmAngle > thresholds.arm_up_angle - 5;
+
+    // Always log current angles for debugging
+    const kneePass = inSquat ? '✓' : '✗';
+    const armPass = armsUp ? '✓' : '✗';
+    console.log(`📊 SQUAT: เข่า=${avgKneeAngle.toFixed(0)}°${kneePass} แขน=${avgArmAngle.toFixed(0)}°${armPass} | inSquat=${inSquat} armsUp=${armsUp}`);
 
     if (inSquat && armsUp) {
       this.downConfirmedFrames++;
       this.upConfirmedFrames = 0;
+      // Show "hold it!" message when in correct squat position
+      holdingCorrectForm = true;
+      const timeHeld = this.stageConfirmed ? Date.now() - this.stageEntryTime : 0;
+      console.log(`✅ SQUAT_ARM_RAISE ท่าถูก! เข่า: ${avgKneeAngle.toFixed(0)}° แขน: ${avgArmAngle.toFixed(0)}° | เฟรม: ${this.downConfirmedFrames}/${this.minFramesInStage} | ค้าง: ${timeHeld}/${this.minHoldTime}ms ${this.downConfirmedFrames >= this.minFramesInStage && timeHeld >= this.minHoldTime ? '✓พร้อม! ยืนขึ้นเพื่อนับ' : '(ค้างต่อ...)'}`);
       if (this.downConfirmedFrames >= this.minFramesInStage) {
         this.currentStage = 'down';
+        if (!this.isDown) {
+          this.stageEntryTime = Date.now(); // Start hold timer when first entering down
+        }
         this.isDown = true;
+        // Check if held long enough
+        if (Date.now() - this.stageEntryTime >= this.minHoldTime) {
+          holdingCorrectForm = false; // Stop showing once held long enough
+          console.log(`🎯 SQUAT_ARM_RAISE ค้างครบแล้ว! → ยืนขึ้นเพื่อนับ rep`);
+        }
       }
     } else if (isStanding) {
       this.upConfirmedFrames++;
       this.downConfirmedFrames = 0;
       if (this.upConfirmedFrames >= this.minFramesInStage) {
         if (this.isDown && this.canCountRep()) {
+          console.log(`🏋️ SQUAT_ARM_RAISE Rep counted! Knee: ${avgKneeAngle.toFixed(1)}°, Arm: ${avgArmAngle.toFixed(1)}°`);
           this.reps++;
           repCompleted = true;
           this.markRepCounted();
           this.isDown = false;
+        } else if (this.isDown && !this.canCountRep()) {
+          console.log(`⏳ SQUAT_ARM_RAISE รอ cooldown`);
         }
         this.currentStage = 'up';
       }
+    } else {
+      // Not in squat and not standing - transition
+      this.downConfirmedFrames = 0;
+      this.upConfirmedFrames = 0;
     }
 
-    const formFeedback = this.evaluateForm(landmarks);
+    const formFeedback = this.evaluateForm(landmarks, holdingCorrectForm);
 
     return {
       stage: this.currentStage,
@@ -902,10 +1132,20 @@ export class SquatWithArmRaiseAnalyzer extends ExerciseAnalyzer {
     };
   }
 
-  evaluateForm(landmarks: Landmark[]): FormFeedback {
+  evaluateForm(landmarks: Landmark[], holdingCorrectForm: boolean = false): FormFeedback {
     const issues: string[] = [];
     const suggestions: string[] = [];
     let score = 100;
+
+    // If holding correct form, give positive feedback
+    if (holdingCorrectForm) {
+      return {
+        quality: 'good',
+        score: 90,
+        issues: [],
+        suggestions: ['✅ ท่าถูกแล้ว! ค้างไว้...']
+      };
+    }
 
     const leftHip = landmarks[LM.LEFT_HIP];
     const leftKnee = landmarks[LM.LEFT_KNEE];
@@ -931,12 +1171,12 @@ export class SquatWithArmRaiseAnalyzer extends ExerciseAnalyzer {
     if (this.currentStage === 'down') {
       if (avgKneeAngle > thresholds.knee_down_angle) {
         issues.push('สควอตไม่ลึกพอ');
-        suggestions.push('ก้มเข่าให้ < 95° ครับ');
+        suggestions.push('ก้มเข่าให้ < 90° ครับ');
         score -= 25;
       }
       if (avgArmAngle < thresholds.arm_up_angle) {
         issues.push('ยกแขนไม่สูงพอ');
-        suggestions.push('ยกแขนให้ > 140° ครับ');
+        suggestions.push('ยกแขนให้ > 145° ครับ');
         score -= 20;
       }
     }
@@ -967,8 +1207,9 @@ export class PushUpAnalyzer extends ExerciseAnalyzer {
 
   constructor() {
     super('push_up');
-    this.repCooldown = 550; // Slightly increased for stability
-    this.minFramesInStage = 4;
+    this.repCooldown = 250;
+    this.minFramesInStage = 2;
+    this.minHoldTime = 100;  // 0.1 วินาที - ลงถึงปุ๊บนับเลย
   }
 
   analyze(landmarks: Landmark[]): ExerciseAnalysisResult {
@@ -982,7 +1223,7 @@ export class PushUpAnalyzer extends ExerciseAnalyzer {
         stage: this.currentStage,
         reps: this.reps,
         repCompleted: false,
-        formFeedback: { quality: 'good', score: 0, issues: [], suggestions: ['ให้เห็นตัวเต็มๆ ในท่าวิดพื้นครับ'] },
+        formFeedback: { quality: 'warn', score: 0, issues: ['ไม่เห็นตัวครบ'], suggestions: ['📷 หันข้างเข้ากล้อง วางกล้องต่ำให้เห็นตั้งแต่ศีรษะถึงเท้าครับ'] },
         angles: {},
         isVisible: false,
       };
@@ -1007,6 +1248,7 @@ export class PushUpAnalyzer extends ExerciseAnalyzer {
 
     this.previousStage = this.currentStage;
     let repCompleted = false;
+    let holdingCorrectForm = false; // Track if holding correct position
 
     // Detect push-up position with hysteresis
     const elbowDown = this.currentStage === 'down'
@@ -1016,28 +1258,42 @@ export class PushUpAnalyzer extends ExerciseAnalyzer {
       ? avgElbowAngle > thresholds.elbow_up_angle - this.hysteresis
       : avgElbowAngle > thresholds.elbow_up_angle;
 
+    // Always log for debugging
+    const downPass = elbowDown ? '✓' : '✗';
+    const upPass = elbowUp ? '✓' : '✗';
+    console.log(`📊 PUSH_UP: ศอก=${avgElbowAngle.toFixed(0)}° | ลง(ต้อง<${thresholds.elbow_down_angle})${downPass} | ขึ้น(ต้อง>${thresholds.elbow_up_angle})${upPass}`);
+
     if (elbowDown) {
       this.downConfirmedFrames++;
       this.upConfirmedFrames = 0;
+      // Show "hold it!" when form is correct but not yet confirmed
+      if (this.downConfirmedFrames > 0 && this.downConfirmedFrames < this.minFramesInStage) {
+        holdingCorrectForm = true;
+        console.log(`✅ PUSH_UP ท่าถูก! ศอก: ${avgElbowAngle.toFixed(0)}° | เฟรม: ${this.downConfirmedFrames}/${this.minFramesInStage} (ค้างต่อ...)`);
+      }
       if (this.downConfirmedFrames >= this.minFramesInStage) {
         this.currentStage = 'down';
         this.isDown = true;
+        console.log(`🎯 PUSH_UP ยืนยันแล้ว! → ดันขึ้นเพื่อนับ rep`);
       }
     } else if (elbowUp) {
       this.upConfirmedFrames++;
       this.downConfirmedFrames = 0;
       if (this.upConfirmedFrames >= this.minFramesInStage) {
         if (this.isDown && this.canCountRep()) {
+          console.log(`💪 PUSH_UP Rep counted! Elbow angle: ${avgElbowAngle.toFixed(1)}°`);
           this.reps++;
           repCompleted = true;
           this.markRepCounted();
           this.isDown = false;
+        } else if (this.isDown && !this.canCountRep()) {
+          console.log(`⏳ PUSH_UP รอ cooldown`);
         }
         this.currentStage = 'up';
       }
     }
 
-    const formFeedback = this.evaluateForm(landmarks);
+    const formFeedback = this.evaluateForm(landmarks, holdingCorrectForm);
 
     return {
       stage: this.currentStage,
@@ -1051,10 +1307,20 @@ export class PushUpAnalyzer extends ExerciseAnalyzer {
     };
   }
 
-  evaluateForm(landmarks: Landmark[]): FormFeedback {
+  evaluateForm(landmarks: Landmark[], holdingCorrectForm: boolean = false): FormFeedback {
     const issues: string[] = [];
     const suggestions: string[] = [];
     let score = 100;
+
+    // If holding correct form, give positive feedback
+    if (holdingCorrectForm) {
+      return {
+        quality: 'good',
+        score: 90,
+        issues: [],
+        suggestions: ['✅ ท่าถูกแล้ว! ค้างไว้...']
+      };
+    }
 
     const leftShoulder = landmarks[LM.LEFT_SHOULDER];
     const leftHip = landmarks[LM.LEFT_HIP];
@@ -1098,18 +1364,17 @@ export class PushUpAnalyzer extends ExerciseAnalyzer {
   }
 }
 
-// Static Lunge Analyzer - Side camera, front knee ~90°
+// Static Lunge Analyzer - TIME-BASED (60 seconds total, 2x30s per leg)
+// Detects lunge position and accumulates hold time
 export class StaticLungeAnalyzer extends ExerciseAnalyzer {
   private keyLandmarks = [LM.LEFT_HIP, LM.RIGHT_HIP, LM.LEFT_KNEE, LM.RIGHT_KNEE, LM.LEFT_ANKLE, LM.RIGHT_ANKLE];
-  private isDown = false;
-  private downConfirmedFrames = 0;
-  private upConfirmedFrames = 0;
-  private hysteresis = 15; // Prevents flickering between stages
+  private holdStartTime: number = 0;
+  private isHolding: boolean = false;
+  private totalHoldTime: number = 0;
 
   constructor() {
     super('static_lunge');
-    this.repCooldown = 650; // Slightly increased for stability
-    this.minFramesInStage = 4;
+    this.repCooldown = 0;
   }
 
   analyze(landmarks: Landmark[]): ExerciseAnalysisResult {
@@ -1119,13 +1384,19 @@ export class StaticLungeAnalyzer extends ExerciseAnalyzer {
     const isVisible = this.checkVisibility(landmarks, this.keyLandmarks);
     
     if (!isVisible) {
+      // Stop hold timer when not visible
+      if (this.isHolding) {
+        this.totalHoldTime += (Date.now() - this.holdStartTime) / 1000;
+        this.isHolding = false;
+      }
       return {
-        stage: this.currentStage,
-        reps: this.reps,
+        stage: 'idle',
+        reps: 0,
         repCompleted: false,
-        formFeedback: { quality: 'good', score: 0, issues: [], suggestions: ['ยืนให้เห็นตัวเต็มๆ ครับ'] },
+        formFeedback: { quality: 'warn', score: 0, issues: ['ไม่เห็นตัวครบ'], suggestions: ['📷 หันข้างเข้ากล้อง ถอยให้เห็นตั้งแต่ศีรษะถึงเท้าครับ'] },
         angles: {},
         isVisible: false,
+        holdTime: this.totalHoldTime,
       };
     }
 
@@ -1137,113 +1408,111 @@ export class StaticLungeAnalyzer extends ExerciseAnalyzer {
     const rightKnee = this.getSmoothedLandmark(LM.RIGHT_KNEE, landmarks[LM.RIGHT_KNEE]);
     const rightAnkle = this.getSmoothedLandmark(LM.RIGHT_ANKLE, landmarks[LM.RIGHT_ANKLE]);
 
-    // Calculate and smooth knee angles
+    // Calculate knee angles
     const leftKneeAngleRaw = calculateAngle(leftHip, leftKnee, leftAnkle);
     const rightKneeAngleRaw = calculateAngle(rightHip, rightKnee, rightAnkle);
     const leftKneeAngle = this.getSmoothedAngle('leftKnee', leftKneeAngleRaw);
     const rightKneeAngle = this.getSmoothedAngle('rightKnee', rightKneeAngleRaw);
 
-    // Determine which leg is in front (lower knee Y position)
-    const leftIsFront = landmarks[LM.LEFT_KNEE].y > landmarks[LM.RIGHT_KNEE].y;
-    const frontKneeAngle = leftIsFront ? leftKneeAngle : rightKneeAngle;
-
     const thresholds = EXERCISES[this.exerciseType].thresholds;
-    const targetAngle = thresholds.front_knee_angle;
-    const tolerance = thresholds.knee_tolerance;
+    const targetAngle = thresholds.front_knee_angle; // 130°
+    const tolerance = thresholds.knee_tolerance; // 30° → range 100-160°
+    const minAngle = targetAngle - tolerance;
+    const maxAngle = targetAngle + tolerance;
 
-    this.previousStage = this.currentStage;
-    let repCompleted = false;
-
-    // Check if in proper lunge position with hysteresis (front knee ~90° ± tolerance)
-    const inLunge = this.currentStage === 'down'
-      ? Math.abs(frontKneeAngle - targetAngle) <= tolerance + this.hysteresis
-      : Math.abs(frontKneeAngle - targetAngle) <= tolerance;
-    const isStanding = frontKneeAngle > 150;
-
-    if (inLunge) {
-      this.downConfirmedFrames++;
-      this.upConfirmedFrames = 0;
-      if (this.downConfirmedFrames >= this.minFramesInStage) {
-        this.currentStage = 'down';
-        this.isDown = true;
-      }
-    } else if (isStanding) {
-      this.upConfirmedFrames++;
-      this.downConfirmedFrames = 0;
-      if (this.upConfirmedFrames >= this.minFramesInStage) {
-        if (this.isDown && this.canCountRep()) {
-          this.reps++;
-          repCompleted = true;
-          this.markRepCounted();
-          this.isDown = false;
-        }
-        this.currentStage = 'up';
-      }
+    // Check if either leg is in valid lunge position (at least one knee must be bent)
+    const leftIsValid = leftKneeAngle >= minAngle && leftKneeAngle <= maxAngle;
+    const rightIsValid = rightKneeAngle >= minAngle && rightKneeAngle <= maxAngle;
+    
+    // Detect which leg
+    let detectedLeg: 'left' | 'right' | 'none' = 'none';
+    if (leftIsValid && rightIsValid) {
+      detectedLeg = leftKneeAngle < rightKneeAngle ? 'left' : 'right';
+    } else if (leftIsValid) {
+      detectedLeg = 'left';
+    } else if (rightIsValid) {
+      detectedLeg = 'right';
     }
 
-    const formFeedback = this.evaluateForm(landmarks);
+    const isGoodForm = detectedLeg !== 'none';
+    const currentTime = Date.now();
 
+    // Time-based hold tracking (like PlankHold)
+    if (isGoodForm) {
+      if (!this.isHolding) {
+        this.holdStartTime = currentTime;
+        this.isHolding = true;
+      }
+      this.currentStage = 'hold';
+    } else {
+      if (this.isHolding) {
+        this.totalHoldTime += (currentTime - this.holdStartTime) / 1000;
+        this.isHolding = false;
+      }
+      this.currentStage = 'idle';
+    }
+
+    const currentHoldTime = this.isHolding 
+      ? this.totalHoldTime + (currentTime - this.holdStartTime) / 1000 
+      : this.totalHoldTime;
+
+    // Debug log
+    const leftStatus = leftIsValid ? '✓' : '✗';
+    const rightStatus = rightIsValid ? '✓' : '✗';
+    console.log(`📊 STATIC_LUNGE: ซ้าย=${leftKneeAngle.toFixed(0)}°${leftStatus} ขวา=${rightKneeAngle.toFixed(0)}°${rightStatus} (ต้อง${minAngle}-${maxAngle}°) | ค้าง=${currentHoldTime.toFixed(1)}s`);
+
+    const formFeedback = this.evaluateLungeForm(detectedLeg, isGoodForm, currentHoldTime);
+
+    // Time-based: reps=0 so auto-complete won't trigger by reps
     return {
       stage: this.currentStage,
-      reps: this.reps,
-      repCompleted,
+      reps: 0,
+      repCompleted: false,
       formFeedback,
       angles: {
-        frontKneeAngle: Math.round(frontKneeAngle),
         leftKneeAngle: Math.round(leftKneeAngle),
         rightKneeAngle: Math.round(rightKneeAngle),
+        targetAngle: targetAngle,
+        currentLeg: detectedLeg,
       },
       isVisible: true,
+      holdTime: currentHoldTime,
     };
   }
 
+  // Required abstract method implementation
   evaluateForm(landmarks: Landmark[]): FormFeedback {
+    return this.evaluateLungeForm('none', false, 0);
+  }
+
+  evaluateLungeForm(detectedLeg: 'left' | 'right' | 'none', holdingCorrectForm: boolean = false, holdTime: number = 0): FormFeedback {
     const issues: string[] = [];
     const suggestions: string[] = [];
     let score = 100;
 
-    const leftHip = landmarks[LM.LEFT_HIP];
-    const leftKnee = landmarks[LM.LEFT_KNEE];
-    const leftAnkle = landmarks[LM.LEFT_ANKLE];
-    const rightHip = landmarks[LM.RIGHT_HIP];
-    const rightKnee = landmarks[LM.RIGHT_KNEE];
-    const rightAnkle = landmarks[LM.RIGHT_ANKLE];
-
-    const leftKneeAngle = calculateAngle(leftHip, leftKnee, leftAnkle);
-    const rightKneeAngle = calculateAngle(rightHip, rightKnee, rightAnkle);
-
-    const leftIsFront = leftKnee.y > rightKnee.y;
-    const frontKneeAngle = leftIsFront ? leftKneeAngle : rightKneeAngle;
-
-    const thresholds = EXERCISES[this.exerciseType].thresholds;
-
-    if (this.currentStage === 'down') {
-      const deviation = Math.abs(frontKneeAngle - thresholds.front_knee_angle);
-      if (deviation > thresholds.knee_tolerance) {
-        if (frontKneeAngle < thresholds.front_knee_angle - thresholds.knee_tolerance) {
-          issues.push('เข่างอมากเกินไป');
-          suggestions.push('ยืดเข่าหน้าขึ้นเล็กน้อยครับ');
-        } else {
-          issues.push('เข่างอไม่พอ');
-          suggestions.push('งอเข่าหน้าลงอีกหน่อยครับ');
-        }
-        score -= 20;
-      }
+    if (holdingCorrectForm) {
+      const legText = detectedLeg === 'left' ? 'ซ้าย' : 'ขวา';
+      return {
+        quality: 'good',
+        score: 90,
+        issues: [],
+        suggestions: [`✅ ค้างขา${legText}ไว้! ${holdTime.toFixed(0)}วิ / สลับขาทุก 30 วินาที`]
+      };
     }
 
-    let quality: FormQuality = 'good';
-    if (score < 50) quality = 'bad';
-    else if (score < 80) quality = 'warn';
+    suggestions.push(`📍 ก้าวขาไปข้างหน้า งอเข่า ~90° แล้วค้างไว้`);
+    score = 50;
 
+    let quality: FormQuality = score >= 80 ? 'good' : score >= 50 ? 'warn' : 'bad';
     this.lastFormQuality = quality;
     return { quality, score: Math.max(0, score), issues, suggestions };
   }
 
   reset(): void {
     super.reset();
-    this.isDown = false;
-    this.downConfirmedFrames = 0;
-    this.upConfirmedFrames = 0;
+    this.holdStartTime = 0;
+    this.isHolding = false;
+    this.totalHoldTime = 0;
   }
 }
 
@@ -1264,8 +1533,9 @@ export class JumpSquatAnalyzer extends ExerciseAnalyzer {
 
   constructor() {
     super('jump_squat');
-    this.repCooldown = 850; // Slightly increased for stability
-    this.minFramesInStage = 4;
+    this.repCooldown = 400;
+    this.minFramesInStage = 2;
+    this.minHoldTime = 150; // 0.15 วินาที - ลงถึงปุ๊บกระโดดเลย
   }
 
   analyze(landmarks: Landmark[]): ExerciseAnalysisResult {
@@ -1279,7 +1549,7 @@ export class JumpSquatAnalyzer extends ExerciseAnalyzer {
         stage: this.currentStage,
         reps: this.reps,
         repCompleted: false,
-        formFeedback: { quality: 'good', score: 0, issues: [], suggestions: ['ยืนให้เห็นตัวเต็มๆ ครับ'] },
+        formFeedback: { quality: 'warn', score: 0, issues: ['ไม่เห็นตัวครบ'], suggestions: ['📷 หันข้างเข้ากล้อง ถอยให้เห็นตั้งแต่ศีรษะถึงเท้าครับ'] },
         angles: {},
         isVisible: false,
       };
@@ -1310,8 +1580,13 @@ export class JumpSquatAnalyzer extends ExerciseAnalyzer {
 
     const thresholds = EXERCISES[this.exerciseType].thresholds;
 
+    // Always log for debugging
+    const squatPass = avgKneeAngle < thresholds.knee_squat_angle ? '✓' : '✗';
+    console.log(`📊 JUMP_SQUAT: เข่า=${avgKneeAngle.toFixed(0)}°(ต้อง<${thresholds.knee_squat_angle})${squatPass} | phase=${this.jumpPhase} | ขึ้น=${(verticalMovement*100).toFixed(1)}%`);
+
     this.previousStage = this.currentStage;
     let repCompleted = false;
+    let holdingCorrectForm = false;
 
     // State machine for jump squat with hysteresis
     const isSquatting = this.jumpPhase === 'squat'
@@ -1320,10 +1595,16 @@ export class JumpSquatAnalyzer extends ExerciseAnalyzer {
 
     if (isSquatting) {
       this.squatConfirmedFrames++;
+      // Show holding feedback when squatting but not yet confirmed
+      if (this.squatConfirmedFrames < this.minFramesInStage && avgKneeAngle < thresholds.knee_squat_angle) {
+        holdingCorrectForm = true;
+        console.log(`✅ JUMP_SQUAT ท่าถูกแล้ว! เข่า: ${avgKneeAngle.toFixed(1)}° (ต้องการ <${thresholds.knee_squat_angle}°) - ค้างไว้แล้วกระโดด... (${this.squatConfirmedFrames}/${this.minFramesInStage} frames)`);
+      }
       if (this.squatConfirmedFrames >= this.minFramesInStage) {
         this.currentStage = 'squat';
         this.jumpPhase = 'squat';
         this.hasSquatted = true;
+        console.log(`🎯 JUMP_SQUAT ยืนยันสควอตแล้ว! พร้อมกระโดด`);
       }
       this.jumpConfirmedFrames = 0;
     } else if (this.hasSquatted && verticalMovement > thresholds.jump_height_ratio) {
@@ -1331,11 +1612,13 @@ export class JumpSquatAnalyzer extends ExerciseAnalyzer {
       if (this.jumpConfirmedFrames >= 3) { // Increased frame confirmation for jump
         this.currentStage = 'jump';
         this.jumpPhase = 'jump';
+        console.log(`🦘 JUMP_SQUAT กระโดดแล้ว! vertical movement: ${(verticalMovement * 100).toFixed(1)}`);
       }
       this.squatConfirmedFrames = 0;
     } else if (this.jumpPhase === 'jump' && verticalMovement < -thresholds.land_threshold) {
       if (this.canCountRep()) {
         this.jumpPhase = 'land';
+        console.log(`🏋️ JUMP_SQUAT Rep counted! Landing detected`);
         this.reps++;
         repCompleted = true;
         this.markRepCounted();
@@ -1347,7 +1630,7 @@ export class JumpSquatAnalyzer extends ExerciseAnalyzer {
     }
 
     this.previousHipY = smoothedHipY;
-    const formFeedback = this.evaluateForm(landmarks);
+    const formFeedback = this.evaluateForm(landmarks, holdingCorrectForm);
 
     return {
       stage: this.currentStage,
@@ -1363,10 +1646,20 @@ export class JumpSquatAnalyzer extends ExerciseAnalyzer {
     };
   }
 
-  evaluateForm(landmarks: Landmark[]): FormFeedback {
+  evaluateForm(landmarks: Landmark[], holdingCorrectForm: boolean = false): FormFeedback {
     const issues: string[] = [];
     const suggestions: string[] = [];
     let score = 100;
+
+    // If holding correct form, give positive feedback
+    if (holdingCorrectForm) {
+      return {
+        quality: 'good',
+        score: 90,
+        issues: [],
+        suggestions: ['✅ ท่าถูกแล้ว! ค้างไว้แล้วกระโดด...']
+      };
+    }
 
     const leftHip = landmarks[LM.LEFT_HIP];
     const leftKnee = landmarks[LM.LEFT_KNEE];
@@ -1436,7 +1729,7 @@ export class PlankHoldAnalyzer extends ExerciseAnalyzer {
         stage: 'idle',
         reps: this.reps,
         repCompleted: false,
-        formFeedback: { quality: 'good', score: 0, issues: [], suggestions: ['ให้เห็นตัวเต็มๆ ในท่าแพลงค์ครับ'] },
+        formFeedback: { quality: 'warn', score: 0, issues: ['ไม่เห็นตัวครบ'], suggestions: ['📷 หันข้างเข้ากล้อง วางกล้องต่ำให้เห็นตั้งแต่ศีรษะถึงเท้าครับ'] },
         angles: {},
         isVisible: false,
         holdTime: this.totalHoldTime,
@@ -1499,11 +1792,16 @@ export class PlankHoldAnalyzer extends ExerciseAnalyzer {
       ? this.totalHoldTime + (currentTime - this.holdStartTime) / 1000 
       : this.totalHoldTime;
 
+    // Always log for debugging
+    const alignPass = bodyDeviation < thresholds.body_alignment_max ? '✓' : '✗';
+    console.log(`📊 PLANK_HOLD: deviation=${bodyDeviation.toFixed(0)}°(ต้อง<${thresholds.body_alignment_max})${alignPass} | ค้างแล้ว=${currentHoldTime.toFixed(1)}s`);
+
     const formFeedback = this.evaluateForm(landmarks);
 
+    // For time-based exercise: DO NOT return seconds as reps (causes auto-complete)
     return {
       stage: this.currentStage,
-      reps: Math.floor(currentHoldTime), // Report seconds as "reps"
+      reps: 0, // Keep at 0 - time-based exercise shouldn't auto-complete based on reps
       repCompleted: false,
       formFeedback,
       angles: {
@@ -1512,6 +1810,7 @@ export class PlankHoldAnalyzer extends ExerciseAnalyzer {
       },
       isVisible: true,
       holdTime: currentHoldTime,
+      // Note: isTimeBased is in config, not here
     };
   }
 
@@ -1579,8 +1878,9 @@ export class MountainClimberAnalyzer extends ExerciseAnalyzer {
 
   constructor() {
     super('mountain_climber');
-    this.repCooldown = 250; // Slightly increased for stability
-    this.minFramesInStage = 3;
+    this.repCooldown = 150;
+    this.minFramesInStage = 2;
+    this.minHoldTime = 500; // 0.5 วินาที (ท่าเร็ว)
   }
 
   analyze(landmarks: Landmark[]): ExerciseAnalysisResult {
@@ -1617,6 +1917,11 @@ export class MountainClimberAnalyzer extends ExerciseAnalyzer {
     const thresholds = EXERCISES[this.exerciseType].thresholds;
     const currentTime = Date.now();
 
+    // Always log for debugging
+    const leftPass = leftHipFlexion < thresholds.hip_flexion_angle ? '✓' : '✗';
+    const rightPass = rightHipFlexion < thresholds.hip_flexion_angle ? '✓' : '✗';
+    console.log(`📊 MOUNTAIN_CLIMBER: ซ้าย=${leftHipFlexion.toFixed(0)}°(ต้อง<${thresholds.hip_flexion_angle})${leftPass} | ขวา=${rightHipFlexion.toFixed(0)}°(ต้อง<${thresholds.hip_flexion_angle})${rightPass}`);
+
     // Detect knee raises (hip flexion < 70° means knee is up)
     const leftKneeRaised = leftHipFlexion < thresholds.hip_flexion_angle;
     const rightKneeRaised = rightHipFlexion < thresholds.hip_flexion_angle;
@@ -1649,22 +1954,23 @@ export class MountainClimberAnalyzer extends ExerciseAnalyzer {
     this.previousStage = this.currentStage;
     let repCompleted = false;
 
-    // Detect step completion with improved logic
+    // Detect step completion - no speed requirement, no straight body required between reps
     const cooldownPassed = currentTime - this.lastStepTime > thresholds.step_cooldown;
-    const hasMinSpeed = avgSpeed >= thresholds.min_speed * 0.8; // Slightly relaxed speed threshold
     
-    if (this.leftLegUp && !leftKneeRaised && cooldownPassed && hasMinSpeed && this.canCountRep()) {
+    if (this.leftLegUp && !leftKneeRaised && cooldownPassed && this.canCountRep()) {
       this.reps++;
       repCompleted = true;
       this.lastStepTime = currentTime;
       this.currentStage = 'left_up';
       this.markRepCounted();
-    } else if (this.rightLegUp && !rightKneeRaised && cooldownPassed && hasMinSpeed && this.canCountRep()) {
+      console.log(`🏋️ MOUNTAIN_CLIMBER Rep ${this.reps}! ขาซ้ายยก`);
+    } else if (this.rightLegUp && !rightKneeRaised && cooldownPassed && this.canCountRep()) {
       this.reps++;
       repCompleted = true;
       this.lastStepTime = currentTime;
       this.currentStage = 'right_up';
       this.markRepCounted();
+      console.log(`🏋️ MOUNTAIN_CLIMBER Rep ${this.reps}! ขาขวายก`);
     } else if (!leftKneeRaised && !rightKneeRaised) {
       this.currentStage = 'down';
     }
@@ -1737,6 +2043,7 @@ export class MountainClimberAnalyzer extends ExerciseAnalyzer {
 // ============================================
 
 // Pistol Squat Analyzer - Side camera, knee < 90°, balance check
+// MUST ALTERNATE: left leg -> right leg -> left leg (prevents counting same leg twice)
 export class PistolSquatAnalyzer extends ExerciseAnalyzer {
   private keyLandmarks = [LM.LEFT_HIP, LM.RIGHT_HIP, LM.LEFT_KNEE, LM.RIGHT_KNEE, LM.LEFT_ANKLE, LM.RIGHT_ANKLE];
   private isDown = false;
@@ -1745,11 +2052,14 @@ export class PistolSquatAnalyzer extends ExerciseAnalyzer {
   private previousHipX: number = 0;
   private hysteresis = 15; // Prevents flickering between stages
   private balanceHistory: number[] = []; // For smoothing balance
+  private currentStandingLeg: 'left' | 'right' | null = null; // Track which leg is being used
+  private lastCountedLeg: 'left' | 'right' | null = null; // Track which leg was last counted to enforce alternation
 
   constructor() {
     super('pistol_squat');
-    this.repCooldown = 1100; // Slightly increased for stability
-    this.minFramesInStage = 5; // Higher confirmation for expert exercise
+    this.repCooldown = 500;
+    this.minFramesInStage = 2;
+    this.minHoldTime = 300; // 0.3 วินาที - ลงถึงปุ๊บนับเลย
   }
 
   analyze(landmarks: Landmark[]): ExerciseAnalysisResult {
@@ -1763,7 +2073,7 @@ export class PistolSquatAnalyzer extends ExerciseAnalyzer {
         stage: this.currentStage,
         reps: this.reps,
         repCompleted: false,
-        formFeedback: { quality: 'good', score: 0, issues: [], suggestions: ['ยืนให้เห็นตัวเต็มๆ ครับ'] },
+        formFeedback: { quality: 'warn', score: 0, issues: ['ไม่เห็นตัวครบ'], suggestions: ['📷 หันข้างเข้ากล้อง ถอยให้เห็นตั้งแต่ศีรษะถึงเท้าครับ'] },
         angles: {},
         isVisible: false,
       };
@@ -1787,6 +2097,7 @@ export class PistolSquatAnalyzer extends ExerciseAnalyzer {
     const leftIsStanding = landmarks[LM.LEFT_ANKLE].y > landmarks[LM.RIGHT_ANKLE].y;
     const standingKneeAngle = leftIsStanding ? leftKneeAngle : rightKneeAngle;
     const extendedKneeAngle = leftIsStanding ? rightKneeAngle : leftKneeAngle;
+    const currentLeg: 'left' | 'right' = leftIsStanding ? 'left' : 'right';
 
     // Balance check with smoothing (hip horizontal stability)
     const hipMidX = (leftHip.x + rightHip.x) / 2;
@@ -1798,8 +2109,18 @@ export class PistolSquatAnalyzer extends ExerciseAnalyzer {
 
     const thresholds = EXERCISES[this.exerciseType].thresholds;
 
+    // Determine next required leg
+    const nextRequired = this.lastCountedLeg === null ? 'ซ้ายหรือขวา' : 
+                         this.lastCountedLeg === 'left' ? 'ขวา (สลับ)' : 'ซ้าย (สลับ)';
+
+    // Always log for debugging
+    const kneePass = standingKneeAngle < thresholds.knee_angle ? '✓' : '✗';
+    const legPass = extendedKneeAngle > thresholds.extended_leg_angle ? '✓' : '✗';
+    console.log(`📊 PISTOL_SQUAT: เข่ายืน=${standingKneeAngle.toFixed(0)}°(ต้อง<${thresholds.knee_angle})${kneePass} | ขายืด=${extendedKneeAngle.toFixed(0)}°(ต้อง>${thresholds.extended_leg_angle})${legPass} | ขาปัจจุบัน=${currentLeg === 'left' ? 'ซ้าย' : 'ขวา'} | ครั้งต่อไป: ${nextRequired}`);
+
     this.previousStage = this.currentStage;
     let repCompleted = false;
+    let holdingCorrectForm = false;
 
     // Check for pistol squat position with hysteresis
     const kneeThreshold = this.currentStage === 'down' 
@@ -1813,30 +2134,55 @@ export class PistolSquatAnalyzer extends ExerciseAnalyzer {
                           extendedKneeAngle > thresholds.extended_leg_angle;
     const isStanding = standingKneeAngle > 150;
     const isBalanced = balanceShift < balanceThreshold;
+    
+    // Check if alternation is valid
+    const canCountThisLeg = this.lastCountedLeg === null || this.lastCountedLeg !== currentLeg;
 
     if (inPistolSquat && isBalanced) {
       this.downConfirmedFrames++;
       this.upConfirmedFrames = 0;
+      this.currentStandingLeg = currentLeg;
+      
+      // Check alternation before showing positive feedback
+      if (this.downConfirmedFrames < this.minFramesInStage) {
+        if (canCountThisLeg) {
+          holdingCorrectForm = true;
+          console.log(`✅ PISTOL_SQUAT ท่าถูกแล้ว! ขา${currentLeg === 'left' ? 'ซ้าย' : 'ขวา'} เข่า: ${standingKneeAngle.toFixed(1)}°, ขายืด: ${extendedKneeAngle.toFixed(1)}° - ค้างไว้... (${this.downConfirmedFrames}/${this.minFramesInStage} frames)`);
+        } else {
+          console.log(`⚠️ PISTOL_SQUAT: ต้องสลับขา! ทำขา${this.lastCountedLeg === 'left' ? 'ขวา' : 'ซ้าย'}ก่อนครับ`);
+        }
+      }
       if (this.downConfirmedFrames >= this.minFramesInStage) {
         this.currentStage = 'down';
         this.isDown = true;
+        console.log(`🎯 PISTOL_SQUAT ยืนยันท่าแล้ว! ขา${currentLeg === 'left' ? 'ซ้าย' : 'ขวา'} พร้อมนับเมื่อยืนขึ้น`);
       }
     } else if (isStanding) {
       this.upConfirmedFrames++;
       this.downConfirmedFrames = 0;
       if (this.upConfirmedFrames >= this.minFramesInStage) {
-        if (this.isDown && this.canCountRep()) {
-          this.reps++;
-          repCompleted = true;
-          this.markRepCounted();
+        if (this.isDown && this.currentStandingLeg && this.canCountRep()) {
+          // Check alternation before counting
+          const canCount = this.lastCountedLeg === null || this.lastCountedLeg !== this.currentStandingLeg;
+          
+          if (canCount) {
+            console.log(`🏋️ PISTOL_SQUAT Rep counted! ขา${this.currentStandingLeg === 'left' ? 'ซ้าย' : 'ขวา'} Standing knee: ${standingKneeAngle.toFixed(1)}°`);
+            this.reps++;
+            repCompleted = true;
+            this.markRepCounted();
+            this.lastCountedLeg = this.currentStandingLeg;
+          } else {
+            console.log(`⚠️ PISTOL_SQUAT: ไม่นับ! ต้องสลับขา (ทำขา${this.lastCountedLeg === 'left' ? 'ขวา' : 'ซ้าย'}ก่อน)`);
+          }
           this.isDown = false;
+          this.currentStandingLeg = null;
         }
         this.currentStage = 'up';
       }
     }
 
     this.previousHipX = hipMidX;
-    const formFeedback = this.evaluateForm(landmarks);
+    const formFeedback = this.evaluateForm(landmarks, holdingCorrectForm);
 
     return {
       stage: this.currentStage,
@@ -1852,10 +2198,20 @@ export class PistolSquatAnalyzer extends ExerciseAnalyzer {
     };
   }
 
-  evaluateForm(landmarks: Landmark[]): FormFeedback {
+  evaluateForm(landmarks: Landmark[], holdingCorrectForm: boolean = false): FormFeedback {
     const issues: string[] = [];
     const suggestions: string[] = [];
     let score = 100;
+
+    // If holding correct form, give positive feedback
+    if (holdingCorrectForm) {
+      return {
+        quality: 'good',
+        score: 90,
+        issues: [],
+        suggestions: ['✅ ท่าถูกแล้ว! ค้างไว้...']
+      };
+    }
 
     const leftHip = landmarks[LM.LEFT_HIP];
     const rightHip = landmarks[LM.RIGHT_HIP];
@@ -1902,35 +2258,31 @@ export class PistolSquatAnalyzer extends ExerciseAnalyzer {
     this.upConfirmedFrames = 0;
     this.previousHipX = 0;
     this.balanceHistory = [];
+    this.currentStandingLeg = null;
+    this.lastCountedLeg = null;
   }
 }
 
 // Push-up + Shoulder Tap Analyzer - Front camera, symmetry check
+// Order: down (pushup down) → up → tap_left → tap_right → count rep
 export class PushupShoulderTapAnalyzer extends ExerciseAnalyzer {
   private keyLandmarks = [
     LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER, LM.LEFT_ELBOW, LM.RIGHT_ELBOW,
     LM.LEFT_WRIST, LM.RIGHT_WRIST, LM.LEFT_HIP, LM.RIGHT_HIP
   ];
-  private phase: 'up' | 'down' | 'tap_left' | 'tap_right' = 'up';
-  private completedPushup = false;
-  private completedTapLeft = false;
-  private completedTapRight = false;
+  private phase: 'down' | 'up' | 'tap' = 'down';
   private phaseConfirmedFrames = 0;
-  private previousLeftWristY = 0;
-  private previousRightWristY = 0;
-  private hysteresis = 15; // Prevents flickering between phases
-  private wristRiseHistory: { left: number[]; right: number[] } = { left: [], right: [] };
+  private hysteresis = 15;
 
   constructor() {
     super('pushup_shoulder_tap');
-    this.repCooldown = 900; // Slightly increased for stability
-    this.minFramesInStage = 4;
+    this.repCooldown = 500;
+    this.minFramesInStage = 2;
+    this.minHoldTime = 150;
   }
 
   analyze(landmarks: Landmark[]): ExerciseAnalysisResult {
-    // Update adaptive visibility threshold
     this.updateAdaptiveVisibility(landmarks, this.keyLandmarks);
-    
     const isVisible = this.checkVisibility(landmarks, this.keyLandmarks);
     
     if (!isVisible) {
@@ -1954,101 +2306,100 @@ export class PushupShoulderTapAnalyzer extends ExerciseAnalyzer {
     const leftHip = this.getSmoothedLandmark(LM.LEFT_HIP, landmarks[LM.LEFT_HIP]);
     const rightHip = this.getSmoothedLandmark(LM.RIGHT_HIP, landmarks[LM.RIGHT_HIP]);
 
-    // Calculate and smooth elbow angles
+    // Calculate elbow angles
     const leftElbowAngleRaw = calculateAngle(leftShoulder, leftElbow, leftWrist);
     const rightElbowAngleRaw = calculateAngle(rightShoulder, rightElbow, rightWrist);
     const leftElbowAngle = this.getSmoothedAngle('leftElbow', leftElbowAngleRaw);
     const rightElbowAngle = this.getSmoothedAngle('rightElbow', rightElbowAngleRaw);
     const avgElbowAngle = (leftElbowAngle + rightElbowAngle) / 2;
 
-    // Detect hand raises with smoothing for shoulder taps
-    const leftWristRiseRaw = this.previousLeftWristY - leftWrist.y;
-    const rightWristRiseRaw = this.previousRightWristY - rightWrist.y;
-    
-    this.wristRiseHistory.left.push(leftWristRiseRaw);
-    this.wristRiseHistory.right.push(rightWristRiseRaw);
-    if (this.wristRiseHistory.left.length > 3) this.wristRiseHistory.left.shift();
-    if (this.wristRiseHistory.right.length > 3) this.wristRiseHistory.right.shift();
-    
-    const leftWristRise = this.wristRiseHistory.left.reduce((a, b) => a + b, 0) / this.wristRiseHistory.left.length;
-    const rightWristRise = this.wristRiseHistory.right.reduce((a, b) => a + b, 0) / this.wristRiseHistory.right.length;
-
     const thresholds = EXERCISES[this.exerciseType].thresholds;
 
-    this.previousStage = this.currentStage;
-    let repCompleted = false;
+    // TAP DETECTION: Elbow asymmetry (one arm bent to tap, other straight supporting)
+    // When tapping shoulder, tapping arm bends to ~40-80°, supporting arm stays ~160-180°
+    const elbowDiff = Math.abs(leftElbowAngle - rightElbowAngle);
+    const tapThreshold = 50; // Need at least 50° difference between arms
+    const tapDetected = elbowDiff >= tapThreshold;
 
-    // State machine with hysteresis: up -> down -> up -> tap_left -> tap_right -> (count rep)
+    // Debug log
+    const downPass = avgElbowAngle < thresholds.elbow_down_angle ? '✓' : '✗';
+    const upPass = avgElbowAngle > thresholds.elbow_up_angle ? '✓' : '✗';
+    const tapPass = tapDetected ? '✓' : '✗';
+    console.log(`📊 PUSHUP_SHOULDER_TAP: ศอก=${avgElbowAngle.toFixed(0)}° (ซ้าย=${leftElbowAngle.toFixed(0)} ขวา=${rightElbowAngle.toFixed(0)} diff=${elbowDiff.toFixed(0)}) | ลง(ต้อง<${thresholds.elbow_down_angle})${downPass} | ขึ้น(ต้อง>${thresholds.elbow_up_angle})${upPass} | แตะ(diff≥${tapThreshold})${tapPass} | phase=${this.phase}`);
+
+    let repCompleted = false;
+    let holdingCorrectForm = false;
+
+    // Elbow detection with hysteresis
     const elbowDown = this.phase === 'down' 
       ? avgElbowAngle < thresholds.elbow_down_angle + this.hysteresis
       : avgElbowAngle < thresholds.elbow_down_angle;
-    const elbowUp = this.phase === 'up' || this.phase === 'tap_left' || this.phase === 'tap_right'
+    const elbowUp = this.phase === 'up' || this.phase === 'tap'
       ? avgElbowAngle > thresholds.elbow_up_angle - this.hysteresis
       : avgElbowAngle > thresholds.elbow_up_angle;
-    const leftTap = leftWristRise > thresholds.tap_height * 0.8; // Slightly relaxed
-    const rightTap = rightWristRise > thresholds.tap_height * 0.8;
 
-    // Check body tilt during taps
-    const shoulderTilt = Math.abs(leftShoulder.y - rightShoulder.y);
-    const hipTilt = Math.abs(leftHip.y - rightHip.y);
-
-    if (this.phase === 'up') {
+    // Phase 1: Push-up DOWN (both elbows bent)
+    if (this.phase === 'down') {
       if (elbowDown) {
         this.phaseConfirmedFrames++;
+        if (this.phaseConfirmedFrames < this.minFramesInStage) {
+          holdingCorrectForm = true;
+        }
         if (this.phaseConfirmedFrames >= this.minFramesInStage) {
-          this.phase = 'down';
+          this.phase = 'up';
           this.currentStage = 'down';
           this.phaseConfirmedFrames = 0;
+          console.log(`🎯 PUSHUP_SHOULDER_TAP ลงแล้ว! ดันขึ้นเลย`);
         }
+      } else {
+        this.phaseConfirmedFrames = 0;
       }
-    } else if (this.phase === 'down') {
+    } 
+    // Phase 2: Push-up UP (both elbows straight)
+    else if (this.phase === 'up') {
       if (elbowUp) {
         this.phaseConfirmedFrames++;
         if (this.phaseConfirmedFrames >= this.minFramesInStage) {
-          this.phase = 'tap_left';
+          this.phase = 'tap';
           this.currentStage = 'up';
-          this.completedPushup = true;
           this.phaseConfirmedFrames = 0;
+          console.log(`👋 PUSHUP_SHOULDER_TAP ดันขึ้นแล้ว! แตะไหล่เลย (ข้างไหนก็ได้)`);
         }
+      } else {
+        this.phaseConfirmedFrames = 0;
       }
-    } else if (this.phase === 'tap_left') {
-      if (leftTap && !this.completedTapLeft) {
+    } 
+    // Phase 3: TAP (detect one arm bent significantly more than other = tapping shoulder)
+    else if (this.phase === 'tap') {
+      if (tapDetected) {
         this.phaseConfirmedFrames++;
-        if (this.phaseConfirmedFrames >= 3) { // Increased frame confirmation
-          this.completedTapLeft = true;
-          this.currentStage = 'tap_left';
-          this.phase = 'tap_right';
-          this.phaseConfirmedFrames = 0;
+        if (this.phaseConfirmedFrames < 2) {
+          holdingCorrectForm = true;
         }
-      }
-    } else if (this.phase === 'tap_right') {
-      if (rightTap && !this.completedTapRight) {
-        this.phaseConfirmedFrames++;
-        if (this.phaseConfirmedFrames >= 3) { // Increased frame confirmation
-          this.completedTapRight = true;
-          this.currentStage = 'tap_right';
+        if (this.phaseConfirmedFrames >= 2) {
+          this.currentStage = 'tap';
           
-          // Complete rep
-          if (this.completedPushup && this.completedTapLeft && this.canCountRep()) {
+          if (this.canCountRep()) {
+            const tappingSide = leftElbowAngle < rightElbowAngle ? 'ซ้าย' : 'ขวา';
+            console.log(`🏋️ PUSHUP_SHOULDER_TAP Rep counted! Down + Up + Tap(${tappingSide}) complete`);
             this.reps++;
             repCompleted = true;
             this.markRepCounted();
           }
           
           // Reset for next rep
-          this.phase = 'up';
-          this.completedPushup = false;
-          this.completedTapLeft = false;
-          this.completedTapRight = false;
+          this.phase = 'down';
           this.phaseConfirmedFrames = 0;
         }
+      } else {
+        this.phaseConfirmedFrames = 0;
       }
     }
 
-    this.previousLeftWristY = leftWrist.y;
-    this.previousRightWristY = rightWrist.y;
+    const shoulderTilt = Math.abs(leftShoulder.y - rightShoulder.y);
+    const hipTilt = Math.abs(leftHip.y - rightHip.y);
 
-    const formFeedback = this.evaluateForm(landmarks);
+    const formFeedback = this.evaluateForm(landmarks, holdingCorrectForm);
 
     return {
       stage: this.currentStage,
@@ -2057,25 +2408,34 @@ export class PushupShoulderTapAnalyzer extends ExerciseAnalyzer {
       formFeedback,
       angles: {
         elbowAngle: Math.round(avgElbowAngle),
-        shoulderTilt: Math.round(shoulderTilt * 100),
-        hipTilt: Math.round(hipTilt * 100),
+        leftElbow: Math.round(leftElbowAngle),
+        rightElbow: Math.round(rightElbowAngle),
+        elbowDiff: Math.round(elbowDiff),
         phase: this.phase,
       },
       isVisible: true,
     };
   }
 
-  evaluateForm(landmarks: Landmark[]): FormFeedback {
+  evaluateForm(landmarks: Landmark[], holdingCorrectForm: boolean = false): FormFeedback {
     const issues: string[] = [];
     const suggestions: string[] = [];
     let score = 100;
+
+    if (holdingCorrectForm) {
+      return {
+        quality: 'good',
+        score: 90,
+        issues: [],
+        suggestions: ['✅ ท่าถูกแล้ว! ค้างไว้...']
+      };
+    }
 
     const leftShoulder = this.getSmoothedLandmark(LM.LEFT_SHOULDER, landmarks[LM.LEFT_SHOULDER]);
     const rightShoulder = this.getSmoothedLandmark(LM.RIGHT_SHOULDER, landmarks[LM.RIGHT_SHOULDER]);
     const leftHip = this.getSmoothedLandmark(LM.LEFT_HIP, landmarks[LM.LEFT_HIP]);
     const rightHip = this.getSmoothedLandmark(LM.RIGHT_HIP, landmarks[LM.RIGHT_HIP]);
 
-    // Check body tilt during taps
     const shoulderTilt = Math.abs(leftShoulder.y - rightShoulder.y);
     const hipTilt = Math.abs(leftHip.y - rightHip.y);
     const thresholds = EXERCISES[this.exerciseType].thresholds;
@@ -2096,36 +2456,29 @@ export class PushupShoulderTapAnalyzer extends ExerciseAnalyzer {
 
   reset(): void {
     super.reset();
-    this.phase = 'up';
-    this.completedPushup = false;
-    this.completedTapLeft = false;
-    this.completedTapRight = false;
+    this.phase = 'down';
     this.phaseConfirmedFrames = 0;
-    this.previousLeftWristY = 0;
-    this.previousRightWristY = 0;
-    this.wristRiseHistory = { left: [], right: [] };
   }
 }
 
 // Burpee Analyzer - Side camera, state machine (squat → plank → jump)
+// Burpee Analyzer - SIMPLIFIED: standing → down (any low position) → standing = 1 rep
+// No holding required, no jump required. Just go down and come back up.
 export class BurpeeAnalyzer extends ExerciseAnalyzer {
   private keyLandmarks = [
     LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER, LM.LEFT_HIP, LM.RIGHT_HIP,
     LM.LEFT_KNEE, LM.RIGHT_KNEE, LM.LEFT_ANKLE, LM.RIGHT_ANKLE
   ];
-  private burpeePhase: 'standing' | 'squat' | 'plank' | 'jump' = 'standing';
+  private burpeePhase: 'standing' | 'going_down' | 'down' | 'coming_up' = 'standing';
   private previousHipY: number = 0;
-  private phaseStartTime: number = Date.now();
-  private completedSquat: boolean = false;
-  private completedPlank: boolean = false;
-  private phaseConfirmedFrames: number = 0;
-  private hysteresis = 15; // Prevents flickering between phases
   private hipYHistory: number[] = []; // For smoothing hip position
+  private wentDown: boolean = false; // Track if user went down
 
   constructor() {
     super('burpee');
-    this.repCooldown = 1600; // Slightly increased for stability
-    this.minFramesInStage = 4;
+    this.repCooldown = 500; // Fast cooldown
+    this.minFramesInStage = 1; // No holding required! ไม่ต้องค้าง
+    this.minHoldTime = 0; // No hold time required
   }
 
   analyze(landmarks: Landmark[]): ExerciseAnalysisResult {
@@ -2139,7 +2492,7 @@ export class BurpeeAnalyzer extends ExerciseAnalyzer {
         stage: this.currentStage,
         reps: this.reps,
         repCompleted: false,
-        formFeedback: { quality: 'good', score: 0, issues: [], suggestions: ['ยืนให้เห็นตัวเต็มๆ ครับ'] },
+        formFeedback: { quality: 'warn', score: 0, issues: ['ไม่เห็นตัวครบ'], suggestions: ['📷 หันข้างเข้ากล้อง วางกล้องต่ำให้เห็นตั้งแต่ศีรษะถึงเท้าครับ'] },
         angles: {},
         isVisible: false,
       };
@@ -2162,90 +2515,80 @@ export class BurpeeAnalyzer extends ExerciseAnalyzer {
     const rightKneeAngle = this.getSmoothedAngle('rightKnee', rightKneeAngleRaw);
     const avgKneeAngle = (leftKneeAngle + rightKneeAngle) / 2;
 
-    // Calculate and smooth body angle for plank detection
+    // Calculate and smooth body angle for plank/floor detection
     const leftBodyAngle = calculateAngle(leftShoulder, leftHip, leftAnkle);
     const rightBodyAngle = calculateAngle(rightShoulder, rightHip, rightAnkle);
     const avgBodyAngle = this.getSmoothedAngle('bodyAngle', (leftBodyAngle + rightBodyAngle) / 2);
 
-    // Vertical movement with smoothing for jump detection
+    // Hip Y position for detecting low positions
     const hipY = (leftHip.y + rightHip.y) / 2;
     this.hipYHistory.push(hipY);
-    if (this.hipYHistory.length > 5) this.hipYHistory.shift();
+    if (this.hipYHistory.length > 3) this.hipYHistory.shift();
     const smoothedHipY = this.hipYHistory.reduce((a, b) => a + b, 0) / this.hipYHistory.length;
-    
-    const verticalMovement = this.previousHipY - smoothedHipY;
+
+    // Shoulder Y for detecting when person goes to floor
+    const shoulderY = (leftShoulder.y + rightShoulder.y) / 2;
 
     const thresholds = EXERCISES[this.exerciseType].thresholds;
-    const currentTime = Date.now();
+
+    // Detect positions:
+    // "Down" = ANY of: squat (knee bent), plank (body horizontal + hip high), or on floor
+    const isSquatting = avgKneeAngle < thresholds.squat_knee_angle;
+    const isPlankOrFloor = avgBodyAngle > thresholds.plank_body_angle && smoothedHipY > thresholds.hip_high_threshold;
+    const isOnFloor = shoulderY > 0.6; // Shoulders are very low = on floor
+    const isDown = isSquatting || isPlankOrFloor || isOnFloor;
+    const isStanding = avgKneeAngle > thresholds.standing_knee_angle && smoothedHipY < 0.5;
+
+    // Always log for debugging
+    const downText = isDown ? '✓ลงแล้ว' : '✗ยังไม่ลง';
+    const standText = isStanding ? '✓ยืนแล้ว' : '✗ยังไม่ยืน';
+    console.log(`📊 BURPEE: เข่า=${avgKneeAngle.toFixed(0)}° ลำตัว=${avgBodyAngle.toFixed(0)}° สะโพกY=${smoothedHipY.toFixed(2)} | ${downText} | ${standText} | phase=${this.burpeePhase}`);
 
     this.previousStage = this.currentStage;
     let repCompleted = false;
 
-    // Detect positions with hysteresis
-    const squatThreshold = this.burpeePhase === 'squat' 
-      ? thresholds.squat_knee_angle + this.hysteresis 
-      : thresholds.squat_knee_angle;
-    const inSquat = avgKneeAngle < squatThreshold;
-    const inPlank = avgBodyAngle > thresholds.plank_body_angle && smoothedHipY > 0.55; // Slightly relaxed
-    const isJumping = verticalMovement > thresholds.jump_height_ratio * 0.9; // Slightly relaxed
-    const isStanding = avgKneeAngle > 145 && smoothedHipY < 0.6;
-
-    // State machine: standing -> squat -> plank -> squat -> jump
+    // SIMPLE state machine: standing → down → standing = 1 rep (ไม่ต้องค้าง!)
     switch (this.burpeePhase) {
       case 'standing':
-        if (inSquat) {
-          this.phaseConfirmedFrames++;
-          if (this.phaseConfirmedFrames >= this.minFramesInStage) {
-            this.burpeePhase = 'squat';
-            this.currentStage = 'squat';
-            this.completedSquat = true;
-            this.phaseStartTime = currentTime;
-            this.phaseConfirmedFrames = 0;
-          }
+        if (isDown) {
+          this.burpeePhase = 'going_down';
+          console.log(`⬇️ BURPEE กำลังลง...`);
         }
         break;
-        
-      case 'squat':
-        if (inPlank && this.completedSquat) {
-          this.phaseConfirmedFrames++;
-          if (this.phaseConfirmedFrames >= this.minFramesInStage) {
-            this.burpeePhase = 'plank';
-            this.currentStage = 'plank';
-            this.completedPlank = true;
-            this.phaseStartTime = currentTime;
-            this.phaseConfirmedFrames = 0;
-          }
+
+      case 'going_down':
+        if (isDown) {
+          this.burpeePhase = 'down';
+          this.currentStage = 'down';
+          this.wentDown = true;
+          console.log(`🎯 BURPEE ลงถึงแล้ว! ยืนขึ้นมาเพื่อนับ`);
+        } else if (isStanding) {
+          // Went back up too fast without fully going down
+          this.burpeePhase = 'standing';
         }
         break;
-        
-      case 'plank':
-        if (inSquat && this.completedPlank) {
-          this.phaseConfirmedFrames++;
-          if (this.phaseConfirmedFrames >= this.minFramesInStage) {
-            this.burpeePhase = 'jump';
-            this.phaseConfirmedFrames = 0;
-          }
+
+      case 'down':
+        if (!isDown) {
+          // Starting to come back up
+          this.burpeePhase = 'coming_up';
+          console.log(`⬆️ BURPEE กำลังขึ้น...`);
         }
         break;
-        
-      case 'jump':
-        if (isJumping && this.canCountRep()) {
+
+      case 'coming_up':
+        if (isStanding && this.wentDown && this.canCountRep()) {
+          console.log(`🏋️ BURPEE Rep counted! เข่า: ${avgKneeAngle.toFixed(1)}°`);
           this.reps++;
           repCompleted = true;
           this.markRepCounted();
-          this.currentStage = 'jump';
-          
-          // Reset for next rep
-          this.burpeePhase = 'standing';
-          this.completedSquat = false;
-          this.completedPlank = false;
-          this.phaseConfirmedFrames = 0;
-        } else if (isStanding) {
-          // If standing without jump, still count as partial rep
-          this.burpeePhase = 'standing';
           this.currentStage = 'up';
-          this.completedSquat = false;
-          this.completedPlank = false;
+          this.wentDown = false;
+          this.burpeePhase = 'standing';
+        } else if (isDown) {
+          // Went back down again
+          this.burpeePhase = 'down';
+          this.currentStage = 'down';
         }
         break;
     }
@@ -2261,7 +2604,7 @@ export class BurpeeAnalyzer extends ExerciseAnalyzer {
       angles: {
         kneeAngle: Math.round(avgKneeAngle),
         bodyAngle: Math.round(avgBodyAngle),
-        verticalMovement: Math.round(verticalMovement * 100),
+        hipY: Math.round(smoothedHipY * 100),
         phase: this.burpeePhase,
       },
       isVisible: true,
@@ -2269,46 +2612,33 @@ export class BurpeeAnalyzer extends ExerciseAnalyzer {
   }
 
   evaluateForm(landmarks: Landmark[]): FormFeedback {
-    const issues: string[] = [];
     const suggestions: string[] = [];
     let score = 100;
 
-    const leftShoulder = landmarks[LM.LEFT_SHOULDER];
-    const leftHip = landmarks[LM.LEFT_HIP];
-    const leftAnkle = landmarks[LM.LEFT_ANKLE];
-    const rightShoulder = landmarks[LM.RIGHT_SHOULDER];
-    const rightHip = landmarks[LM.RIGHT_HIP];
-    const rightAnkle = landmarks[LM.RIGHT_ANKLE];
-
-    const thresholds = EXERCISES[this.exerciseType].thresholds;
-
-    if (this.burpeePhase === 'plank') {
-      const leftBodyAngle = calculateAngle(leftShoulder, leftHip, leftAnkle);
-      const rightBodyAngle = calculateAngle(rightShoulder, rightHip, rightAnkle);
-      const avgBodyAngle = (leftBodyAngle + rightBodyAngle) / 2;
-      
-      if (avgBodyAngle < thresholds.plank_body_angle - 15) {
-        issues.push('ลำตัวไม่ตรงในท่าแพลงค์');
-        suggestions.push('ยืดลำตัวให้ตรงครับ');
-        score -= 25;
-      }
+    // Phase-specific suggestions
+    switch (this.burpeePhase) {
+      case 'standing':
+        suggestions.push('🏃 ลงไปเลยครับ!');
+        break;
+      case 'going_down':
+      case 'down':
+        suggestions.push('👇 ดีครับ! ลงมาแล้ว ยืนขึ้นเลย!');
+        break;
+      case 'coming_up':
+        suggestions.push('⬆️ ยืนขึ้นมาเลย!');
+        break;
     }
 
     let quality: FormQuality = 'good';
-    if (score < 50) quality = 'bad';
-    else if (score < 80) quality = 'warn';
-
     this.lastFormQuality = quality;
-    return { quality, score: Math.max(0, score), issues, suggestions };
+    return { quality, score: Math.max(0, score), issues: [], suggestions };
   }
 
   reset(): void {
     super.reset();
     this.burpeePhase = 'standing';
     this.previousHipY = 0;
-    this.completedSquat = false;
-    this.completedPlank = false;
-    this.phaseConfirmedFrames = 0;
+    this.wentDown = false;
     this.hipYHistory = [];
   }
 }

@@ -259,13 +259,13 @@ export const workoutExercises: Record<string, WorkoutExercise[]> = {
   'kaya-intermediate': [
     { name: 'Squat + Arm Raise', nameTh: 'สควอตพร้อมยกแขนเหนือศีรษะ', duration: null, reps: 10, icon: 'kaya-squat-arm', description: 'สควอตพร้อมยกแขนเหนือศีรษะ', kayaExercise: 'squat_arm_raise' },
     { name: 'Push-up', nameTh: 'วิดพื้น', duration: null, reps: 10, icon: 'kaya-pushup', description: 'วิดพื้นเต็มรูปแบบ เน้นกล้ามเนื้ออกและแขน', kayaExercise: 'push_up' },
-    { name: 'Static Lunge', nameTh: 'ลันจ์อยู่กับที่', duration: null, reps: 10, icon: 'kaya-lunge', description: 'ย่อขาหน้า 90 องศา ฝึกกล้ามเนื้อขา', kayaExercise: 'static_lunge' },
+    { name: 'Static Lunge', nameTh: 'ลันจ์ค้าง', duration: 60, reps: null, icon: 'kaya-lunge', description: 'ค้างท่าลันจ์ 60 วินาที (สลับขาทุก 30 วิ)', kayaExercise: 'static_lunge' },
   ],
 
   // Advanced KAYA set
   'kaya-advanced': [
     { name: 'Jump Squat', nameTh: 'กระโดดสควอต', duration: null, reps: 15, icon: 'kaya-jump-squat', description: 'สควอตแล้วกระโดดขึ้น ฝึกพลังระเบิด', kayaExercise: 'jump_squat' },
-    { name: 'Plank Hold', nameTh: 'ท่าแพลงค์', duration: 30, reps: null, icon: 'kaya-plank', description: 'ค้างท่าแพลงค์ ลำตัวตรง เสริมแกนกลางลำตัว', kayaExercise: 'plank_hold' },
+    { name: 'Plank Hold', nameTh: 'ท่าแพลงค์', duration: 60, reps: null, icon: 'kaya-plank', description: 'ค้างท่าแพลงค์ ลำตัวตรง เสริมแกนกลางลำตัว', kayaExercise: 'plank_hold' },
     { name: 'Mountain Climber', nameTh: 'ไต่เขา', duration: null, reps: 20, icon: 'kaya-mountain', description: 'ท่าแพลงค์สลับยกเข่า เหมาะสำหรับคาร์ดิโอ', kayaExercise: 'mountain_climber' },
   ],
 
