@@ -323,17 +323,17 @@ export interface FirestoreUserSettings {
 
 // Botnoi TTS Speakers list
 export const BOTNOI_SPEAKERS = [
-  { id: '29', name: 'ไอโกะ', description: 'ผู้หญิง | เสียงหวาน / อนิเมะ' },
-  { id: '12', name: 'นาเดียร์', description: 'ผู้หญิง | เสียงมั่นใจ' },
-  { id: '52', name: 'ณัฐกานต์', description: 'ผู้ชาย | เสียงน่ารัก / อนิเมะ' },
-  { id: '55', name: 'นายเบรด', description: 'ผู้ชาย | เสียงขี้เล่น' },
+  { id: '26', name: 'ไอโกะ (YingAiko)', description: 'ผู้หญิง | เสียงหวาน / อนิเมะ' },
+  { id: '9', name: 'นาเดียร์ (Nadia)', description: 'ผู้หญิง | เสียงเล่าเรื่อง / มั่นใจ' },
+  { id: '543', name: 'ณัฐกานต์ (Nattakarn)', description: 'ผู้ชาย | เสียงผู้ชาย' },
+  { id: '31', name: 'นายเบรด (Mr.Bread)', description: 'ผู้ชาย | เสียงขี้เล่น' },
 ] as const;
 
 // Default TTS Settings
 export const DEFAULT_TTS_SETTINGS = {
   enabled: true,
   speed: 1.0,
-  speaker: '29',  // Default Botnoi speaker (ไอโกะ)
+  speaker: '26',  // Default Botnoi speaker (ไอโกะ / YingAiko)
   nfeSteps: 32,
   useVajax: false,
   referenceAudioUrl: '',  
@@ -794,9 +794,9 @@ export const initializeUserSettings = async (userId: string): Promise<void> => {
     tts: {
       enabled: true,
       speed: 1.0,
-      speaker: '29',
+      speaker: '26',
       nfeSteps: 32,
-      useVajax: true,
+      useVajax: false,
       referenceAudioUrl: '',
       referenceText: '',
     },

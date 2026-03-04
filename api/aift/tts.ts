@@ -53,9 +53,9 @@ export default async function handler(req: Request): Promise<Response> {
     text = text.substring(0, 997) + '...';
   }
 
-  // Validate speaker is a numeric Botnoi ID; fallback to '29' (Aiko) if old VAJA name
-  const rawSpeaker = body.speaker || '29';
-  const speaker = /^\d+$/.test(rawSpeaker) ? rawSpeaker : '29';
+  // Validate speaker is a numeric Botnoi ID; fallback to '26' (YingAiko) if old VAJA name
+  const rawSpeaker = body.speaker || '26';
+  const speaker = /^\d+$/.test(rawSpeaker) ? rawSpeaker : '26';
   const speed = body.speed || 1;
   const volume = body.volume || 1;
   const language = body.language || 'th';

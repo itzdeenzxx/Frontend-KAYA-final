@@ -206,7 +206,7 @@ export function useTTS(userId?: string, coachId?: string): UseTTSReturn {
         try {
           const vajaController = new AbortController();
           const vajaTimeout = setTimeout(() => vajaController.abort(), 12000);
-          const botnoiSpeaker = coach?.voiceId || settings.speaker || '29';
+          const botnoiSpeaker = coach?.voiceId || settings.speaker || '26';
 
           const vajaRes = await fetch('/api/aift/tts', {
             method: 'POST',

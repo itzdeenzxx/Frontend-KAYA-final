@@ -5,10 +5,10 @@ export type CoachGender = 'male' | 'female';
 
 // Botnoi TTS speakers (V1) used for coaches
 export const BOTNOI_SPEAKERS = [
-  { id: '29', label: 'ไอโกะ', gender: 'female' as const, style: 'เสียงหวาน / อนิเมะ' },
-  { id: '12', label: 'นาเดียร์', gender: 'female' as const, style: 'เสียงมั่นใจ' },
-  { id: '52', label: 'ณัฐกานต์', gender: 'male' as const, style: 'เสียงน่ารัก / อนิเมะ' },
-  { id: '55', label: 'นายเบรด', gender: 'male' as const, style: 'เสียงขี้เล่น' },
+  { id: '26', label: 'ไอโกะ (YingAiko)', gender: 'female' as const, style: 'เสียงหวาน / อนิเมะ' },
+  { id: '9', label: 'นาเดียร์ (Nadia)', gender: 'female' as const, style: 'เสียงเล่าเรื่อง / มั่นใจ' },
+  { id: '543', label: 'ณัฐกานต์ (Nattakarn)', gender: 'male' as const, style: 'เสียงผู้ชาย' },
+  { id: '31', label: 'นายเบรด (Mr.Bread)', gender: 'male' as const, style: 'เสียงขี้เล่น' },
 ] as const;
 
 // Valid Botnoi speaker IDs
@@ -16,11 +16,13 @@ const VALID_SPEAKER_IDS = new Set(BOTNOI_SPEAKERS.map(s => s.id));
 
 // Old VAJA speaker names → new Botnoi IDs
 const LEGACY_SPEAKER_MAP: Record<string, string> = {
-  'nana': '29', 'farsai': '29', 'prim': '12', 'mint': '12',
-  'poom': '52', 'ton': '55', 'bank': '52', 'kai': '55',
+  'nana': '26', 'farsai': '26', 'prim': '9', 'mint': '9',
+  'poom': '543', 'ton': '31', 'bank': '543', 'kai': '31',
   // Old numeric IDs from interim migration
-  '1': '29', '2': '29', '3': '12', '4': '12', '5': '29', '6': '12', '7': '29',
-  '8': '52', '9': '55', '10': '52', '11': '55',
+  '1': '26', '2': '26', '3': '9', '4': '9', '5': '26', '6': '9', '7': '26',
+  '8': '543', '9': '31', '10': '543', '11': '31',
+  // Old wrong Botnoi IDs → correct ones
+  '29': '26', '12': '9', '52': '543', '55': '31',
 };
 
 // Old coach IDs → new coach IDs
@@ -36,9 +38,9 @@ const LEGACY_COACH_MAP: Record<string, string> = {
  * Returns a valid Botnoi speaker ID (always numeric string).
  */
 export function migrateSpeakerId(speaker: string | undefined | null): string {
-  if (!speaker) return '29'; // default: Aiko
+  if (!speaker) return '26'; // default: Aiko (YingAiko)
   if (VALID_SPEAKER_IDS.has(speaker)) return speaker;
-  return LEGACY_SPEAKER_MAP[speaker.toLowerCase()] || '29';
+  return LEGACY_SPEAKER_MAP[speaker.toLowerCase()] || '26';
 }
 
 /**
@@ -77,7 +79,7 @@ export const COACHES: Coach[] = [
     name: 'Aiko',
     nameTh: 'โค้ชไอโกะ',
     gender: 'female',
-    voiceId: '29',  // Botnoi: YingAiko — เสียงหวาน / อนิเมะ
+    voiceId: '26',  // Botnoi: YingAiko (speaker 26) — เสียงหวาน / อนิเมะ
     personality: 'playful',
     description: 'Playful and cute coach who makes every workout fun',
     descriptionTh: 'โค้ชขี้เล่นน่ารัก ทำให้ออกกำลังกายสนุกทุกครั้ง',
@@ -93,7 +95,7 @@ export const COACHES: Coach[] = [
     name: 'Nadia',
     nameTh: 'โค้ชนาเดียร์',
     gender: 'female',
-    voiceId: '12',  // Botnoi: Nadia — เสียงมั่นใจ
+    voiceId: '9',  // Botnoi: Nadia (speaker 9) — เสียงเล่าเรื่อง / มั่นใจ
     personality: 'serious',
     description: 'Serious and focused coach who pushes you to achieve results',
     descriptionTh: 'โค้ชจริงจังมุ่งมั่น ผลักดันให้ได้ผลลัพธ์จริง',
@@ -111,7 +113,7 @@ export const COACHES: Coach[] = [
     name: 'Nattakan',
     nameTh: 'โค้ชณัฐกานต์',
     gender: 'male',
-    voiceId: '52',  // Botnoi: Hiro — เสียงน่ารัก / อนิเมะ
+    voiceId: '543',  // Botnoi: Nattakarn (speaker 543) — เสียงผู้ชาย
     personality: 'playful',
     description: 'Playful and fun bro who keeps the vibe light',
     descriptionTh: 'โค้ชขี้เล่น ทำให้บรรยากาศสนุกไม่เครียด',
@@ -127,7 +129,7 @@ export const COACHES: Coach[] = [
     name: 'MrBread',
     nameTh: 'โค้ชนายเบรด',
     gender: 'male',
-    voiceId: '55',  // Botnoi: Mr.Bread — เสียงขี้เล่น
+    voiceId: '31',  // Botnoi: Mr.Bread (speaker 31) — เสียงขี้เล่น
     personality: 'tough',
     description: 'Brave and tough coach who never lets you quit',
     descriptionTh: 'โค้ชห้าวหาญ ดุ แข็งแกร่ง ไม่ยอมให้ถอย',
@@ -223,7 +225,7 @@ export const buildCoachFromCustom = (custom: CustomCoach): Coach => {
     name: custom.name,
     nameTh: custom.name,
     gender: custom.gender,
-    voiceId: isFemale ? '29' : '52', // Botnoi speaker
+    voiceId: isFemale ? '26' : '543', // Botnoi speaker
     personality: 'กำหนดเอง',
     description: custom.personality || 'โค้ชที่คุณสร้างเอง',
     descriptionTh: custom.personality || 'โค้ชที่คุณสร้างเอง',

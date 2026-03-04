@@ -215,7 +215,7 @@ export function CoachSettings({ isDark }: CoachSettingsProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: previewText,
-          speaker: selectedCoach.voiceId || '29',
+          speaker: selectedCoach.voiceId || '26',
         }),
         signal: controller.signal,
       });

@@ -55,7 +55,7 @@ const ttsState: TTSState = {
   isSpeaking: false,
   queue: [],
   currentAudio: null,
-  speaker: '29',
+  speaker: '26',
   coachId: 'coach-aiko',
   ttsSpeed: 1.0,
 };
@@ -269,7 +269,7 @@ export function AICoachPopup({
   onMuteToggle,
   className = '',
   coachId = 'coach-aiko',
-  speaker = '29',
+  speaker = '26',
   ttsEnabled = true,
   ttsSpeed = 1.0,
 }: AICoachPopupProps) {

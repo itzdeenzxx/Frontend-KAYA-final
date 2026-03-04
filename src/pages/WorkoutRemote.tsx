@@ -219,7 +219,7 @@ export default function WorkoutRemote() {
       
       console.log('Calling Botnoi TTS API...');
       // Use Botnoi TTS with coach voice
-      const botnoiSpeaker = ttsCoach?.voiceId || ttsSpeaker || '29';
+      const botnoiSpeaker = ttsCoach?.voiceId || ttsSpeaker || '26';
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 12000);
       const response = await fetch('/api/aift/tts', {

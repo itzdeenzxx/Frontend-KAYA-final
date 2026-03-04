@@ -574,7 +574,7 @@ export default function WorkoutUI() {
       
       // Read current coach/speaker from refs (avoids stale closure)
       const currentCoach = ttsCoachRef.current;
-      const currentSpeaker = currentCoach?.voiceId || ttsSpeakerRef.current || '29';
+      const currentSpeaker = currentCoach?.voiceId || ttsSpeakerRef.current || '26';
       
       console.log('🔊 [TTS] Botnoi speaking with speaker:', currentSpeaker, '| coach:', currentCoach?.name || 'none', '| speed:', ttsSpeedRef.current);
 
@@ -1005,7 +1005,7 @@ export default function WorkoutUI() {
     try {
       // Use refs for current coach/speaker (avoid stale closure)
       const currentCoach = ttsCoachRef.current;
-      const currentSpeaker = currentCoach?.voiceId || ttsSpeakerRef.current || '29';
+      const currentSpeaker = currentCoach?.voiceId || ttsSpeakerRef.current || '26';
       
       // Skip if TTS disabled
       if (!ttsEnabledRef.current) {
@@ -1146,7 +1146,7 @@ export default function WorkoutUI() {
     };
     
     try {
-      const currentSpeaker = currentCoach?.voiceId || speakerFromSettings || '29';
+      const currentSpeaker = currentCoach?.voiceId || speakerFromSettings || '26';
       
       console.log('🔊 [CoachIntro] Botnoi speaker:', currentSpeaker, '| coach:', currentCoach?.name || 'none');
 

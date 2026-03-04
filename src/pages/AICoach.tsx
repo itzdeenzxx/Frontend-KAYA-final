@@ -77,7 +77,7 @@ async function aiftTts(text: string) {
   const res = await fetch("/api/aift/tts", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ text, speaker: "29" }),
+    body: JSON.stringify({ text, speaker: "26" }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
