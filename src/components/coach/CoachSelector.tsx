@@ -85,14 +85,40 @@ export const CoachSelector = ({
   const handlePreviewVoice = async (coach: Coach) => {
     if (playingCoachId === coach.id) {
       stop();
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
       setPlayingCoachId(null);
-    } else {
-      setPlayingCoachId(coach.id);
-      try {
-        await speak(coach.sampleGreeting);
-      } finally {
-        setPlayingCoachId(null);
+      return;
+    }
+
+    setPlayingCoachId(coach.id);
+    try {
+      // Call Botnoi TTS directly with the coach's voiceId
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      const res = await fetch('/api/aift/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: coach.sampleGreeting,
+          speaker: coach.voiceId,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const result = await res.json();
+        if (result.success && result.audio_base64) {
+          console.log('🔊 Preview voice:', coach.name, 'speaker:', coach.voiceId);
+          await playAudioBase64(result.audio_base64);
+          return;
+        }
       }
+      console.warn('Preview TTS failed for', coach.name);
+    } catch (err: any) {
+      console.warn('Preview error:', err.name === 'AbortError' ? 'timeout' : err.message);
+    } finally {
+      setPlayingCoachId(null);
     }
   };
 

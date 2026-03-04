@@ -209,13 +209,15 @@ export function CoachSettings({ isDark }: CoachSettingsProps) {
       // Fallback: Botnoi TTS (for preset coaches or custom without voice refs)
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 12000);
+      const previewSpeaker = selectedCoach.voiceId || '26';
+      console.log('🔊 CoachSettings preview:', selectedCoach.name, 'speaker:', previewSpeaker);
       
       const response = await fetch('/api/aift/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: previewText,
-          speaker: selectedCoach.voiceId || '26',
+          speaker: previewSpeaker,
         }),
         signal: controller.signal,
       });
