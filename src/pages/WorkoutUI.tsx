@@ -996,10 +996,6 @@ export default function WorkoutUI() {
       
       // API returns JSON with base64 audio
       const result = await response.json();
-        success: result.success,
-        hasAudio: !!result.audio_base64,
-        audioLength: result.audio_base64?.length || 0
-      });
       
       if (!result.audio_base64) {
         console.error('❌ [TTS Exercise] No audio_base64 in response');
@@ -1083,10 +1079,6 @@ export default function WorkoutUI() {
       }
       
       const result = await response.json();
-        success: result.success,
-        hasAudio: !!result.audio_base64,
-        audioLength: result.audio_base64?.length || 0
-      });
       
       if (!result.audio_base64) {
         console.error('❌ [TTS Coach] No audio_base64 in response');
