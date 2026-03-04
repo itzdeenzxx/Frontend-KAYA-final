@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getUserSettings, getCustomCoach, DEFAULT_TTS_SETTINGS } from '@/lib/firestore';
-import { getCoachById, buildCoachFromCustom, CustomCoach } from '@/lib/coachConfig';
+import { getCoachById, buildCoachFromCustom, CustomCoach, migrateSpeakerId } from '@/lib/coachConfig';
 
 export interface TTSSettings {
   enabled: boolean;
@@ -47,7 +47,7 @@ export function useTTS(userId?: string, coachId?: string): UseTTSReturn {
           setSettings({
             enabled: userSettings.tts.enabled ?? DEFAULT_TTS_SETTINGS.enabled,
             speed: userSettings.tts.speed ?? DEFAULT_TTS_SETTINGS.speed,
-            speaker: userSettings.tts.speaker ?? DEFAULT_TTS_SETTINGS.speaker,
+            speaker: migrateSpeakerId(userSettings.tts.speaker),
             nfeSteps: userSettings.tts.nfeSteps ?? DEFAULT_TTS_SETTINGS.nfeSteps,
             useVajax: userSettings.tts.useVajax ?? DEFAULT_TTS_SETTINGS.useVajax,
             referenceAudioUrl: userSettings.tts.referenceAudioUrl,

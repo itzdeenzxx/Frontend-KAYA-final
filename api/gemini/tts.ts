@@ -53,12 +53,14 @@ export default async function handler(req: Request): Promise<Response> {
     text = text.substring(0, 997) + '...';
   }
 
-  const speaker = body.voiceName || body.speaker || '29';
+  // Validate speaker is a numeric Botnoi ID; fallback to '29' (Aiko) if old VAJA name
+  const rawSpeaker = body.voiceName || body.speaker || '29';
+  const speaker = /^\d+$/.test(rawSpeaker) ? rawSpeaker : '29';
   const speed = body.speed || 1;
   const volume = body.volume || 1;
   const language = body.language || 'th';
 
-  const botnoiUrl = 'https://api-genvoice2.botnoi.ai/openapi/v1/generate_audio';
+  const botnoiUrl = 'https://api-genvoice2.botnoi.ai/openapi/v1/generate_audio_v2';
 
   try {
     const controller = new AbortController();

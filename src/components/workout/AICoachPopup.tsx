@@ -13,6 +13,7 @@ import {
   getRandomMessage,
   ExerciseType,
 } from '@/lib/exerciseConfig';
+import { getLocalAudioForEvent, playLocalAudio } from '@/lib/coachAudio';
 
 // Coach message interface
 export interface CoachMessage {
@@ -28,17 +29,25 @@ interface AICoachPopupProps {
   isMuted?: boolean;
   onMuteToggle?: () => void;
   className?: string;
-  speaker?: string;  // Botnoi speaker voice ID
-  ttsEnabled?: boolean; // From user settings
-  ttsSpeed?: number; // From user settings
+  coachId?: string;   // Coach ID for local audio lookup
+  speaker?: string;   // Botnoi speaker voice ID (fallback)
+  ttsEnabled?: boolean;
+  ttsSpeed?: number;
+}
+
+// Queue item: either local audio URL or text for API
+interface QueueItem {
+  text: string;
+  localUrl?: string; // If set, play this instead of calling API
 }
 
 // TTS State
 interface TTSState {
   isSpeaking: boolean;
-  queue: string[];
+  queue: QueueItem[];
   currentAudio: HTMLAudioElement | null;
   speaker: string;
+  coachId: string;
   ttsSpeed: number;
 }
 
@@ -47,6 +56,7 @@ const ttsState: TTSState = {
   queue: [],
   currentAudio: null,
   speaker: '29',
+  coachId: 'coach-aiko',
   ttsSpeed: 1.0,
 };
 
@@ -96,10 +106,52 @@ async function processQueue(): Promise<void> {
     return;
   }
   
-  const text = ttsState.queue.shift();
-  if (!text) return;
+  const item = ttsState.queue.shift();
+  if (!item) return;
+  
+  if (!item.text) return;
   
   ttsState.isSpeaking = true;
+
+  // ── Path A: Play local pre-recorded audio ────────────────────────────
+  if (item.localUrl) {
+    console.log(`🔊 [CoachPopup] Playing LOCAL audio: "${item.localUrl}"`);
+    try {
+      const audio = new Audio(item.localUrl);
+      ttsState.currentAudio = audio;
+      audio.playbackRate = ttsState.ttsSpeed || 1.0;
+      
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(() => {
+          console.warn('⚠️ Local audio playback timeout');
+          ttsState.currentAudio = null;
+          resolve();
+        }, 10000);
+        
+        audio.onended = () => { clearTimeout(timeout); ttsState.currentAudio = null; resolve(); };
+        audio.onerror = () => { clearTimeout(timeout); ttsState.currentAudio = null; resolve(); };
+        audio.play().catch(() => { clearTimeout(timeout); ttsState.currentAudio = null; resolve(); });
+      });
+    } catch (e) {
+      console.warn('🔊 [CoachPopup] Local audio failed, falling back to API:', e);
+      // Fall through to API below
+      await processQueueItemAPI(item.text);
+    }
+    ttsState.isSpeaking = false;
+    setTimeout(() => processQueue(), 100);
+    return;
+  }
+
+  // ── Path B: Call Botnoi TTS API ──────────────────────────────────────
+  await processQueueItemAPI(item.text);
+  ttsState.isSpeaking = false;
+  setTimeout(() => processQueue(), 100);
+}
+
+/**
+ * Call Botnoi TTS API and play the result (fallback path)
+ */
+async function processQueueItemAPI(text: string): Promise<void> {
   console.log(`🔊 [CoachPopup] Botnoi speaking: "${text}" | speaker: ${ttsState.speaker}`);
   
   try {
@@ -141,9 +193,6 @@ async function processQueue(): Promise<void> {
   } catch (error: unknown) {
     console.error('TTS Error:', error);
     await speakWithWebSpeech(text);
-  } finally {
-    ttsState.isSpeaking = false;
-    setTimeout(() => processQueue(), 100);
   }
 }
 
@@ -172,14 +221,14 @@ function speakWithWebSpeech(text: string): Promise<void> {
 /**
  * Add text to TTS queue
  */
-function speakText(text: string, speaker?: string): void {
+function speakText(text: string, speaker?: string, eventType?: CoachEventType): void {
   // Update speaker if provided
   if (speaker) {
     ttsState.speaker = speaker;
   }
   
   // Don't add duplicates
-  if (ttsState.queue.includes(text)) {
+  if (ttsState.queue.some(item => item.text === text)) {
     return;
   }
   
@@ -188,7 +237,17 @@ function speakText(text: string, speaker?: string): void {
     ttsState.queue.shift(); // Remove oldest
   }
   
-  ttsState.queue.push(text);
+  // Try to resolve local audio for this event type
+  let localUrl: string | undefined;
+  if (eventType) {
+    const local = getLocalAudioForEvent(ttsState.coachId, eventType);
+    if (local) {
+      localUrl = local.url;
+      console.log(`🔊 [CoachPopup] Resolved local audio: ${local.category} → ${local.url}`);
+    }
+  }
+  
+  ttsState.queue.push({ text, localUrl });
   processQueue();
 }
 
@@ -209,6 +268,7 @@ export function AICoachPopup({
   isMuted = false,
   onMuteToggle,
   className = '',
+  coachId = 'coach-aiko',
   speaker = '29',
   ttsEnabled = true,
   ttsSpeed = 1.0,
@@ -221,9 +281,10 @@ export function AICoachPopup({
   // Update TTS state from props
   useEffect(() => {
     ttsState.speaker = speaker;
+    ttsState.coachId = coachId;
     ttsState.ttsSpeed = ttsSpeed;
-    console.log('🔊 [CoachPopup] TTS settings updated (Botnoi):', { speaker, ttsEnabled, ttsSpeed });
-  }, [speaker, ttsSpeed]);
+    console.log('🔊 [CoachPopup] TTS settings updated:', { coachId, speaker, ttsEnabled, ttsSpeed });
+  }, [coachId, speaker, ttsSpeed]);
 
   // Handle new messages
   useEffect(() => {
@@ -237,7 +298,7 @@ export function AICoachPopup({
 
     // Speak the message if not muted AND TTS is enabled in settings
     if (!isMuted && ttsEnabled) {
-      speakText(currentMessage.text, speaker);
+      speakText(currentMessage.text, speaker, currentMessage.type);
     } else if (!ttsEnabled) {
       console.log('🔇 [CoachPopup] TTS disabled in settings, not speaking');
     }

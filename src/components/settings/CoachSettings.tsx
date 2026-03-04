@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserSettings, updateTTSSettings, DEFAULT_TTS_SETTINGS, getCustomCoach } from '@/lib/firestore';
-import { getCoachById, Coach, buildCoachFromCustom, CustomCoach, CustomAvatarId } from '@/lib/coachConfig';
+import { getCoachById, Coach, buildCoachFromCustom, CustomCoach, CustomAvatarId, migrateCoachId } from '@/lib/coachConfig';
 import { getCoachAvatar } from '@/components/coach/CoachAvatars';
 import { getCustomAvatar } from '@/components/coach/CustomAvatars';
 import { CoachSelectionPopup } from '@/components/coach/CoachSelectionPopup';
@@ -49,7 +49,7 @@ export function CoachSettings({ isDark }: CoachSettingsProps) {
           });
         }
         if (userSettings?.selectedCoachId) {
-          setSelectedCoachId(userSettings.selectedCoachId);
+          setSelectedCoachId(migrateCoachId(userSettings.selectedCoachId));
         }
         // Load custom coach data
         const custom = await getCustomCoach(userProfile.lineUserId);

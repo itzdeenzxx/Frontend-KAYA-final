@@ -31,7 +31,7 @@ import {
 } from '@/lib/session';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserSettings, DEFAULT_TTS_SETTINGS } from '@/lib/firestore';
-import { getCoachById, Coach } from '@/lib/coachConfig';
+import { getCoachById, Coach, migrateSpeakerId, migrateCoachId } from '@/lib/coachConfig';
 
 // Voice status type
 type VoiceStatus = "idle" | "recording" | "processing" | "thinking" | "speaking";
@@ -82,12 +82,13 @@ export default function WorkoutRemote() {
         try {
           const settings = await getUserSettings(userProfile.lineUserId);
           if (settings?.tts?.speaker) {
-            setTtsSpeaker(settings.tts.speaker);
+            setTtsSpeaker(migrateSpeakerId(settings.tts.speaker));
           }
           if (settings?.selectedCoachId) {
-            setTtsCoachId(settings.selectedCoachId);
+            const validCoachId = migrateCoachId(settings.selectedCoachId);
+            setTtsCoachId(validCoachId);
             
-            if (settings.selectedCoachId === 'coach-custom') {
+            if (validCoachId === 'coach-custom') {
               const { getCustomCoach } = await import('@/lib/firestore');
               const { buildCoachFromCustom } = await import('@/lib/coachConfig');
               const custom = await getCustomCoach(userProfile.lineUserId);
@@ -100,7 +101,7 @@ export default function WorkoutRemote() {
                 });
               }
             } else {
-              const coach = getCoachById(settings.selectedCoachId);
+              const coach = getCoachById(validCoachId);
               if (coach) setTtsCoach(coach);
             }
           }

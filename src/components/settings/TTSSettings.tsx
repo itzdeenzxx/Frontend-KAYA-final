@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserSettings, updateTTSSettings, DEFAULT_TTS_SETTINGS, BOTNOI_SPEAKERS } from '@/lib/firestore';
+import { migrateSpeakerId } from '@/lib/coachConfig';
 
 interface TTSSettingsProps {
   isDark: boolean;
@@ -38,7 +39,7 @@ export function TTSSettings({ isDark }: TTSSettingsProps) {
           setSettings({
             enabled: userSettings.tts.enabled ?? DEFAULT_TTS_SETTINGS.enabled,
             speed: userSettings.tts.speed ?? DEFAULT_TTS_SETTINGS.speed,
-            speaker: userSettings.tts.speaker ?? DEFAULT_TTS_SETTINGS.speaker,
+            speaker: migrateSpeakerId(userSettings.tts.speaker),
             nfeSteps: userSettings.tts.nfeSteps ?? DEFAULT_TTS_SETTINGS.nfeSteps,
             useVajax: userSettings.tts.useVajax ?? DEFAULT_TTS_SETTINGS.useVajax,
           });

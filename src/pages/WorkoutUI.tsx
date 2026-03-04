@@ -14,7 +14,7 @@ import { ExerciseType } from "@/lib/exerciseConfig";
 import { WorkoutLoader } from "@/components/shared/WorkoutLoader";
 import { useAuth } from "@/contexts/AuthContext";
 import { getUserSettings, DEFAULT_TTS_SETTINGS } from "@/lib/firestore";
-import { getCoachById, Coach } from "@/lib/coachConfig";
+import { getCoachById, Coach, migrateSpeakerId, migrateCoachId } from "@/lib/coachConfig";
 
 // Rep count messages - only speak at 1, 5, 9, 10
 const REP_MESSAGES: Record<number, string> = {
@@ -219,20 +219,19 @@ export default function WorkoutUI() {
           if (settings?.tts) {
             const loadedEnabled = settings.tts.enabled ?? DEFAULT_TTS_SETTINGS.enabled;
             const loadedSpeed = settings.tts.speed ?? DEFAULT_TTS_SETTINGS.speed;
-            const loadedSpeaker = settings.tts.speaker || DEFAULT_TTS_SETTINGS.speaker;
+            const loadedSpeaker = migrateSpeakerId(settings.tts.speaker);
             
             setTtsEnabled(loadedEnabled);
             setTtsSpeed(loadedSpeed);
-            if (settings.tts.speaker) {
-              setTtsSpeaker(loadedSpeaker);
-            }
+            setTtsSpeaker(loadedSpeaker);
             
             console.log('🔊 [TTS] Loaded settings (Botnoi):', { enabled: loadedEnabled, speed: loadedSpeed, speaker: loadedSpeaker });
           }
           if (settings?.selectedCoachId) {
-            setTtsCoachId(settings.selectedCoachId);
+            const validCoachId = migrateCoachId(settings.selectedCoachId);
+            setTtsCoachId(validCoachId);
             
-            if (settings.selectedCoachId === 'coach-custom') {
+            if (validCoachId === 'coach-custom') {
               // Load custom coach data
               const { getCustomCoach, } = await import('@/lib/firestore');
               const { buildCoachFromCustom } = await import('@/lib/coachConfig');
@@ -246,7 +245,7 @@ export default function WorkoutUI() {
                 });
               }
             } else {
-              const coach = getCoachById(settings.selectedCoachId);
+              const coach = getCoachById(validCoachId);
               if (coach) setTtsCoach(coach);
             }
           }
@@ -1608,6 +1607,7 @@ export default function WorkoutUI() {
         {isKayaWorkout && (
           <AICoachPopup
             currentMessage={kayaAnalysis.coachMessage}
+            coachId={ttsCoachId}
             speaker={ttsCoach?.voiceId || ttsSpeaker}
             ttsEnabled={ttsEnabled}
             ttsSpeed={ttsSpeed}

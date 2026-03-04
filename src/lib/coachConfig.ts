@@ -11,6 +11,47 @@ export const BOTNOI_SPEAKERS = [
   { id: '55', label: 'นายเบรด', gender: 'male' as const, style: 'เสียงขี้เล่น' },
 ] as const;
 
+// Valid Botnoi speaker IDs
+const VALID_SPEAKER_IDS = new Set(BOTNOI_SPEAKERS.map(s => s.id));
+
+// Old VAJA speaker names → new Botnoi IDs
+const LEGACY_SPEAKER_MAP: Record<string, string> = {
+  'nana': '29', 'farsai': '29', 'prim': '12', 'mint': '12',
+  'poom': '52', 'ton': '55', 'bank': '52', 'kai': '55',
+  // Old numeric IDs from interim migration
+  '1': '29', '2': '29', '3': '12', '4': '12', '5': '29', '6': '12', '7': '29',
+  '8': '52', '9': '55', '10': '52', '11': '55',
+};
+
+// Old coach IDs → new coach IDs
+const LEGACY_COACH_MAP: Record<string, string> = {
+  'coach-nana': 'coach-aiko', 'coach-farsai': 'coach-aiko',
+  'coach-prim': 'coach-nadia', 'coach-mint': 'coach-nadia',
+  'coach-poom': 'coach-nattakan', 'coach-ton': 'coach-bread',
+  'coach-bank': 'coach-nattakan', 'coach-kai': 'coach-bread',
+};
+
+/**
+ * Migrate old VAJA/interim speaker IDs to valid Botnoi V1 speaker IDs.
+ * Returns a valid Botnoi speaker ID (always numeric string).
+ */
+export function migrateSpeakerId(speaker: string | undefined | null): string {
+  if (!speaker) return '29'; // default: Aiko
+  if (VALID_SPEAKER_IDS.has(speaker)) return speaker;
+  return LEGACY_SPEAKER_MAP[speaker.toLowerCase()] || '29';
+}
+
+/**
+ * Migrate old coach IDs to new valid ones.
+ * Returns a valid coach ID or the input if already valid/custom.
+ */
+export function migrateCoachId(coachId: string | undefined | null): string {
+  if (!coachId) return DEFAULT_COACH_ID;
+  if (coachId === 'coach-custom') return coachId;
+  if (LEGACY_COACH_MAP[coachId]) return LEGACY_COACH_MAP[coachId];
+  return coachId; // already valid or unknown
+}
+
 export interface Coach {
   id: string;
   name: string;
