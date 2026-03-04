@@ -398,12 +398,6 @@ export class ArmRaiseAnalyzer extends ExerciseAnalyzer {
       holdRemaining = Math.max(0, Math.ceil((this.holdDuration - elapsed) / 1000));
     }
 
-    // Always log for debugging
-    const upPass = avgArmAngle >= thresholds.up_angle ? '✓' : '✗';
-    const downPass = avgArmAngle <= thresholds.down_angle ? '✓' : '✗';
-    const holdText = this.reachedUp ? `| ค้าง=${holdRemaining}วิ ${this.holdCompleted ? '✓พร้อม' : '(รอ...)'}` : '';
-    console.log(`📊 ARM_RAISE: แขน=${avgArmAngle.toFixed(0)}° | ขึ้น(ต้อง≥${thresholds.up_angle})${upPass} | ลง(ต้อง≤${thresholds.down_angle})${downPass} ${holdText}`);
-
     let repCompleted = false;
     let holdingCorrectForm = false;
     
@@ -421,7 +415,6 @@ export class ArmRaiseAnalyzer extends ExerciseAnalyzer {
           this.reachedUp = true;
           this.holdStartTime = now;
           this.holdCompleted = false;
-          console.log(`⬆️ ARM_RAISE ยกขึ้นแล้ว! ค้างไว้ 3 วินาที...`);
         }
         
         // Check if hold duration completed
@@ -429,10 +422,8 @@ export class ArmRaiseAnalyzer extends ExerciseAnalyzer {
           const elapsed = now - this.holdStartTime;
           if (elapsed >= this.holdDuration) {
             this.holdCompleted = true;
-            console.log(`✅ ARM_RAISE ค้างครบ 3 วินาที! เอาลงมาเพื่อนับ rep`);
           } else {
             holdingCorrectForm = true;
-            console.log(`⏳ ARM_RAISE ค้างไว้... เหลือ ${holdRemaining} วินาที`);
           }
         }
         
@@ -453,7 +444,6 @@ export class ArmRaiseAnalyzer extends ExerciseAnalyzer {
           repCompleted = true;
           this.markRepCounted();
         } else if (this.reachedUp && !this.holdCompleted) {
-          console.log(`⚠️ ARM_RAISE: ลงเร็วเกินไป! ต้องค้างไว้ 3 วินาทีก่อน`);
         }
         this.reachedUp = false;
         this.holdStartTime = 0;
@@ -603,14 +593,6 @@ export class TorsoTwistAnalyzer extends ExerciseAnalyzer {
     const minAngle = thresholds.min_twist_angle;
     const centerThreshold = thresholds.center_threshold || 20;
 
-    // Determine next required direction
-    const nextRequired = this.lastCountedDirection === null ? 'ซ้ายหรือขวา' : 
-                         this.lastCountedDirection === 'left' ? 'ขวา (สลับ)' : 'ซ้าย (สลับ)';
-
-    // Always log for debugging
-    const twistPass = twistAngle >= minAngle ? '✓' : '✗';
-    console.log(`📊 TORSO_TWIST: บิด=${twistAngle.toFixed(0)}° (ต้อง≥${minAngle})${twistPass} | ทิศ=${twistOffset > 0.01 ? 'ซ้าย' : twistOffset < -0.01 ? 'ขวา' : 'กลาง'} | ครั้งต่อไป: ${nextRequired}`);
-
     let repCompleted = false;
     let holdingCorrectForm = false;
     const prevStage = this.currentStage;
@@ -638,9 +620,7 @@ export class TorsoTwistAnalyzer extends ExerciseAnalyzer {
         const canCount = this.lastCountedDirection === null || this.lastCountedDirection !== currentDirection;
         if (canCount) {
           holdingCorrectForm = true;
-          console.log(`✅ TORSO_TWIST ท่าถูก! บิด${currentDirection === 'left' ? 'ซ้าย' : 'ขวา'}: ${twistAngle.toFixed(0)}° → กลับมากลางเพื่อนับ`);
         } else {
-          console.log(`⚠️ TORSO_TWIST: ต้องสลับทิศ! บิดไป${currentDirection === 'left' ? 'ขวา' : 'ซ้าย'}ก่อนครับ`);
         }
       }
     } else if (twistAngle < centerThreshold) {
@@ -661,7 +641,6 @@ export class TorsoTwistAnalyzer extends ExerciseAnalyzer {
             this.markRepCounted();
             this.lastCountedDirection = this.lastTwistDirection;
           } else {
-            console.log(`⚠️ TORSO_TWIST: ไม่นับ! ต้องสลับทิศ (ทำ${this.lastCountedDirection === 'left' ? 'ขวา' : 'ซ้าย'}ก่อน)`);
           }
           this.completedTwist = false;
           this.lastTwistDirection = null;
@@ -807,11 +786,6 @@ export class KneeRaiseAnalyzer extends ExerciseAnalyzer {
 
     const thresholds = EXERCISES[this.exerciseType].thresholds;
 
-    // Always log for debugging
-    const leftPass = leftHipFlexion < thresholds.up_angle ? '✓' : '✗';
-    const rightPass = rightHipFlexion < thresholds.up_angle ? '✓' : '✗';
-    console.log(`📊 KNEE_RAISE: ซ้าย=${leftHipFlexion.toFixed(0)}°(ต้อง<${thresholds.up_angle})${leftPass} | ขวา=${rightHipFlexion.toFixed(0)}°(ต้อง<${thresholds.up_angle})${rightPass}`);
-
     const prevLeftStage = this.leftLegStage;
     const prevRightStage = this.rightLegStage;
 
@@ -854,10 +828,6 @@ export class KneeRaiseAnalyzer extends ExerciseAnalyzer {
     let holdingCorrectForm = false;
     const minHoldFrames = thresholds.min_hold_frames || 1; // Just 1 frame needed
     
-    // Determine next required leg
-    const nextRequired = this.lastCountedLeg === null ? 'ซ้ายหรือขวา' : 
-                         this.lastCountedLeg === 'left' ? 'ขวา (สลับ)' : 'ซ้าย (สลับ)';
-    
     // Check if user is holding knee up but not yet confirmed
     if ((leftHipFlexion < thresholds.up_angle && !this.leftUpConfirmed) ||
         (rightHipFlexion < thresholds.up_angle && !this.rightUpConfirmed)) {
@@ -872,9 +842,7 @@ export class KneeRaiseAnalyzer extends ExerciseAnalyzer {
       
       if (canCount) {
         holdingCorrectForm = true;
-        console.log(`✅ KNEE_RAISE ท่าถูก! ยกขา${leg}: ${angle.toFixed(0)}° | เฟรม: ${frames}/${this.minFramesInStage} ${frames >= this.minFramesInStage ? '✓พร้อม! ลงมาเพื่อนับ' : '(ค้างต่อ...)'}`);
       } else {
-        console.log(`⚠️ KNEE_RAISE: ต้องสลับขา! ยกขา${this.lastCountedLeg === 'left' ? 'ขวา' : 'ซ้าย'}ก่อนครับ`);
       }
     }
     
@@ -890,9 +858,7 @@ export class KneeRaiseAnalyzer extends ExerciseAnalyzer {
         this.markRepCounted();
         this.lastCountedLeg = 'left';
       } else if (!canCount) {
-        console.log(`⚠️ KNEE_RAISE: ไม่นับ! ต้องสลับขา (ทำขาขวาก่อน)`);
       } else if (!this.canCountRep()) {
-        console.log(`⏳ KNEE_RAISE รอ cooldown`);
       }
       this.leftUpConfirmed = false;
       this.leftUpFrames = 0;
@@ -908,9 +874,7 @@ export class KneeRaiseAnalyzer extends ExerciseAnalyzer {
         this.markRepCounted();
         this.lastCountedLeg = 'right';
       } else if (!canCount) {
-        console.log(`⚠️ KNEE_RAISE: ไม่นับ! ต้องสลับขา (ทำขาซ้ายก่อน)`);
       } else if (!this.canCountRep()) {
-        console.log(`⏳ KNEE_RAISE รอ cooldown`);
       }
       this.rightUpConfirmed = false;
       this.rightUpFrames = 0;
@@ -1009,16 +973,13 @@ export class SquatWithArmRaiseAnalyzer extends ExerciseAnalyzer {
   }
 
   analyze(landmarks: Landmark[]): ExerciseAnalysisResult {
-    console.log('🔍 SQUAT_ARM_RAISE analyze() called');
     
     // Update adaptive visibility threshold
     this.updateAdaptiveVisibility(landmarks, this.keyLandmarks);
     
     const isVisible = this.checkVisibility(landmarks, this.keyLandmarks);
-    console.log(`🔍 SQUAT_ARM_RAISE visibility: ${isVisible}`);
     
     if (!isVisible) {
-      console.log('🔍 SQUAT_ARM_RAISE: ไม่เห็นตัวครบ - return early');
       return {
         stage: this.currentStage,
         reps: this.reps,
@@ -1056,8 +1017,6 @@ export class SquatWithArmRaiseAnalyzer extends ExerciseAnalyzer {
     const avgArmAngle = (leftArmAngle + rightArmAngle) / 2;
 
     const thresholds = EXERCISES[this.exerciseType].thresholds;
-    console.log(`🎯 SQUAT thresholds: knee<${thresholds.knee_down_angle}, arm>${thresholds.arm_up_angle}`);
-    console.log(`🎯 SQUAT current: knee=${avgKneeAngle.toFixed(0)}°, arm=${avgArmAngle.toFixed(0)}°`);
 
     this.previousStage = this.currentStage;
     let repCompleted = false;
@@ -1073,9 +1032,6 @@ export class SquatWithArmRaiseAnalyzer extends ExerciseAnalyzer {
     const armsUp = avgArmAngle > thresholds.arm_up_angle - 5;
 
     // Always log current angles for debugging
-    const kneePass = inSquat ? '✓' : '✗';
-    const armPass = armsUp ? '✓' : '✗';
-    console.log(`📊 SQUAT: เข่า=${avgKneeAngle.toFixed(0)}°${kneePass} แขน=${avgArmAngle.toFixed(0)}°${armPass} | inSquat=${inSquat} armsUp=${armsUp}`);
 
     if (inSquat && armsUp) {
       this.downConfirmedFrames++;
@@ -1083,7 +1039,6 @@ export class SquatWithArmRaiseAnalyzer extends ExerciseAnalyzer {
       // Show "hold it!" message when in correct squat position
       holdingCorrectForm = true;
       const timeHeld = this.stageConfirmed ? Date.now() - this.stageEntryTime : 0;
-      console.log(`✅ SQUAT_ARM_RAISE ท่าถูก! เข่า: ${avgKneeAngle.toFixed(0)}° แขน: ${avgArmAngle.toFixed(0)}° | เฟรม: ${this.downConfirmedFrames}/${this.minFramesInStage} | ค้าง: ${timeHeld}/${this.minHoldTime}ms ${this.downConfirmedFrames >= this.minFramesInStage && timeHeld >= this.minHoldTime ? '✓พร้อม! ยืนขึ้นเพื่อนับ' : '(ค้างต่อ...)'}`);
       if (this.downConfirmedFrames >= this.minFramesInStage) {
         this.currentStage = 'down';
         if (!this.isDown) {
@@ -1093,7 +1048,6 @@ export class SquatWithArmRaiseAnalyzer extends ExerciseAnalyzer {
         // Check if held long enough
         if (Date.now() - this.stageEntryTime >= this.minHoldTime) {
           holdingCorrectForm = false; // Stop showing once held long enough
-          console.log(`🎯 SQUAT_ARM_RAISE ค้างครบแล้ว! → ยืนขึ้นเพื่อนับ rep`);
         }
       }
     } else if (isStanding) {
@@ -1107,7 +1061,6 @@ export class SquatWithArmRaiseAnalyzer extends ExerciseAnalyzer {
           this.markRepCounted();
           this.isDown = false;
         } else if (this.isDown && !this.canCountRep()) {
-          console.log(`⏳ SQUAT_ARM_RAISE รอ cooldown`);
         }
         this.currentStage = 'up';
       }
@@ -1258,23 +1211,16 @@ export class PushUpAnalyzer extends ExerciseAnalyzer {
       ? avgElbowAngle > thresholds.elbow_up_angle - this.hysteresis
       : avgElbowAngle > thresholds.elbow_up_angle;
 
-    // Always log for debugging
-    const downPass = elbowDown ? '✓' : '✗';
-    const upPass = elbowUp ? '✓' : '✗';
-    console.log(`📊 PUSH_UP: ศอก=${avgElbowAngle.toFixed(0)}° | ลง(ต้อง<${thresholds.elbow_down_angle})${downPass} | ขึ้น(ต้อง>${thresholds.elbow_up_angle})${upPass}`);
-
     if (elbowDown) {
       this.downConfirmedFrames++;
       this.upConfirmedFrames = 0;
       // Show "hold it!" when form is correct but not yet confirmed
       if (this.downConfirmedFrames > 0 && this.downConfirmedFrames < this.minFramesInStage) {
         holdingCorrectForm = true;
-        console.log(`✅ PUSH_UP ท่าถูก! ศอก: ${avgElbowAngle.toFixed(0)}° | เฟรม: ${this.downConfirmedFrames}/${this.minFramesInStage} (ค้างต่อ...)`);
       }
       if (this.downConfirmedFrames >= this.minFramesInStage) {
         this.currentStage = 'down';
         this.isDown = true;
-        console.log(`🎯 PUSH_UP ยืนยันแล้ว! → ดันขึ้นเพื่อนับ rep`);
       }
     } else if (elbowUp) {
       this.upConfirmedFrames++;
@@ -1287,7 +1233,6 @@ export class PushUpAnalyzer extends ExerciseAnalyzer {
           this.markRepCounted();
           this.isDown = false;
         } else if (this.isDown && !this.canCountRep()) {
-          console.log(`⏳ PUSH_UP รอ cooldown`);
         }
         this.currentStage = 'up';
       }
@@ -1456,11 +1401,6 @@ export class StaticLungeAnalyzer extends ExerciseAnalyzer {
       ? this.totalHoldTime + (currentTime - this.holdStartTime) / 1000 
       : this.totalHoldTime;
 
-    // Debug log
-    const leftStatus = leftIsValid ? '✓' : '✗';
-    const rightStatus = rightIsValid ? '✓' : '✗';
-    console.log(`📊 STATIC_LUNGE: ซ้าย=${leftKneeAngle.toFixed(0)}°${leftStatus} ขวา=${rightKneeAngle.toFixed(0)}°${rightStatus} (ต้อง${minAngle}-${maxAngle}°) | ค้าง=${currentHoldTime.toFixed(1)}s`);
-
     const formFeedback = this.evaluateLungeForm(detectedLeg, isGoodForm, currentHoldTime);
 
     // Time-based: reps=0 so auto-complete won't trigger by reps
@@ -1580,10 +1520,6 @@ export class JumpSquatAnalyzer extends ExerciseAnalyzer {
 
     const thresholds = EXERCISES[this.exerciseType].thresholds;
 
-    // Always log for debugging
-    const squatPass = avgKneeAngle < thresholds.knee_squat_angle ? '✓' : '✗';
-    console.log(`📊 JUMP_SQUAT: เข่า=${avgKneeAngle.toFixed(0)}°(ต้อง<${thresholds.knee_squat_angle})${squatPass} | phase=${this.jumpPhase} | ขึ้น=${(verticalMovement*100).toFixed(1)}%`);
-
     this.previousStage = this.currentStage;
     let repCompleted = false;
     let holdingCorrectForm = false;
@@ -1598,13 +1534,11 @@ export class JumpSquatAnalyzer extends ExerciseAnalyzer {
       // Show holding feedback when squatting but not yet confirmed
       if (this.squatConfirmedFrames < this.minFramesInStage && avgKneeAngle < thresholds.knee_squat_angle) {
         holdingCorrectForm = true;
-        console.log(`✅ JUMP_SQUAT ท่าถูกแล้ว! เข่า: ${avgKneeAngle.toFixed(1)}° (ต้องการ <${thresholds.knee_squat_angle}°) - ค้างไว้แล้วกระโดด... (${this.squatConfirmedFrames}/${this.minFramesInStage} frames)`);
       }
       if (this.squatConfirmedFrames >= this.minFramesInStage) {
         this.currentStage = 'squat';
         this.jumpPhase = 'squat';
         this.hasSquatted = true;
-        console.log(`🎯 JUMP_SQUAT ยืนยันสควอตแล้ว! พร้อมกระโดด`);
       }
       this.jumpConfirmedFrames = 0;
     } else if (this.hasSquatted && verticalMovement > thresholds.jump_height_ratio) {
@@ -1612,7 +1546,6 @@ export class JumpSquatAnalyzer extends ExerciseAnalyzer {
       if (this.jumpConfirmedFrames >= 3) { // Increased frame confirmation for jump
         this.currentStage = 'jump';
         this.jumpPhase = 'jump';
-        console.log(`🦘 JUMP_SQUAT กระโดดแล้ว! vertical movement: ${(verticalMovement * 100).toFixed(1)}`);
       }
       this.squatConfirmedFrames = 0;
     } else if (this.jumpPhase === 'jump' && verticalMovement < -thresholds.land_threshold) {
@@ -1792,10 +1725,6 @@ export class PlankHoldAnalyzer extends ExerciseAnalyzer {
       ? this.totalHoldTime + (currentTime - this.holdStartTime) / 1000 
       : this.totalHoldTime;
 
-    // Always log for debugging
-    const alignPass = bodyDeviation < thresholds.body_alignment_max ? '✓' : '✗';
-    console.log(`📊 PLANK_HOLD: deviation=${bodyDeviation.toFixed(0)}°(ต้อง<${thresholds.body_alignment_max})${alignPass} | ค้างแล้ว=${currentHoldTime.toFixed(1)}s`);
-
     const formFeedback = this.evaluateForm(landmarks);
 
     // For time-based exercise: DO NOT return seconds as reps (causes auto-complete)
@@ -1916,11 +1845,6 @@ export class MountainClimberAnalyzer extends ExerciseAnalyzer {
 
     const thresholds = EXERCISES[this.exerciseType].thresholds;
     const currentTime = Date.now();
-
-    // Always log for debugging
-    const leftPass = leftHipFlexion < thresholds.hip_flexion_angle ? '✓' : '✗';
-    const rightPass = rightHipFlexion < thresholds.hip_flexion_angle ? '✓' : '✗';
-    console.log(`📊 MOUNTAIN_CLIMBER: ซ้าย=${leftHipFlexion.toFixed(0)}°(ต้อง<${thresholds.hip_flexion_angle})${leftPass} | ขวา=${rightHipFlexion.toFixed(0)}°(ต้อง<${thresholds.hip_flexion_angle})${rightPass}`);
 
     // Detect knee raises (hip flexion < 70° means knee is up)
     const leftKneeRaised = leftHipFlexion < thresholds.hip_flexion_angle;
@@ -2109,15 +2033,6 @@ export class PistolSquatAnalyzer extends ExerciseAnalyzer {
 
     const thresholds = EXERCISES[this.exerciseType].thresholds;
 
-    // Determine next required leg
-    const nextRequired = this.lastCountedLeg === null ? 'ซ้ายหรือขวา' : 
-                         this.lastCountedLeg === 'left' ? 'ขวา (สลับ)' : 'ซ้าย (สลับ)';
-
-    // Always log for debugging
-    const kneePass = standingKneeAngle < thresholds.knee_angle ? '✓' : '✗';
-    const legPass = extendedKneeAngle > thresholds.extended_leg_angle ? '✓' : '✗';
-    console.log(`📊 PISTOL_SQUAT: เข่ายืน=${standingKneeAngle.toFixed(0)}°(ต้อง<${thresholds.knee_angle})${kneePass} | ขายืด=${extendedKneeAngle.toFixed(0)}°(ต้อง>${thresholds.extended_leg_angle})${legPass} | ขาปัจจุบัน=${currentLeg === 'left' ? 'ซ้าย' : 'ขวา'} | ครั้งต่อไป: ${nextRequired}`);
-
     this.previousStage = this.currentStage;
     let repCompleted = false;
     let holdingCorrectForm = false;
@@ -2147,15 +2062,12 @@ export class PistolSquatAnalyzer extends ExerciseAnalyzer {
       if (this.downConfirmedFrames < this.minFramesInStage) {
         if (canCountThisLeg) {
           holdingCorrectForm = true;
-          console.log(`✅ PISTOL_SQUAT ท่าถูกแล้ว! ขา${currentLeg === 'left' ? 'ซ้าย' : 'ขวา'} เข่า: ${standingKneeAngle.toFixed(1)}°, ขายืด: ${extendedKneeAngle.toFixed(1)}° - ค้างไว้... (${this.downConfirmedFrames}/${this.minFramesInStage} frames)`);
         } else {
-          console.log(`⚠️ PISTOL_SQUAT: ต้องสลับขา! ทำขา${this.lastCountedLeg === 'left' ? 'ขวา' : 'ซ้าย'}ก่อนครับ`);
         }
       }
       if (this.downConfirmedFrames >= this.minFramesInStage) {
         this.currentStage = 'down';
         this.isDown = true;
-        console.log(`🎯 PISTOL_SQUAT ยืนยันท่าแล้ว! ขา${currentLeg === 'left' ? 'ซ้าย' : 'ขวา'} พร้อมนับเมื่อยืนขึ้น`);
       }
     } else if (isStanding) {
       this.upConfirmedFrames++;
@@ -2172,7 +2084,6 @@ export class PistolSquatAnalyzer extends ExerciseAnalyzer {
             this.markRepCounted();
             this.lastCountedLeg = this.currentStandingLeg;
           } else {
-            console.log(`⚠️ PISTOL_SQUAT: ไม่นับ! ต้องสลับขา (ทำขา${this.lastCountedLeg === 'left' ? 'ขวา' : 'ซ้าย'}ก่อน)`);
           }
           this.isDown = false;
           this.currentStandingLeg = null;
@@ -2321,12 +2232,6 @@ export class PushupShoulderTapAnalyzer extends ExerciseAnalyzer {
     const tapThreshold = 50; // Need at least 50° difference between arms
     const tapDetected = elbowDiff >= tapThreshold;
 
-    // Debug log
-    const downPass = avgElbowAngle < thresholds.elbow_down_angle ? '✓' : '✗';
-    const upPass = avgElbowAngle > thresholds.elbow_up_angle ? '✓' : '✗';
-    const tapPass = tapDetected ? '✓' : '✗';
-    console.log(`📊 PUSHUP_SHOULDER_TAP: ศอก=${avgElbowAngle.toFixed(0)}° (ซ้าย=${leftElbowAngle.toFixed(0)} ขวา=${rightElbowAngle.toFixed(0)} diff=${elbowDiff.toFixed(0)}) | ลง(ต้อง<${thresholds.elbow_down_angle})${downPass} | ขึ้น(ต้อง>${thresholds.elbow_up_angle})${upPass} | แตะ(diff≥${tapThreshold})${tapPass} | phase=${this.phase}`);
-
     let repCompleted = false;
     let holdingCorrectForm = false;
 
@@ -2349,7 +2254,6 @@ export class PushupShoulderTapAnalyzer extends ExerciseAnalyzer {
           this.phase = 'up';
           this.currentStage = 'down';
           this.phaseConfirmedFrames = 0;
-          console.log(`🎯 PUSHUP_SHOULDER_TAP ลงแล้ว! ดันขึ้นเลย`);
         }
       } else {
         this.phaseConfirmedFrames = 0;
@@ -2363,7 +2267,6 @@ export class PushupShoulderTapAnalyzer extends ExerciseAnalyzer {
           this.phase = 'tap';
           this.currentStage = 'up';
           this.phaseConfirmedFrames = 0;
-          console.log(`👋 PUSHUP_SHOULDER_TAP ดันขึ้นแล้ว! แตะไหล่เลย (ข้างไหนก็ได้)`);
         }
       } else {
         this.phaseConfirmedFrames = 0;
@@ -2539,11 +2442,6 @@ export class BurpeeAnalyzer extends ExerciseAnalyzer {
     const isDown = isSquatting || isPlankOrFloor || isOnFloor;
     const isStanding = avgKneeAngle > thresholds.standing_knee_angle && smoothedHipY < 0.5;
 
-    // Always log for debugging
-    const downText = isDown ? '✓ลงแล้ว' : '✗ยังไม่ลง';
-    const standText = isStanding ? '✓ยืนแล้ว' : '✗ยังไม่ยืน';
-    console.log(`📊 BURPEE: เข่า=${avgKneeAngle.toFixed(0)}° ลำตัว=${avgBodyAngle.toFixed(0)}° สะโพกY=${smoothedHipY.toFixed(2)} | ${downText} | ${standText} | phase=${this.burpeePhase}`);
-
     this.previousStage = this.currentStage;
     let repCompleted = false;
 
@@ -2552,7 +2450,6 @@ export class BurpeeAnalyzer extends ExerciseAnalyzer {
       case 'standing':
         if (isDown) {
           this.burpeePhase = 'going_down';
-          console.log(`⬇️ BURPEE กำลังลง...`);
         }
         break;
 
@@ -2561,7 +2458,6 @@ export class BurpeeAnalyzer extends ExerciseAnalyzer {
           this.burpeePhase = 'down';
           this.currentStage = 'down';
           this.wentDown = true;
-          console.log(`🎯 BURPEE ลงถึงแล้ว! ยืนขึ้นมาเพื่อนับ`);
         } else if (isStanding) {
           // Went back up too fast without fully going down
           this.burpeePhase = 'standing';
@@ -2572,7 +2468,6 @@ export class BurpeeAnalyzer extends ExerciseAnalyzer {
         if (!isDown) {
           // Starting to come back up
           this.burpeePhase = 'coming_up';
-          console.log(`⬆️ BURPEE กำลังขึ้น...`);
         }
         break;
 

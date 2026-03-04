@@ -223,7 +223,6 @@ export function useExerciseAnalysis(
     
     // Debug logging - only when visible or stage changes
     if (result.isVisible || result.stage !== prevStageRef.current) {
-      console.log('[Exercise] stage:', result.stage, 'reps:', result.reps, 'visible:', result.isVisible);
     }
     
     setAnalysisResult(result);
