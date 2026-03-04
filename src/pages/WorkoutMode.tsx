@@ -497,14 +497,16 @@ export default function WorkoutMode() {
 
         {/* Continue Button */}
         {desktopMode === 'computer' && (
-          <Button
-            className="w-full max-w-xl mx-auto h-14 text-lg bg-gradient-to-r from-primary to-orange-500 hover:opacity-90"
-            onClick={handleDesktopContinue}
-          >
-            <Zap className="w-5 h-5 mr-2" />
-            เริ่มออกกำลังกาย
-            <Dumbbell className="w-5 h-5 ml-2" />
-          </Button>
+          <div className="flex justify-center">
+            <Button
+              className="max-w-xl w-full h-14 text-lg bg-gradient-to-r from-primary to-orange-500 hover:opacity-90"
+              onClick={handleDesktopContinue}
+            >
+              <Zap className="w-5 h-5 mr-2" />
+              เริ่มออกกำลังกาย
+              <Dumbbell className="w-5 h-5 ml-2" />
+            </Button>
+          </div>
         )}
       </div>
     </div>
