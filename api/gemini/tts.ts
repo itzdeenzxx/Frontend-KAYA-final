@@ -60,7 +60,7 @@ export default async function handler(req: Request): Promise<Response> {
   const volume = body.volume || 1;
   const language = body.language || 'th';
 
-  const botnoiUrl = 'https://api-genvoice2.botnoi.ai/openapi/v1/generate_audio_v2';
+  const botnoiUrl = 'https://api-voice.botnoi.ai/openapi/v1/generate_audio';
 
   try {
     const controller = new AbortController();
@@ -79,8 +79,9 @@ export default async function handler(req: Request): Promise<Response> {
         volume,
         speed,
         type_media: 'mp3',
-        save_file: 'True',
+        save_file: 'true',
         language,
+        page: 'user',
       }),
       signal: controller.signal,
     });
