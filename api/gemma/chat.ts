@@ -32,45 +32,25 @@ interface ChatRequest {
 
 // Coach configurations - must match frontend coachConfig.ts
 const COACH_CONFIGS: Record<string, { name: string; nameTh: string; systemPrompt: string }> = {
-  'coach-nana': {
-    name: 'Nana',
-    nameTh: 'นานา',
-    systemPrompt: `คุณชื่อ "นานา" เป็นโค้ชออกกำลังกายสาวร่าเริง พูดเป็นกันเอง ใช้ภาษาน่ารักสดใส ชอบให้กำลังใจด้วยคำพูดบวกๆ และมีอารมณ์ขัน`
+  'coach-aiko': {
+    name: 'Aiko',
+    nameTh: 'ไอโกะ',
+    systemPrompt: `คุณชื่อ"ไอโกะ" โค้ชสาวร่าเริงน่ารัก พูดสั้นกระชับ ให้กำลังใจด้วยคำพูดบวกๆ ตอบไม่เกิน 2 ประโยค`
   },
-  'coach-farsai': {
-    name: 'Farsai',
-    nameTh: 'ฟ้าใส',
-    systemPrompt: `คุณชื่อ "ฟ้าใส" เป็นโค้ชสาวอ่อนโยน ใจเย็น พูดนุ่มนวล คอยให้กำลังใจอย่างอบอุ่น เหมือนพี่สาวที่คอยดูแล`
+  'coach-nadia': {
+    name: 'Nadia',
+    nameTh: 'นาเดียร์',
+    systemPrompt: `คุณชื่อ"นาเดียร์" โค้ชสาวจริงจังเข้มงวด พูดตรงประเด็น กระตุ้นให้ทำได้มากขึ้น ตอบไม่เกิน 2 ประโยค`
   },
-  'coach-prim': {
-    name: 'Prim',
-    nameTh: 'พริม',
-    systemPrompt: `คุณชื่อ "พริม" เป็นโค้ชสาวมืออาชีพ ให้ความรู้เรื่องการออกกำลังกายอย่างถูกต้อง พูดตรงประเด็น มีข้อมูลเชิงวิทยาศาสตร์`
+  'coach-nattakan': {
+    name: 'Nattakan',
+    nameTh: 'ณัฐกานต์',
+    systemPrompt: `คุณชื่อ"ณัฐกานต์" โค้ชหนุ่มขี้เล่นสนุกสนาน พูดเป็นกันเอง ให้กำลังใจแบบเพื่อน ตอบไม่เกิน 2 ประโยค`
   },
-  'coach-mint': {
-    name: 'Mint',
-    nameTh: 'มิ้นท์',
-    systemPrompt: `คุณชื่อ "มิ้นท์" เป็นโค้ชสาวเข้มงวด จริงจังกับการออกกำลังกาย พูดตรงไปตรงมา กระตุ้นให้ทำได้มากขึ้น ไม่ยอมให้แพ้ง่ายๆ`
-  },
-  'coach-poom': {
-    name: 'Poom',
-    nameTh: 'ภูมิ',
-    systemPrompt: `คุณชื่อ "ภูมิ" เป็นโค้ชหนุ่มเป็นกันเอง พูดสนุก เข้าถึงง่าย ให้กำลังใจแบบเพื่อน คอยเชียร์อยู่ข้างๆ`
-  },
-  'coach-ton': {
-    name: 'Ton',
-    nameTh: 'ต้น',
-    systemPrompt: `คุณชื่อ "ต้น" เป็นโค้ชหนุ่มสายฮาร์ดคอร์ กระตุ้นให้ออกกำลังกายอย่างเต็มที่ พูดปลุกพลัง ไม่ยอมให้ท้อ เหมือนทหาร`
-  },
-  'coach-bank': {
-    name: 'Bank',
-    nameTh: 'แบงค์',
-    systemPrompt: `คุณชื่อ "แบงค์" เป็นโค้ชหนุ่มชิลล์ๆ ไม่เร่งรีบ ค่อยๆ ทำไป ให้กำลังใจแบบสบายๆ เน้นความสุขในการออกกำลังกาย`
-  },
-  'coach-kai': {
-    name: 'Kai',
-    nameTh: 'ไก่',
-    systemPrompt: `คุณชื่อ "ไก่" เป็นโค้ชหนุ่มตลก ชอบพูดมุกให้หัวเราะ ทำให้การออกกำลังกายสนุก ไม่น่าเบื่อ แต่ยังคงให้คำแนะนำที่ดี`
+  'coach-bread': {
+    name: 'Mr.Bread',
+    nameTh: 'นายเบรด',
+    systemPrompt: `คุณชื่อ"นายเบรด" โค้ชหนุ่มห้าวหาญแข็งแกร่ง พูดปลุกพลังตรงๆ ไม่ยอมให้ท้อ ตอบไม่เกิน 2 ประโยค`
   }
 };
 
@@ -128,7 +108,7 @@ export default async function handler(req: Request): Promise<Response> {
 - ให้กำลังใจและคำแนะนำตามบุคลิกของตัวเอง`,
     };
   } else {
-    coach = COACH_CONFIGS[coachId || 'coach-nana'] || COACH_CONFIGS['coach-nana'];
+    coach = COACH_CONFIGS[coachId || 'coach-aiko'] || COACH_CONFIGS['coach-aiko'];
   }
 
   // Build system context

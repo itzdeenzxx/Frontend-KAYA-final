@@ -215,6 +215,11 @@ export const KaiAvatar = ({ className, size = 80 }: AvatarProps) => (
 
 // Map coach ID to avatar component
 export const CoachAvatarMap: Record<string, React.FC<AvatarProps>> = {
+  'coach-aiko': NanaAvatar,      // Reuse: cute female
+  'coach-nadia': PrimAvatar,     // Reuse: serious female
+  'coach-nattakan': KaiAvatar,   // Reuse: playful male
+  'coach-bread': TonAvatar,      // Reuse: tough male
+  // Legacy mappings kept so old saved IDs still render
   'coach-nana': NanaAvatar,
   'coach-farsai': FarsaiAvatar,
   'coach-prim': PrimAvatar,

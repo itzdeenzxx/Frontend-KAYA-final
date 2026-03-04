@@ -1,6 +1,6 @@
 // AI Coach Popup Component
 // Shows coaching messages as popup in top-right corner with TTS support
-// Using VAJA TTS API (AI for Thai) with queue system
+// Using Botnoi TTS API with queue system
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Volume2, VolumeX, MessageCircle, Sparkles } from 'lucide-react';
@@ -28,7 +28,7 @@ interface AICoachPopupProps {
   isMuted?: boolean;
   onMuteToggle?: () => void;
   className?: string;
-  speaker?: string;  // VAJA speaker voice ID
+  speaker?: string;  // Botnoi speaker voice ID
   ttsEnabled?: boolean; // From user settings
   ttsSpeed?: number; // From user settings
 }
@@ -46,7 +46,7 @@ const ttsState: TTSState = {
   isSpeaking: false,
   queue: [],
   currentAudio: null,
-  speaker: 'nana',
+  speaker: '29',
   ttsSpeed: 1.0,
 };
 
@@ -100,41 +100,41 @@ async function processQueue(): Promise<void> {
   if (!text) return;
   
   ttsState.isSpeaking = true;
-  console.log(`🔊 [CoachPopup] VAJA speaking: "${text}" | speaker: ${ttsState.speaker}`);
+  console.log(`🔊 [CoachPopup] Botnoi speaking: "${text}" | speaker: ${ttsState.speaker}`);
   
   try {
     let audioBase64: string | null = null;
 
-    // Call VAJA TTS API
+    // Call Botnoi TTS API
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 12000);
-      const vajaRes = await fetch('/api/aift/tts', {
+      const botnoiRes = await fetch('/api/aift/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, speaker: ttsState.speaker }),
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
-      if (vajaRes.ok) {
-        const result = await vajaRes.json();
+      if (botnoiRes.ok) {
+        const result = await botnoiRes.json();
         if (result.success && result.audio_base64) {
           audioBase64 = result.audio_base64;
-          console.log('🔊 [CoachPopup] VAJA TTS success');
+          console.log('🔊 [CoachPopup] Botnoi TTS success');
         }
       } else {
-        console.warn(`🔊 [CoachPopup] VAJA TTS failed: ${vajaRes.status}`);
+        console.warn(`🔊 [CoachPopup] Botnoi TTS failed: ${botnoiRes.status}`);
       }
     } catch (e: unknown) {
       const errMsg = e instanceof Error ? (e.name === 'AbortError' ? 'timeout' : e.message) : 'unknown';
-      console.warn('🔊 [CoachPopup] VAJA TTS error:', errMsg);
+      console.warn('🔊 [CoachPopup] Botnoi TTS error:', errMsg);
     }
 
     // Play audio if we got it, otherwise use Web Speech
     if (audioBase64) {
       await playAudio(audioBase64);
     } else {
-      console.warn('🔊 [CoachPopup] VAJA TTS failed, using Web Speech fallback');
+      console.warn('🔊 [CoachPopup] Botnoi TTS failed, using Web Speech fallback');
       await speakWithWebSpeech(text);
     }
     
@@ -209,7 +209,7 @@ export function AICoachPopup({
   isMuted = false,
   onMuteToggle,
   className = '',
-  speaker = 'nana',
+  speaker = '29',
   ttsEnabled = true,
   ttsSpeed = 1.0,
 }: AICoachPopupProps) {
@@ -222,7 +222,7 @@ export function AICoachPopup({
   useEffect(() => {
     ttsState.speaker = speaker;
     ttsState.ttsSpeed = ttsSpeed;
-    console.log('🔊 [CoachPopup] TTS settings updated (VAJA only):', { speaker, ttsEnabled, ttsSpeed });
+    console.log('🔊 [CoachPopup] TTS settings updated (Botnoi):', { speaker, ttsEnabled, ttsSpeed });
   }, [speaker, ttsSpeed]);
 
   // Handle new messages

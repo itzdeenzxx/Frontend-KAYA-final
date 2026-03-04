@@ -77,14 +77,23 @@ async function aiftTts(text: string) {
   const res = await fetch("/api/aift/tts", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ text, speaker: 0, phrase_break: 0, audiovisual: 0 }),
+    body: JSON.stringify({ text, speaker: "29" }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error || "AIFT TTS failed");
+    throw new Error(err?.error || "Botnoi TTS failed");
   }
-  const blob = await res.blob();
-  return URL.createObjectURL(blob);
+  const json = await res.json();
+  if (json.audio_base64) {
+    const audioData = atob(json.audio_base64);
+    const audioArray = new Uint8Array(audioData.length);
+    for (let i = 0; i < audioData.length; i++) {
+      audioArray[i] = audioData.charCodeAt(i);
+    }
+    const audioBlob = new Blob([audioArray], { type: 'audio/mpeg' });
+    return URL.createObjectURL(audioBlob);
+  }
+  throw new Error("No audio data from TTS");
 }
 
 function encodeWavFromAudioBuffer(audioBuffer: AudioBuffer) {

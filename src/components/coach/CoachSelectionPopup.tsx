@@ -60,7 +60,7 @@ export const CoachSelectionPopup = ({
 
   const handleSkip = () => {
     if (userProfile?.lineUserId) {
-      updateSelectedCoach(userProfile.lineUserId, 'coach-nana');
+      updateSelectedCoach(userProfile.lineUserId, 'coach-aiko');
     }
     onClose();
   };

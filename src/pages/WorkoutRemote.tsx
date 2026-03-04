@@ -72,7 +72,7 @@ export default function WorkoutRemote() {
   // TTS speaker setting
   const [ttsSpeaker, setTtsSpeaker] = useState(DEFAULT_TTS_SETTINGS.speaker);
   const [ttsCoach, setTtsCoach] = useState<Coach | null>(null);
-  const [ttsCoachId, setTtsCoachId] = useState<string>('coach-nana');
+  const [ttsCoachId, setTtsCoachId] = useState<string>('coach-aiko');
   const [customCoachForLLM, setCustomCoachForLLM] = useState<{ name: string; personality: string; gender: 'male' | 'female' } | null>(null);
   
   // Load TTS speaker setting from user preferences
@@ -216,15 +216,15 @@ export default function WorkoutRemote() {
     try {
       setVoiceStatus("speaking");
       
-      console.log('Calling VAJA TTS API...');
-      // Use VAJA TTS with coach voice
-      const vajaSpeaker = ttsCoach?.voiceId || ttsSpeaker || 'nana';
+      console.log('Calling Botnoi TTS API...');
+      // Use Botnoi TTS with coach voice
+      const botnoiSpeaker = ttsCoach?.voiceId || ttsSpeaker || '29';
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 12000);
       const response = await fetch('/api/aift/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, speaker: vajaSpeaker }),
+        body: JSON.stringify({ text, speaker: botnoiSpeaker }),
         signal: controller.signal,
       });
       clearTimeout(timeout);

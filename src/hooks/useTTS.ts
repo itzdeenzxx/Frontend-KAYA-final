@@ -196,22 +196,22 @@ export function useTTS(userId?: string, coachId?: string): UseTTSReturn {
                 continue;
               }
             }
-            console.warn('VAJAX custom voice failed, falling back to VAJA standard');
+            console.warn('VAJAX custom voice failed, falling back to Botnoi standard');
           } catch (err: any) {
             console.warn('VAJAX error:', err.name === 'AbortError' ? 'timeout' : err.message);
           }
         }
 
-        // Path B: VAJA TTS (primary for all coaches)
+        // Path B: Botnoi TTS (primary for all coaches)
         try {
           const vajaController = new AbortController();
           const vajaTimeout = setTimeout(() => vajaController.abort(), 12000);
-          const vajaSpeaker = coach?.voiceId || settings.speaker || 'nana';
+          const botnoiSpeaker = coach?.voiceId || settings.speaker || '29';
 
           const vajaRes = await fetch('/api/aift/tts', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text, speaker: vajaSpeaker }),
+            body: JSON.stringify({ text, speaker: botnoiSpeaker }),
             signal: vajaController.signal,
           });
 
@@ -220,14 +220,14 @@ export function useTTS(userId?: string, coachId?: string): UseTTSReturn {
           if (vajaRes.ok) {
             const result = await vajaRes.json();
             if (result.success && result.audio_base64) {
-              console.log('✅ VAJA TTS success, speaker:', vajaSpeaker);
+              console.log('✅ Botnoi TTS success, speaker:', botnoiSpeaker);
               await playAudioBase64(result.audio_base64);
               continue;
             }
           }
-          console.warn('VAJA TTS response not ok:', vajaRes.status);
+          console.warn('Botnoi TTS response not ok:', vajaRes.status);
         } catch (err: any) {
-          console.warn('VAJA TTS error:', err.name === 'AbortError' ? 'timeout' : err.message);
+          console.warn('Botnoi TTS error:', err.name === 'AbortError' ? 'timeout' : err.message);
         }
 
         // Path C: Web Speech API (browser built-in)

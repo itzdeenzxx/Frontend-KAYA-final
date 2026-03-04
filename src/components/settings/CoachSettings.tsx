@@ -25,7 +25,7 @@ export function CoachSettings({ isDark }: CoachSettingsProps) {
   const [showCoachSelector, setShowCoachSelector] = useState(false);
   
   // Selected coach
-  const [selectedCoachId, setSelectedCoachId] = useState<string>('coach-nana');
+  const [selectedCoachId, setSelectedCoachId] = useState<string>('coach-aiko');
   const [selectedCoach, setSelectedCoach] = useState<Coach | null>(null);
   const [customCoachData, setCustomCoachData] = useState<CustomCoach | null>(null);
   
@@ -117,7 +117,7 @@ export function CoachSettings({ isDark }: CoachSettingsProps) {
     
     // Update TTS settings with new coach voice
     if (userProfile?.lineUserId) {
-      let voiceId = 'nana';
+      let voiceId = '8';
       if (coachId !== 'coach-custom') {
         const coach = getCoachById(coachId);
         if (coach) voiceId = coach.voiceId;
@@ -200,13 +200,13 @@ export function CoachSettings({ isDark }: CoachSettingsProps) {
               return;
             }
           }
-          console.warn('VAJAX preview failed, falling back to VAJA standard');
+          console.warn('VAJAX preview failed, falling back to Botnoi standard');
         } catch (err: any) {
           console.warn('VAJAX preview error:', err.name === 'AbortError' ? 'timeout' : err.message);
         }
       }
 
-      // Fallback: VAJA TTS (for preset coaches or custom without voice refs)
+      // Fallback: Botnoi TTS (for preset coaches or custom without voice refs)
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 12000);
       
@@ -215,7 +215,7 @@ export function CoachSettings({ isDark }: CoachSettingsProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: previewText,
-          speaker: selectedCoach.voiceId || 'nana',
+          speaker: selectedCoach.voiceId || '29',
         }),
         signal: controller.signal,
       });

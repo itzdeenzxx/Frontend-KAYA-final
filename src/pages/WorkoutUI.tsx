@@ -206,7 +206,7 @@ export default function WorkoutUI() {
   const [ttsSpeed, setTtsSpeed] = useState(DEFAULT_TTS_SETTINGS.speed);
   const [ttsSpeaker, setTtsSpeaker] = useState(DEFAULT_TTS_SETTINGS.speaker);
   const [ttsCoach, setTtsCoach] = useState<Coach | null>(null);
-  const [ttsCoachId, setTtsCoachId] = useState<string>('coach-nana');
+  const [ttsCoachId, setTtsCoachId] = useState<string>('coach-aiko');
   const [customCoachForLLM, setCustomCoachForLLM] = useState<{ name: string; personality: string; gender: 'male' | 'female' } | null>(null);
   const ttsSettingsLoadedRef = useRef(false);
   
@@ -227,7 +227,7 @@ export default function WorkoutUI() {
               setTtsSpeaker(loadedSpeaker);
             }
             
-            console.log('🔊 [TTS] Loaded settings (VAJA only):', { enabled: loadedEnabled, speed: loadedSpeed, speaker: loadedSpeaker });
+            console.log('🔊 [TTS] Loaded settings (Botnoi):', { enabled: loadedEnabled, speed: loadedSpeed, speaker: loadedSpeaker });
           }
           if (settings?.selectedCoachId) {
             setTtsCoachId(settings.selectedCoachId);
@@ -575,11 +575,11 @@ export default function WorkoutUI() {
       
       // Read current coach/speaker from refs (avoids stale closure)
       const currentCoach = ttsCoachRef.current;
-      const currentSpeaker = currentCoach?.voiceId || ttsSpeakerRef.current || 'nana';
+      const currentSpeaker = currentCoach?.voiceId || ttsSpeakerRef.current || '29';
       
-      console.log('🔊 [TTS] VAJA speaking with speaker:', currentSpeaker, '| coach:', currentCoach?.name || 'none', '| speed:', ttsSpeedRef.current);
+      console.log('🔊 [TTS] Botnoi speaking with speaker:', currentSpeaker, '| coach:', currentCoach?.name || 'none', '| speed:', ttsSpeedRef.current);
 
-      // Call VAJA TTS API (12s timeout — fallback to Web Speech if slow)
+      // Call Botnoi TTS API (12s timeout — fallback to Web Speech if slow)
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 12000);
       const response = await fetch('/api/aift/tts', {
@@ -591,16 +591,16 @@ export default function WorkoutUI() {
       clearTimeout(timeout);
       
       if (!response?.ok) {
-        console.error('🔊 [TTS] VAJA API error:', response.status);
+        console.error('🔊 [TTS] Botnoi API error:', response.status);
         isTtsSpeakingRef.current = false;
         return;
       }
       
       const result = await response.json();
-      console.log('🔊 [TTS] VAJA response:', result.audio_base64 ? 'has audio' : 'no audio');
+      console.log('🔊 [TTS] Botnoi response:', result.audio_base64 ? 'has audio' : 'no audio');
       
       if (!result.audio_base64) {
-        console.error('🔊 [TTS] VAJA returned no audio');
+        console.error('🔊 [TTS] Botnoi returned no audio');
         isTtsSpeakingRef.current = false;
         return;
       }
@@ -1006,7 +1006,7 @@ export default function WorkoutUI() {
     try {
       // Use refs for current coach/speaker (avoid stale closure)
       const currentCoach = ttsCoachRef.current;
-      const currentSpeaker = currentCoach?.voiceId || ttsSpeakerRef.current || 'nana';
+      const currentSpeaker = currentCoach?.voiceId || ttsSpeakerRef.current || '29';
       
       // Skip if TTS disabled
       if (!ttsEnabledRef.current) {
@@ -1014,9 +1014,9 @@ export default function WorkoutUI() {
         return;
       }
 
-      console.log('🔊 [ExerciseInstruction] VAJA speaker:', currentSpeaker, '| coach:', currentCoach?.name || 'none');
+      console.log('🔊 [ExerciseInstruction] Botnoi speaker:', currentSpeaker, '| coach:', currentCoach?.name || 'none');
 
-      // Call VAJA TTS API (12s timeout — fallback to Web Speech if slow)
+      // Call Botnoi TTS API (12s timeout — fallback to Web Speech if slow)
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 12000);
       const response = await fetch('/api/aift/tts', {
@@ -1028,7 +1028,7 @@ export default function WorkoutUI() {
       clearTimeout(timeout);
 
       if (!response || !response.ok) {
-        console.error('🔊 [ExerciseInstruction] VAJA API error:', response?.status);
+        console.error('🔊 [ExerciseInstruction] Botnoi API error:', response?.status);
         return;
       }
       
@@ -1147,11 +1147,11 @@ export default function WorkoutUI() {
     };
     
     try {
-      const currentSpeaker = currentCoach?.voiceId || speakerFromSettings || 'nana';
+      const currentSpeaker = currentCoach?.voiceId || speakerFromSettings || '29';
       
-      console.log('🔊 [CoachIntro] VAJA speaker:', currentSpeaker, '| coach:', currentCoach?.name || 'none');
+      console.log('🔊 [CoachIntro] Botnoi speaker:', currentSpeaker, '| coach:', currentCoach?.name || 'none');
 
-      // Call VAJA TTS API (12s timeout — fallback to Web Speech if slow)
+      // Call Botnoi TTS API (12s timeout — fallback to Web Speech if slow)
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 12000);
       const response = await fetch('/api/aift/tts', {
@@ -1163,7 +1163,7 @@ export default function WorkoutUI() {
       clearTimeout(timeoutId);
       
       if (!response || !response.ok) {
-        console.warn('🔊 [CoachIntro] VAJA API error:', response?.status, '- using Web Speech fallback');
+        console.warn('🔊 [CoachIntro] Botnoi API error:', response?.status, '- using Web Speech fallback');
         await speakWithWebSpeechFallback(introText);
         speakFirstExercise();
         return;

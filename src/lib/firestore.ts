@@ -321,30 +321,19 @@ export interface FirestoreUserSettings {
   updatedAt: Timestamp;
 }
 
-// VAJA TTS Speakers list
-export const VAJA_SPEAKERS = [
-  { id: 'nana', name: 'นาน่า', description: 'ผู้หญิง | พากย์การ์ตูน | Animation' },
-  { id: 'noina', name: 'น้อยหน่า', description: 'ผู้หญิง | สปอตโฆษณา | ระบบตอบรับ' },
-  { id: 'farah', name: 'ฟาร่า', description: 'ผู้หญิง | สารคดี | Presentation' },
-  { id: 'mewzy', name: 'มิวซี่', description: 'ผู้หญิง | สปอตโฆษณา' },
-  { id: 'farsai', name: 'ฟ้าใส', description: 'ผู้หญิง | พากย์การ์ตูน | Animation' },
-  { id: 'prim', name: 'พริม', description: 'ผู้หญิง | Announcer' },
-  { id: 'ped', name: 'เป็ด', description: 'ผู้หญิง | Announcer' },
-  { id: 'poom', name: 'ภูมิ', description: 'ผู้ชาย | สปอตโฆษณา | ระบบตอบรับ' },
-  { id: 'doikham', name: 'ดอยคำ', description: 'ผู้ชาย | ภาษาเหนือ' },
-  { id: 'praw', name: 'พราว', description: 'เด็กผู้หญิง' },
-  { id: 'wayu', name: 'วายุ', description: 'เด็กผู้ชาย' },
-  { id: 'namphueng', name: 'น้ำผึ้ง', description: 'ผู้หญิง | Anchor-style' },
-  { id: 'toon', name: 'ตูน', description: 'ผู้หญิง | Broadcast-style' },
-  { id: 'sanooch', name: 'สนุช', description: 'ผู้หญิง | Teacher-style' },
-  { id: 'thanwa', name: 'ธันวา', description: 'ผู้ชาย | Broadcast-style' },
+// Botnoi TTS Speakers list
+export const BOTNOI_SPEAKERS = [
+  { id: '29', name: 'ไอโกะ', description: 'ผู้หญิง | เสียงหวาน / อนิเมะ' },
+  { id: '12', name: 'นาเดียร์', description: 'ผู้หญิง | เสียงมั่นใจ' },
+  { id: '52', name: 'ณัฐกานต์', description: 'ผู้ชาย | เสียงน่ารัก / อนิเมะ' },
+  { id: '55', name: 'นายเบรด', description: 'ผู้ชาย | เสียงขี้เล่น' },
 ] as const;
 
 // Default TTS Settings
 export const DEFAULT_TTS_SETTINGS = {
   enabled: true,
   speed: 1.0,
-  speaker: 'nana',  // Default VAJA speaker (fallback)
+  speaker: '29',  // Default Botnoi speaker (ไอโกะ)
   nfeSteps: 32,
   useVajax: false,
   referenceAudioUrl: '',  
@@ -805,7 +794,7 @@ export const initializeUserSettings = async (userId: string): Promise<void> => {
     tts: {
       enabled: true,
       speed: 1.0,
-      speaker: 'nana',
+      speaker: '29',
       nfeSteps: 32,
       useVajax: true,
       referenceAudioUrl: '',
@@ -905,7 +894,7 @@ export const deleteCustomCoach = async (userId: string): Promise<void> => {
   const settingsRef = doc(db, COLLECTIONS.SETTINGS, userId);
   await updateDoc(settingsRef, {
     customCoach: null,
-    selectedCoachId: 'coach-nana', // Reset to default
+    selectedCoachId: 'coach-aiko', // Reset to default
     'tts.customVoiceEnabled': false,
     'tts.customCoachName': '',
     updatedAt: serverTimestamp(),

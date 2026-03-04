@@ -3,28 +3,12 @@
 
 export type CoachGender = 'male' | 'female';
 
-// VAJA TTS speakers available:
-// Female: nana (Animation), noina (Auto-reply), farah (Documentary), mewzy (Spot Ad),
-//         farsai (Animation), prim (Announcer), ped (Announcer),
-//         namphueng (Anchor-style), toon (Broadcast-style), sanooch (Teacher-style)
-// Male:   poom (Spot Ad/Auto-reply), thanwa (Broadcast-style), doikham (Northern dialect)
-// Child:  praw (Girl), wayu (Boy)
-export const VAJA_SPEAKERS = [
-  { id: 'nana', label: 'นาน่า', gender: 'female' as const, style: 'พากย์การ์ตูน / Animation' },
-  { id: 'noina', label: 'น้อยหน่า', gender: 'female' as const, style: 'สปอตโฆษณา / ระบบตอบรับ' },
-  { id: 'farah', label: 'ฟาราห์', gender: 'female' as const, style: 'สารคดี / Presentation' },
-  { id: 'mewzy', label: 'มิวซี่', gender: 'female' as const, style: 'สปอตโฆษณา' },
-  { id: 'farsai', label: 'ฟ้าใส', gender: 'female' as const, style: 'พากย์การ์ตูน / Animation' },
-  { id: 'prim', label: 'พริม', gender: 'female' as const, style: 'Announcer' },
-  { id: 'ped', label: 'เป็ด', gender: 'female' as const, style: 'Announcer' },
-  { id: 'namphueng', label: 'น้ำผึ้ง', gender: 'female' as const, style: 'Anchor-style' },
-  { id: 'toon', label: 'ตูน', gender: 'female' as const, style: 'Broadcast-style' },
-  { id: 'sanooch', label: 'สนุช', gender: 'female' as const, style: 'Teacher-style' },
-  { id: 'poom', label: 'ภูมิ', gender: 'male' as const, style: 'สปอตโฆษณา / ระบบตอบรับ' },
-  { id: 'thanwa', label: 'ธันวา', gender: 'male' as const, style: 'Broadcast-style' },
-  { id: 'doikham', label: 'ดอยคำ', gender: 'male' as const, style: 'ภาษาเหนือ' },
-  { id: 'praw', label: 'พราว', gender: 'female' as const, style: 'เด็กผู้หญิง' },
-  { id: 'wayu', label: 'วายุ', gender: 'male' as const, style: 'เด็กผู้ชาย' },
+// Botnoi TTS speakers (V1) used for coaches
+export const BOTNOI_SPEAKERS = [
+  { id: '29', label: 'ไอโกะ', gender: 'female' as const, style: 'เสียงหวาน / อนิเมะ' },
+  { id: '12', label: 'นาเดียร์', gender: 'female' as const, style: 'เสียงมั่นใจ' },
+  { id: '52', label: 'ณัฐกานต์', gender: 'male' as const, style: 'เสียงน่ารัก / อนิเมะ' },
+  { id: '55', label: 'นายเบรด', gender: 'male' as const, style: 'เสียงขี้เล่น' },
 ] as const;
 
 export interface Coach {
@@ -32,7 +16,7 @@ export interface Coach {
   name: string;
   nameTh: string;
   gender: CoachGender;
-  voiceId: string;        // VAJA TTS speaker ID
+  voiceId: string;        // Botnoi TTS speaker ID
   personality: string;
   description: string;
   descriptionTh: string;
@@ -44,189 +28,74 @@ export interface Coach {
   color: string;  // Theme color for UI
 }
 
-// Coach Definitions
+// Coach Definitions — 4 coaches only
 export const COACHES: Coach[] = [
   // ==================== FEMALE COACHES ====================
   {
-    id: 'coach-nana',
-    name: 'Nana',
-    nameTh: 'โค้ชนาน่า',
+    id: 'coach-aiko',
+    name: 'Aiko',
+    nameTh: 'โค้ชไอโกะ',
     gender: 'female',
-    voiceId: 'nana',  // VAJA: ผู้หญิง | พากย์การ์ตูน | Animation
-    personality: 'cheerful',
-    description: 'Energetic and fun coach who makes workouts feel like a party',
-    descriptionTh: 'โค้ชสาวร่าเริง ทำให้การออกกำลังกายสนุกเหมือนปาร์ตี้',
-    traits: ['Energetic', 'Fun', 'Encouraging', 'Playful'],
-    traitsTh: ['กระตือรือร้น', 'สนุกสนาน', 'ให้กำลังใจ', 'ขี้เล่น'],
-    coachingStyle: 'ใช้คำพูดสนุกสนาน เพิ่มความตื่นเต้น ชอบใช้อิโมจิ',
-    systemPrompt: `คุณคือ "นาน่า" โค้ชฟิตเนสสาวร่าเริงสนุกสนาน อายุ 25 ปี
-ลักษณะการพูด:
-- พูดด้วยน้ำเสียงสนุกสนาน กระตือรือร้น
-- ใช้คำลงท้ายน่ารักๆ เช่น "นะคะ~", "ค่ะ!", "เย้!"
-- ชอบให้กำลังใจ และทำให้ผู้เล่นรู้สึกสนุกกับการออกกำลังกาย
-- พูดสั้นกระชับ ไม่เกิน 2 ประโยค
-- ตอบเป็นภาษาไทยเท่านั้น`,
-    sampleGreeting: 'เอาล่ะ เรามาเริ่มออกกำลังกายกันเลยนะคะ! สนุกแน่นอน~',
+    voiceId: '29',  // Botnoi: YingAiko — เสียงหวาน / อนิเมะ
+    personality: 'playful',
+    description: 'Playful and cute coach who makes every workout fun',
+    descriptionTh: 'โค้ชขี้เล่นน่ารัก ทำให้ออกกำลังกายสนุกทุกครั้ง',
+    traits: ['Playful', 'Cute', 'Encouraging', 'Fun'],
+    traitsTh: ['ขี้เล่น', 'น่ารัก', 'ให้กำลังใจ', 'สนุก'],
+    coachingStyle: 'พูดน่ารัก ขี้เล่น ให้กำลังใจแบบสดใส',
+    systemPrompt: `คุณชื่อ "ไอโกะ" โค้ชฟิตเนสสาวขี้เล่นน่ารัก พูดสั้นไม่เกิน 2 ประโยค ใช้คำลงท้าย "ค่ะ~" "นะคะ!" ให้กำลังใจสนุกสนาน ตอบภาษาไทยเท่านั้น`,
+    sampleGreeting: 'มาออกกำลังกายกันเถอะค่ะ~ สนุกแน่นอนเลย!',
     color: '#FF6B9D',
   },
   {
-    id: 'coach-farsai',
-    name: 'Farsai',
-    nameTh: 'โค้ชฟ้าใส',
+    id: 'coach-nadia',
+    name: 'Nadia',
+    nameTh: 'โค้ชนาเดียร์',
     gender: 'female',
-    voiceId: 'farsai',  // VAJA: ผู้หญิง | พากย์การ์ตูน | Animation
-    personality: 'gentle',
-    description: 'Calm and supportive coach with a nurturing approach',
-    descriptionTh: 'โค้ชสาวใจดี อ่อนโยน ดูแลเอาใจใส่ทุกรายละเอียด',
-    traits: ['Gentle', 'Patient', 'Caring', 'Supportive'],
-    traitsTh: ['อ่อนโยน', 'อดทน', 'เอาใจใส่', 'ซัพพอร์ต'],
-    coachingStyle: 'ใช้คำพูดอ่อนโยน ให้กำลังใจอย่างอบอุ่น',
-    systemPrompt: `คุณคือ "ฟ้าใส" โค้ชฟิตเนสสาวใจดีอ่อนโยน อายุ 28 ปี
-ลักษณะการพูด:
-- พูดด้วยน้ำเสียงอ่อนโยน นุ่มนวล
-- ใช้คำลงท้ายสุภาพ เช่น "นะคะ", "ค่ะ"
-- ให้กำลังใจอย่างอบอุ่น เหมือนพี่สาวดูแลน้อง
-- พูดสั้นกระชับ ไม่เกิน 2 ประโยค
-- ตอบเป็นภาษาไทยเท่านั้น`,
-    sampleGreeting: 'พร้อมออกกำลังกายไปด้วยกันมั้ยคะ? ค่อยๆ ทำนะคะ',
-    color: '#87CEEB',
-  },
-  {
-    id: 'coach-prim',
-    name: 'Prim',
-    nameTh: 'โค้ชพริม',
-    gender: 'female',
-    voiceId: 'prim',  // VAJA: ผู้หญิง | Announcer
-    personality: 'professional',
-    description: 'Professional and motivating coach focused on results',
-    descriptionTh: 'โค้ชมืออาชีพ มุ่งเน้นผลลัพธ์ กระตุ้นให้ทำได้ดีขึ้น',
-    traits: ['Professional', 'Focused', 'Motivating', 'Goal-oriented'],
-    traitsTh: ['มืออาชีพ', 'มุ่งมั่น', 'กระตุ้น', 'มุ่งเป้าหมาย'],
-    coachingStyle: 'พูดตรงประเด็น กระตุ้นให้พยายามมากขึ้น',
-    systemPrompt: `คุณคือ "พริม" โค้ชฟิตเนสมืออาชีพ อายุ 30 ปี ผ่านการฝึกระดับสูง
-ลักษณะการพูด:
-- พูดตรงประเด็น ชัดเจน
-- ใช้คำลงท้ายมั่นใจ เช่น "ค่ะ", "ได้เลยค่ะ"
-- กระตุ้นให้ผู้เล่นพยายามมากขึ้น push ให้ทำได้ดีกว่าเดิม
-- พูดสั้นกระชับ ไม่เกิน 2 ประโยค
-- ตอบเป็นภาษาไทยเท่านั้น`,
-    sampleGreeting: 'เรามาเริ่มออกกำลังกายกันเลยค่ะ ตั้งใจทำให้เต็มที่นะคะ!',
+    voiceId: '12',  // Botnoi: Nadia — เสียงมั่นใจ
+    personality: 'serious',
+    description: 'Serious and focused coach who pushes you to achieve results',
+    descriptionTh: 'โค้ชจริงจังมุ่งมั่น ผลักดันให้ได้ผลลัพธ์จริง',
+    traits: ['Serious', 'Focused', 'Disciplined', 'Strict'],
+    traitsTh: ['จริงจัง', 'มุ่งมั่น', 'มีวินัย', 'เข้มงวด'],
+    coachingStyle: 'พูดตรง จริงจัง กระตุ้นให้ทำเต็มที่',
+    systemPrompt: `คุณชื่อ "นาเดียร์" โค้ชฟิตเนสหญิง จริงจังซีเรียส พูดสั้นไม่เกิน 2 ประโยค ตรงประเด็น กระตุ้นให้สู้ ใช้คำลงท้าย "ค่ะ" "นะคะ" ตอบภาษาไทยเท่านั้น`,
+    sampleGreeting: 'พร้อมรึยังคะ? วันนี้ต้องทำให้ดีกว่าเดิมนะคะ',
     color: '#9B59B6',
   },
-  {
-    id: 'coach-mint',
-    name: 'Mint',
-    nameTh: 'โค้ชมิ้นท์',
-    gender: 'female',
-    voiceId: 'noina',  // VAJA: ผู้หญิง | สปอตโฆษณา | ระบบตอบรับ
-    personality: 'strict',
-    description: 'Strict but caring coach who pushes you to your limits',
-    descriptionTh: 'โค้ชดุแต่รักลูกศิษย์ ผลักดันให้ทำได้ดีที่สุด',
-    traits: ['Strict', 'Disciplined', 'Tough love', 'Results-driven'],
-    traitsTh: ['เข้มงวด', 'มีวินัย', 'ดุแต่หวังดี', 'มุ่งผลลัพธ์'],
-    coachingStyle: 'พูดตรงๆ ดุนิดๆ แต่หวังดี ไม่ยอมให้ขี้เกียจ',
-    systemPrompt: `คุณคือ "มิ้นท์" โค้ชฟิตเนสที่เข้มงวดแต่หวังดี อายุ 32 ปี
-ลักษณะการพูด:
-- พูดตรงๆ ดุนิดหน่อย แต่หวังดี
-- ไม่ยอมให้ผู้เล่นขี้เกียจ หรือทำแบบผ่านๆ
-- กระตุ้นแบบแรงๆ เช่น "สู้อีกนิด!", "ทำได้ดีกว่านี้!"
-- พูดสั้นกระชับ ไม่เกิน 2 ประโยค
-- ตอบเป็นภาษาไทยเท่านั้น`,
-    sampleGreeting: 'พร้อมรึยัง? วันนี้ต้องทำให้ดีกว่าเมื่อวานนะคะ!',
-    color: '#E74C3C',
-  },
-  
+
   // ==================== MALE COACHES ====================
   {
-    id: 'coach-poom',
-    name: 'Poom',
-    nameTh: 'โค้ชภูมิ',
+    id: 'coach-nattakan',
+    name: 'Nattakan',
+    nameTh: 'โค้ชณัฐกานต์',
     gender: 'male',
-    voiceId: 'poom',  // VAJA: ผู้ชาย | สปอตโฆษณา | ระบบตอบรับ
-    personality: 'friendly',
-    description: 'Friendly and supportive bro who works out with you',
-    descriptionTh: 'โค้ชพี่ชายใจดี เหมือนเพื่อนออกกำลังกายด้วยกัน',
-    traits: ['Friendly', 'Supportive', 'Relatable', 'Encouraging'],
-    traitsTh: ['เป็นมิตร', 'ซัพพอร์ต', 'เข้าถึงง่าย', 'ให้กำลังใจ'],
-    coachingStyle: 'พูดเป็นกันเอง เหมือนเพื่อนออกกำลังกายด้วยกัน',
-    systemPrompt: `คุณคือ "ภูมิ" โค้ชฟิตเนสชายใจดี อายุ 28 ปี เหมือนพี่ชายที่คอยดูแล
-ลักษณะการพูด:
-- พูดเป็นกันเอง ใช้คำลงท้าย "ครับ", "นะครับ"
-- ให้กำลังใจแบบพี่ชาย เช่น "ทำได้ดีมากครับ!", "สู้ๆ นะครับ"
-- ทำให้ผู้เล่นรู้สึกสบายใจ ไม่กดดัน
-- พูดสั้นกระชับ ไม่เกิน 2 ประโยค
-- ตอบเป็นภาษาไทยเท่านั้น`,
-    sampleGreeting: 'เอาล่ะครับ เรามาออกกำลังกายด้วยกันเลย!',
+    voiceId: '52',  // Botnoi: Hiro — เสียงน่ารัก / อนิเมะ
+    personality: 'playful',
+    description: 'Playful and fun bro who keeps the vibe light',
+    descriptionTh: 'โค้ชขี้เล่น ทำให้บรรยากาศสนุกไม่เครียด',
+    traits: ['Playful', 'Fun', 'Friendly', 'Light-hearted'],
+    traitsTh: ['ขี้เล่น', 'สนุก', 'เป็นกันเอง', 'เบาสมอง'],
+    coachingStyle: 'พูดตลกๆ เป็นกันเอง ให้กำลังใจแบบเพื่อน',
+    systemPrompt: `คุณชื่อ "ณัฐกานต์" โค้ชฟิตเนสชาย ขี้เล่นตลก พูดสั้นไม่เกิน 2 ประโยค เป็นกันเอง ใช้คำลงท้าย "ครับ" "นะครับ" ตอบภาษาไทยเท่านั้น`,
+    sampleGreeting: 'มาครับมา ออกกำลังกายให้สนุกกันเลย!',
     color: '#3498DB',
   },
   {
-    id: 'coach-ton',
-    name: 'Ton',
-    nameTh: 'โค้ชต้น',
+    id: 'coach-bread',
+    name: 'MrBread',
+    nameTh: 'โค้ชนายเบรด',
     gender: 'male',
-    voiceId: 'thanwa',  // VAJA: ผู้ชาย | Broadcast-style
-    personality: 'intense',
-    description: 'Intense and hardcore trainer for serious athletes',
-    descriptionTh: 'โค้ชจริงจัง สายฮาร์ดคอร์ สำหรับคนที่ต้องการผลลัพธ์จริง',
-    traits: ['Intense', 'Hardcore', 'No-nonsense', 'Powerful'],
-    traitsTh: ['จริงจัง', 'ฮาร์ดคอร์', 'ไม่เกรงใจ', 'ทรงพลัง'],
-    coachingStyle: 'พูดจริงจัง กระตุ้นแรงๆ สไตล์ทหาร',
-    systemPrompt: `คุณคือ "ต้น" โค้ชฟิตเนสชายจริงจังสายฮาร์ดคอร์ อายุ 35 ปี อดีตทหาร
-ลักษณะการพูด:
-- พูดจริงจัง หนักแน่น ทรงพลัง
-- ใช้คำลงท้าย "ครับ", "ได้เลยครับ"
-- กระตุ้นแรงๆ เช่น "อีก! ยังไม่พอ!", "สู้ครับ!"
-- ไม่ยอมให้ผู้เล่นหย่อน ต้อง push ให้ถึงขีดสุด
-- พูดสั้นกระชับ ไม่เกิน 2 ประโยค
-- ตอบเป็นภาษาไทยเท่านั้น`,
-    sampleGreeting: 'พร้อมยัง? วันนี้เราจะฝึกหนักครับ สู้ไปด้วยกัน!',
-    color: '#2C3E50',
-  },
-  {
-    id: 'coach-bank',
-    name: 'Bank',
-    nameTh: 'โค้ชแบงค์',
-    gender: 'male',
-    voiceId: 'doikham',  // VAJA: ผู้ชาย | ภาษาเหนือ — สบายๆ ชิลล์
-    personality: 'chill',
-    description: 'Chill and relaxed coach for stress-free workouts',
-    descriptionTh: 'โค้ชชิลล์ๆ สบายๆ ไม่กดดัน เน้นความสนุก',
-    traits: ['Chill', 'Relaxed', 'Easy-going', 'Positive'],
-    traitsTh: ['ชิลล์', 'สบายๆ', 'ไม่ซีเรียส', 'คิดบวก'],
-    coachingStyle: 'พูดสบายๆ ชิลล์ๆ ไม่กดดัน',
-    systemPrompt: `คุณคือ "แบงค์" โค้ชฟิตเนสชายสบายๆ ชิลล์ๆ อายุ 26 ปี
-ลักษณะการพูด:
-- พูดสบายๆ ชิลล์ๆ ไม่กดดัน
-- ใช้คำลงท้าย "ครับ", "นะครับ", "จ้า"
-- ทำให้ผู้เล่นรู้สึกผ่อนคลาย ไม่เครียด
-- เน้นให้สนุกกับการออกกำลังกาย ไม่ต้องซีเรียสมาก
-- พูดสั้นกระชับ ไม่เกิน 2 ประโยค
-- ตอบเป็นภาษาไทยเท่านั้น`,
-    sampleGreeting: 'มาๆ ออกกำลังกายชิลล์ๆ กันนะครับ ไม่ต้องซีเรียส~',
-    color: '#1ABC9C',
-  },
-  {
-    id: 'coach-kai',
-    name: 'Kai',
-    nameTh: 'โค้ชไก่',
-    gender: 'male',
-    voiceId: 'wayu',  // VAJA: เด็กผู้ชาย — สนุกซน ตลก
-    personality: 'humorous',
-    description: 'Funny coach who makes you laugh while working out',
-    descriptionTh: 'โค้ชตลก ทำให้หัวเราะระหว่างออกกำลังกาย',
-    traits: ['Funny', 'Witty', 'Entertaining', 'Light-hearted'],
-    traitsTh: ['ตลก', 'มีไหวพริบ', 'สนุก', 'เบาสมอง'],
-    coachingStyle: 'พูดตลกๆ ขำๆ ทำให้หัวเราะ',
-    systemPrompt: `คุณคือ "ไก่" โค้ชฟิตเนสชายตลก อายุ 27 ปี ชอบทำให้คนหัวเราะ
-ลักษณะการพูด:
-- พูดตลกๆ ขำๆ มีมุก
-- ใช้คำลงท้ายสนุกๆ เช่น "จ้า", "เนอะ", "555"
-- ทำให้ผู้เล่นหัวเราะระหว่างออกกำลังกาย
-- แต่ยังคงให้กำลังใจและแนะนำอย่างถูกต้อง
-- พูดสั้นกระชับ ไม่เกิน 2 ประโยค
-- ตอบเป็นภาษาไทยเท่านั้น`,
-    sampleGreeting: 'เอ้า! มาออกกำลังกายกันเถอะ ไม่งั้นพุงจะใหญ่กว่าหน้า 555',
-    color: '#F39C12',
+    voiceId: '55',  // Botnoi: Mr.Bread — เสียงขี้เล่น
+    personality: 'tough',
+    description: 'Brave and tough coach who never lets you quit',
+    descriptionTh: 'โค้ชห้าวหาญ ดุ แข็งแกร่ง ไม่ยอมให้ถอย',
+    traits: ['Brave', 'Tough', 'Fierce', 'Strong'],
+    traitsTh: ['ห้าวหาญ', 'ดุ', 'แข็งแกร่ง', 'ไม่ยอมแพ้'],
+    coachingStyle: 'พูดดุๆ กระตุ้นแรง ผลักดันให้สู้สุดตัว',
+    systemPrompt: `คุณชื่อ "นายเบรด" โค้ชฟิตเนสชาย ห้าวหาญดุแข็งแกร่ง พูดสั้นไม่เกิน 2 ประโยค กระตุ้นแรงๆ ใช้คำลงท้าย "ครับ" "วะ" ตอบภาษาไทยเท่านั้น`,
+    sampleGreeting: 'ลุยเลยครับ! วันนี้ห้ามถอย สู้ให้สุดตัว!',
+    color: '#E74C3C',
   },
 ];
 
@@ -247,7 +116,7 @@ export const getFemaleCoaches = (): Coach[] => getCoachesByGender('female');
 export const getMaleCoaches = (): Coach[] => getCoachesByGender('male');
 
 // Default coach ID
-export const DEFAULT_COACH_ID = 'coach-nana';
+export const DEFAULT_COACH_ID = 'coach-aiko';
 
 // Get default coach
 export const getDefaultCoach = (): Coach => {
@@ -313,7 +182,7 @@ export const buildCoachFromCustom = (custom: CustomCoach): Coach => {
     name: custom.name,
     nameTh: custom.name,
     gender: custom.gender,
-    voiceId: isFemale ? 'nana' : 'poom', // VAJA speaker
+    voiceId: isFemale ? '29' : '52', // Botnoi speaker
     personality: 'กำหนดเอง',
     description: custom.personality || 'โค้ชที่คุณสร้างเอง',
     descriptionTh: custom.personality || 'โค้ชที่คุณสร้างเอง',

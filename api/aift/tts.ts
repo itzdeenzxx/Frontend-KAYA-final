@@ -1,6 +1,6 @@
 export const config = { 
   runtime: 'edge',
-  maxDuration: 55, // Keep buffer under Vercel limit
+  maxDuration: 30,
 };
 
 declare const process: {
@@ -10,6 +10,9 @@ declare const process: {
 type TTSRequest = {
   text: string;
   speaker?: string;
+  speed?: number;
+  volume?: number;
+  language?: string;
 };
 
 export default async function handler(req: Request): Promise<Response> {
@@ -20,9 +23,9 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
-  const apiKey = process.env.AIFT_API_KEY;
-  if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'Server misconfigured: missing AIFT_API_KEY' }), {
+  const botnoiToken = process.env.BOTNOI_TOKEN;
+  if (!botnoiToken) {
+    return new Response(JSON.stringify({ error: 'Server misconfigured: missing BOTNOI_TOKEN' }), {
       status: 500,
       headers: { 'content-type': 'application/json' },
     });
@@ -38,7 +41,6 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
-  // VAJA has a 400-character limit
   let text = (body.text || '').trim();
   if (!text) {
     return new Response(JSON.stringify({ error: 'Missing text' }), {
@@ -46,36 +48,48 @@ export default async function handler(req: Request): Promise<Response> {
       headers: { 'content-type': 'application/json' },
     });
   }
-  if (text.length > 400) {
-    text = text.substring(0, 397) + '...';
+  // Botnoi has a generous limit, but cap at 1000 chars for safety
+  if (text.length > 1000) {
+    text = text.substring(0, 997) + '...';
   }
 
-  const speaker = body.speaker || 'nana';
-  const vajaUrl = 'https://api.aiforthai.in.th/vaja';
+  const speaker = body.speaker || '29';
+  const speed = body.speed || 1;
+  const volume = body.volume || 1;
+  const language = body.language || 'th';
+
+  const botnoiUrl = 'https://api-genvoice2.botnoi.ai/openapi/v1/generate_audio';
 
   try {
-    // Step 1: Request TTS synthesis (single attempt, 10s timeout)
-    // VAJA normally responds in 2-5s; if >10s it's likely down
+    // Step 1: Request TTS synthesis from Botnoi (15s timeout)
     const ctrl1 = new AbortController();
-    const t1 = setTimeout(() => ctrl1.abort(), 10000);
+    const t1 = setTimeout(() => ctrl1.abort(), 15000);
 
-    console.log(`[VAJA TTS] Synthesizing: speaker=${speaker}, text=${text.substring(0, 50)}...`);
-    const synthRes = await fetch(vajaUrl, {
+    console.log(`[Botnoi TTS] Synthesizing: speaker=${speaker}, text=${text.substring(0, 50)}...`);
+    const synthRes = await fetch(botnoiUrl, {
       method: 'POST',
       headers: {
-        'Apikey': apiKey,
+        'botnoi-token': botnoiToken,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ text, speaker }),
+      body: JSON.stringify({
+        text,
+        speaker,
+        volume,
+        speed,
+        type_media: 'mp3',
+        save_file: 'True',
+        language,
+      }),
       signal: ctrl1.signal,
     });
     clearTimeout(t1);
 
     if (!synthRes.ok) {
       const errText = await synthRes.text();
-      console.error('[VAJA TTS] Synthesis error:', synthRes.status, errText);
+      console.error('[Botnoi TTS] API error:', synthRes.status, errText);
       return new Response(JSON.stringify({ 
-        error: 'VAJA API error', 
+        error: 'Botnoi API error', 
         status: synthRes.status, 
         details: errText 
       }), {
@@ -84,13 +98,13 @@ export default async function handler(req: Request): Promise<Response> {
       });
     }
 
-    const result = await synthRes.json() as { msg?: string; audio_url?: string };
+    const result = await synthRes.json() as { text?: string; audio_url?: string; point?: number };
     const audioUrl = result?.audio_url || '';
 
     if (!audioUrl) {
-      console.error('[VAJA TTS] No audio_url in response:', JSON.stringify(result));
+      console.error('[Botnoi TTS] No audio_url in response:', JSON.stringify(result));
       return new Response(JSON.stringify({ 
-        error: 'Missing audio_url from VAJA', 
+        error: 'Missing audio_url from Botnoi', 
         details: JSON.stringify(result) 
       }), {
         status: 502,
@@ -98,21 +112,20 @@ export default async function handler(req: Request): Promise<Response> {
       });
     }
 
-    console.log('[VAJA TTS] Got audio_url:', audioUrl);
+    console.log('[Botnoi TTS] Got audio_url:', audioUrl);
 
     // Step 2: Download audio file (10s timeout)
     const ctrl2 = new AbortController();
     const t2 = setTimeout(() => ctrl2.abort(), 10000);
 
     const audioRes = await fetch(audioUrl, {
-      headers: { 'Apikey': apiKey },
       signal: ctrl2.signal,
     });
     clearTimeout(t2);
 
     if (!audioRes.ok) {
       const audioErr = await audioRes.text();
-      console.error('[VAJA TTS] Audio download error:', audioRes.status, audioErr);
+      console.error('[Botnoi TTS] Audio download error:', audioRes.status, audioErr);
       return new Response(JSON.stringify({ 
         error: 'Failed to download audio', 
         status: audioRes.status, 
@@ -132,7 +145,7 @@ export default async function handler(req: Request): Promise<Response> {
     }
     const base64Audio = btoa(binary);
 
-    console.log('[VAJA TTS] Success, audio size:', bytes.length, 'bytes');
+    console.log('[Botnoi TTS] Success, audio size:', bytes.length, 'bytes');
 
     return new Response(JSON.stringify({ 
       success: true, 
@@ -148,7 +161,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   } catch (err: unknown) {
     const error = err instanceof Error ? err : new Error(String(err));
-    console.error('[VAJA TTS] Error:', error.message);
+    console.error('[Botnoi TTS] Error:', error.message);
     
     if (error.name === 'AbortError') {
       return new Response(JSON.stringify({ error: 'TTS request timeout' }), {
