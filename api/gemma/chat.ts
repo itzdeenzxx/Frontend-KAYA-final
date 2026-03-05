@@ -63,9 +63,9 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   // Get API key from environment
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = process.env.TOGETHER_API_KEY;
   if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'Server misconfigured: missing OPENROUTER_API_KEY' }), {
+    return new Response(JSON.stringify({ error: 'Server misconfigured: missing TOGETHER_API_KEY' }), {
       status: 500,
       headers: { 'content-type': 'application/json' },
     });
@@ -204,7 +204,7 @@ ${bmiTip ? `- ${bmiTip}` : ''}
   const fullPrompt = `${systemPrompt}${contextStr}\n\nคำถามจากผู้ใช้: ${message}`;
 
   try {
-    // Build request body for OpenRouter API (OpenAI-compatible)
+    // Build request body for Together AI API (OpenAI-compatible)
     const contentParts: Array<Record<string, unknown>> = [];
 
     // Add image if provided
@@ -223,7 +223,7 @@ ${bmiTip ? `- ${bmiTip}` : ''}
     contentParts.push({ type: 'text', text: fullPrompt });
 
     const requestBody = {
-      model: 'google/gemma-3n-e4b-it:free',
+      model: 'google/gemma-3n-E4B-it',
       messages: [
         {
           role: 'user',
@@ -231,28 +231,26 @@ ${bmiTip ? `- ${bmiTip}` : ''}
         },
       ],
       temperature: 0.7,
-      max_tokens: 200,
+      max_tokens: 150,
       top_p: 0.8,
     };
 
-    const openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
+    const togetherUrl = 'https://api.together.xyz/v1/chat/completions';
 
-    const response = await fetch(openRouterUrl, {
+    const response = await fetch(togetherUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
-        'HTTP-Referer': 'https://kaya-fitness.vercel.app',
-        'X-Title': 'KAYA Fitness',
       },
       body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('OpenRouter API error:', response.status, errorText);
+      console.error('Together AI API error:', response.status, errorText);
       return new Response(JSON.stringify({ 
-        error: 'OpenRouter API error', 
+        error: 'Together AI API error', 
         status: response.status,
         details: errorText 
       }), {
@@ -286,7 +284,7 @@ ${bmiTip ? `- ${bmiTip}` : ''}
 
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-    console.error('OpenRouter request error:', err);
+    console.error('Together AI request error:', err);
     return new Response(JSON.stringify({ 
       error: 'Request failed', 
       details: errorMessage 

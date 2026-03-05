@@ -19,9 +19,9 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
-  const apiKey = process.env.AIFT_API_KEY;
+  const apiKey = process.env.TOGETHER_API_KEY;
   if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'Server misconfigured: missing AIFT_API_KEY' }), {
+    return new Response(JSON.stringify({ error: 'Server misconfigured: missing TOGETHER_API_KEY' }), {
       status: 500,
       headers: { 'content-type': 'application/json' },
     });
@@ -38,7 +38,6 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   const prompt = (body.prompt || '').trim();
-  const sessionId = (body.sessionId || '').trim();
   const context = (body.context || '').trim();
   const temperature = typeof body.temperature === 'number' ? body.temperature : 0.4;
 
@@ -49,48 +48,52 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
-  if (!sessionId) {
-    return new Response(JSON.stringify({ error: 'Missing sessionId' }), {
-      status: 400,
-      headers: { 'content-type': 'application/json' },
-    });
+  // Build messages for Together AI (OpenAI-compatible)
+  const messages: Array<{ role: string; content: string }> = [];
+  if (context) {
+    messages.push({ role: 'system', content: context });
   }
-
-  const upstreamUrl = 'https://api.aiforthai.in.th/pathumma-chat';
-  const payload = new URLSearchParams({
-    context,
-    prompt,
-    sessionid: sessionId,
-    temperature: String(temperature),
-  });
-
-  const upstreamRes = await fetch(upstreamUrl, {
-    method: 'POST',
-    headers: {
-      accept: 'application/json',
-      Apikey: apiKey,
-    },
-    body: payload,
-  });
-
-  const text = await upstreamRes.text();
-  if (!upstreamRes.ok) {
-    return new Response(JSON.stringify({ error: 'Upstream error', status: upstreamRes.status, details: text }), {
-      status: 502,
-      headers: { 'content-type': 'application/json' },
-    });
-  }
+  messages.push({ role: 'user', content: prompt });
 
   try {
-    const json = JSON.parse(text) as any;
-    const responseText = json?.response ?? json?.content ?? json?.result ?? '';
-    return new Response(JSON.stringify({ response: responseText, raw: json }), {
+    const response = await fetch('https://api.together.xyz/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'google/gemma-3n-E4B-it',
+        messages,
+        temperature,
+        max_tokens: 300,
+        top_p: 0.8,
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error('Together AI text-chat error:', response.status, errText);
+      return new Response(JSON.stringify({ error: 'Upstream error', status: response.status, details: errText }), {
+        status: 502,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    const result = await response.json() as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+
+    const responseText = result?.choices?.[0]?.message?.content || '';
+    return new Response(JSON.stringify({ response: responseText }), {
       status: 200,
       headers: { 'content-type': 'application/json' },
     });
-  } catch {
-    return new Response(JSON.stringify({ error: 'Invalid upstream JSON', details: text }), {
-      status: 502,
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Together AI text-chat request error:', err);
+    return new Response(JSON.stringify({ error: 'Request failed', details: errorMessage }), {
+      status: 500,
       headers: { 'content-type': 'application/json' },
     });
   }
