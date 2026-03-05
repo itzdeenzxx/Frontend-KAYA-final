@@ -213,12 +213,41 @@ export const KaiAvatar = ({ className, size = 80 }: AvatarProps) => (
   </svg>
 );
 
+// Male Coach Avatar - PhuyaiLee (Friendly Suphanburi Uncle)
+export const PhuyaiLeeAvatar = ({ className, size = 80 }: AvatarProps) => (
+  <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+    <circle cx="50" cy="50" r="48" fill="#F5E6D3"/>
+    {/* Hat - หมวกผู้ใหญ่บ้าน */}
+    <ellipse cx="50" cy="26" rx="30" ry="8" fill="#8B5E3C"/>
+    <path d="M30 26 Q30 14 50 12 Q70 14 70 26" fill="#A0724A"/>
+    <rect x="30" y="24" width="40" height="4" rx="2" fill="#6B4226"/>
+    {/* Face */}
+    <ellipse cx="50" cy="52" rx="24" ry="26" fill="#D7A574"/>
+    {/* Kind eyes - ตาใจดี */}
+    <path d="M36 48 Q40 52 44 48" stroke="#2D2D2D" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+    <path d="M56 48 Q60 52 64 48" stroke="#2D2D2D" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+    {/* Eyebrows - เบาสบาย */}
+    <path d="M34 43 Q40 41 46 43" stroke="#5D4037" strokeWidth="1.5" fill="none"/>
+    <path d="M54 43 Q60 41 66 43" stroke="#5D4037" strokeWidth="1.5" fill="none"/>
+    {/* Warm smile - ยิ้มเป็นกันเอง */}
+    <path d="M38 60 Q50 70 62 60" stroke="#C49A6C" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+    {/* Mustache - หนวด */}
+    <path d="M38 56 Q44 60 50 57 Q56 60 62 56" stroke="#5D4037" strokeWidth="2" fill="none"/>
+    {/* Jawline */}
+    <path d="M26 50 Q26 76 50 80 Q74 76 74 50" stroke="#C49A6C" strokeWidth="2" fill="none"/>
+    {/* Blush - แก้มแดง (อบอุ่น) */}
+    <ellipse cx="33" cy="56" rx="4" ry="2.5" fill="#E8A87C" opacity="0.5"/>
+    <ellipse cx="67" cy="56" rx="4" ry="2.5" fill="#E8A87C" opacity="0.5"/>
+  </svg>
+);
+
 // Map coach ID to avatar component
 export const CoachAvatarMap: Record<string, React.FC<AvatarProps>> = {
   'coach-aiko': NanaAvatar,      // Reuse: cute female
   'coach-nadia': PrimAvatar,     // Reuse: serious female
   'coach-nattakan': KaiAvatar,   // Reuse: playful male
   'coach-bread': TonAvatar,      // Reuse: tough male
+  'coach-phuyailee': PhuyaiLeeAvatar, // Friendly Suphanburi uncle
   // Legacy mappings kept so old saved IDs still render
   'coach-nana': NanaAvatar,
   'coach-farsai': FarsaiAvatar,

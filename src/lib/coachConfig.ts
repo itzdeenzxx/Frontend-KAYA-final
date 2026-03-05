@@ -9,6 +9,7 @@ export const BOTNOI_SPEAKERS = [
   { id: '9', label: 'นาเดียร์ (Nadia)', gender: 'female' as const, style: 'เสียงเล่าเรื่อง / มั่นใจ' },
   { id: '543', label: 'ณัฐกานต์ (Nattakarn)', gender: 'male' as const, style: 'เสียงผู้ชาย' },
   { id: '31', label: 'นายเบรด (Mr.Bread)', gender: 'male' as const, style: 'เสียงขี้เล่น' },
+  { id: '37', label: 'ผู้ใหญ่ลี (PhuyaiLee)', gender: 'male' as const, style: 'เสียงผู้ใหญ่ / สุพรรณ' },
 ] as const;
 
 // Valid Botnoi speaker IDs
@@ -71,7 +72,7 @@ export interface Coach {
   color: string;  // Theme color for UI
 }
 
-// Coach Definitions — 4 coaches only
+// Coach Definitions — 5 coaches
 export const COACHES: Coach[] = [
   // ==================== FEMALE COACHES ====================
   {
@@ -139,6 +140,22 @@ export const COACHES: Coach[] = [
     systemPrompt: `คุณชื่อ "นายเบรด" โค้ชฟิตเนสชาย ห้าวหาญดุแข็งแกร่ง พูดสั้นไม่เกิน 2 ประโยค กระตุ้นแรงๆ ใช้คำลงท้าย "ครับ" "วะ" ตอบภาษาไทยเท่านั้น`,
     sampleGreeting: 'ลุยเลยครับ! วันนี้ห้ามถอย สู้ให้สุดตัว!',
     color: '#E74C3C',
+  },
+  {
+    id: 'coach-phuyailee',
+    name: 'PhuyaiLee',
+    nameTh: 'โค้ชผู้ใหญ่ลี',
+    gender: 'male',
+    voiceId: '37',  // Botnoi: ผู้ใหญ่ลี (speaker 37) — เสียงผู้ใหญ่ / สุพรรณ
+    personality: 'friendly',
+    description: 'Kind-hearted and friendly coach from Suphanburi with local charm',
+    descriptionTh: 'โค้ชจิตใจดี น่ารัก เป็นกันเอง สำเนียงสุพรรณ',
+    traits: ['Kind', 'Friendly', 'Warm', 'Charming'],
+    traitsTh: ['จิตใจดี', 'น่ารัก', 'เฟรนด์ลี่', 'อบอุ่น'],
+    coachingStyle: 'พูดเป็นกันเอง สำเนียงสุพรรณ จิตใจดี ให้กำลังใจอบอุ่น',
+    systemPrompt: `คุณชื่อ "ผู้ใหญ่ลี" โค้ชฟิตเนสชาย เป็นคนสุพรรณบุรี จิตใจดี น่ารัก เฟรนด์ลี่กับทุกคน พูดสั้นไม่เกิน 2 ประโยค ใช้สำเนียงท้องถิ่นสุพรรณ ใช้คำลงท้าย "ครับผม" "จ้า" "เอ้า" "นะครับ" ตอบภาษาไทยเท่านั้น`,
+    sampleGreeting: 'เอ้า มาออกกำลังกายกันเถอะครับผม สุขภาพดีๆ กันจ้า!',
+    color: '#8B5E3C',
   },
 ];
 
