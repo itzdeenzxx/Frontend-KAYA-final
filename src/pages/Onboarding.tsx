@@ -19,9 +19,12 @@ import {
   AlertTriangle,
   AlertCircle,
   UserCircle,
-  Users
+  Users,
+  Volume2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CoachSelector } from "@/components/coach";
+import { getCoachById } from "@/lib/coachConfig";
 
 interface OnboardingData {
   nickname: string;
@@ -29,6 +32,7 @@ interface OnboardingData {
   height: number;
   age: number;
   gender: "male" | "female" | "other";
+  selectedCoachId?: string;
 }
 
 interface OnboardingProps {
@@ -129,9 +133,10 @@ export default function Onboarding({ lineDisplayName, onComplete }: OnboardingPr
     height: 0,
     age: 0,
     gender: "male",
+    selectedCoachId: undefined,
   });
 
-  const totalSteps = 4;
+  const totalSteps = 5;
 
   const handleNext = () => {
     if (step < totalSteps) {
@@ -164,6 +169,8 @@ export default function Onboarding({ lineDisplayName, onComplete }: OnboardingPr
       case 3:
         return data.age > 0;
       case 4:
+        return !!data.selectedCoachId;
+      case 5:
         return true;
       default:
         return false;
@@ -373,10 +380,47 @@ export default function Onboarding({ lineDisplayName, onComplete }: OnboardingPr
             </motion.div>
           )}
 
-          {/* Step 4: Summary & BMI Result */}
+          {/* Step 4: Coach Selection */}
           {step === 4 && (
             <motion.div
               key="step4"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-6"
+            >
+              <div className="text-center mb-6">
+                <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                  <Volume2 className="w-10 h-10 text-primary" />
+                </div>
+                <h2 className="text-2xl font-bold mb-2">เลือกโค้ชของคุณ</h2>
+                <p className="text-muted-foreground">โค้ชที่จะคอยให้กำลังใจและแนะนำคุณ</p>
+              </div>
+
+              <CoachSelector
+                selectedCoachId={data.selectedCoachId}
+                onSelect={(coachId) => setData({ ...data, selectedCoachId: coachId })}
+                showPreview={true}
+              />
+
+              {data.selectedCoachId && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-primary/10 rounded-xl p-4 border border-primary/20"
+                >
+                  <p className="text-sm text-center">
+                    <span className="font-semibold">{getCoachById(data.selectedCoachId)?.nameTh}</span> จะเป็นโค้ชของคุณ!
+                  </p>
+                </motion.div>
+              )}
+            </motion.div>
+          )}
+
+          {/* Step 5: Summary & BMI Result */}
+          {step === 5 && (
+            <motion.div
+              key="step5"
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}

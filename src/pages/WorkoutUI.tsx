@@ -9,10 +9,14 @@ import { getWorkoutStyle, getExercisesForStyle, WorkoutExercise } from "@/lib/wo
 import MusicPlayer from "@/components/music/MusicPlayer";
 import { useExerciseAnalysis } from "@/hooks/useExerciseAnalysis";
 import { VisualPoseGuide, StageIndicator, BeatCounter } from "@/components/workout/VisualPoseGuide";
-import { AICoachPopup } from "@/components/workout/AICoachPopup";
+import { AICoachPopup, stopCoachPopupAudio } from "@/components/workout/AICoachPopup";
 import { ExerciseType, EXERCISES } from "@/lib/exerciseConfig";
+import { getExerciseStartAudioUrl, getRepAudioUrl, getGreetingAudioUrl, getLocalAudioUrl } from "@/lib/coachAudio";
+import type { AudioCategory } from "@/lib/coachAudio";
 import { WorkoutLoader } from "@/components/shared/WorkoutLoader";
 import { useAuth } from "@/contexts/AuthContext";
+import { getUserSettings, DEFAULT_TTS_SETTINGS } from "@/lib/firestore";
+import { getCoachById, Coach, migrateSpeakerId, migrateCoachId } from "@/lib/coachConfig";
 
 // Rep count messages - only speak at 1, 5, 9, 10
 const REP_MESSAGES: Record<number, string> = {
@@ -134,12 +138,24 @@ export default function WorkoutUI() {
   const [displayRep, setDisplayRep] = useState(0);
   const lastRepRef = useRef(0);
   const lastSpokenRepRef = useRef(0);
+  const lastFormAudioTimeRef = useRef<number>(0); // throttle form feedback audio
+  const halfwayPlayedRef = useRef(false); // play 'halfway' audio only once per exercise
+  const timeMilestone30Ref = useRef(false); // play audio when timeLeft hits 30
+  const timeMilestone15Ref = useRef(false); // play audio when timeLeft hits 15
+  const lastTempoAudioTimeRef = useRef<number>(0); // throttle tempo feedback audio
+  const lastTempoQualityRef = useRef<string>(''); // last tempo quality that triggered audio
+  const lastMotionAudioTimeRef = useRef<number>(0); // throttle motion quality audio
+  const lastVisibilityAudioTimeRef = useRef<number>(0); // throttle move_closer audio
   
   // TTS audio ref
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
   const lastSpokenExerciseRef = useRef(-1);
   const coachIntroSpokenRef = useRef(false);
   const isTtsSpeakingRef = useRef(false);
+  // Prevent double-navigation when speaking session_complete before navigate
+  const navigatedRef = useRef(false);
+  // Stable ref to playCoachAudio — filled in after stopAllTTS is defined below
+  const playCoachAudioRef = useRef<(category: AudioCategory, onEnd?: () => void) => void>(() => {});
   
   // Voice Coach state
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
@@ -198,6 +214,67 @@ export default function WorkoutUI() {
   
   // Visual guide state for KAYA - hidden by default for clean UI
   const [showVisualGuide, setShowVisualGuide] = useState(false);
+  
+  // TTS settings
+  const [ttsEnabled, setTtsEnabled] = useState(DEFAULT_TTS_SETTINGS.enabled);
+  const [ttsSpeed, setTtsSpeed] = useState(DEFAULT_TTS_SETTINGS.speed);
+  const [ttsSpeaker, setTtsSpeaker] = useState(DEFAULT_TTS_SETTINGS.speaker);
+  const [ttsCoach, setTtsCoach] = useState<Coach | null>(null);
+  const [ttsCoachId, setTtsCoachId] = useState<string>('coach-aiko');
+  const [customCoachForLLM, setCustomCoachForLLM] = useState<{ name: string; personality: string; gender: 'male' | 'female' } | null>(null);
+  const ttsSettingsLoadedRef = useRef(false);
+  
+  // Load TTS speaker setting from user preferences
+  useEffect(() => {
+    const loadTTSSettings = async () => {
+      if (userProfile?.lineUserId) {
+        try {
+          const settings = await getUserSettings(userProfile.lineUserId);
+          if (settings?.tts) {
+            const loadedEnabled = settings.tts.enabled ?? DEFAULT_TTS_SETTINGS.enabled;
+            const loadedSpeed = settings.tts.speed ?? DEFAULT_TTS_SETTINGS.speed;
+            const loadedSpeaker = migrateSpeakerId(settings.tts.speaker);
+            
+            setTtsEnabled(loadedEnabled);
+            setTtsSpeed(loadedSpeed);
+            setTtsSpeaker(loadedSpeaker);
+            
+            console.log('🔊 [TTS] Loaded settings (Botnoi):', { enabled: loadedEnabled, speed: loadedSpeed, speaker: loadedSpeaker });
+          }
+          if (settings?.selectedCoachId) {
+            const validCoachId = migrateCoachId(settings.selectedCoachId);
+            setTtsCoachId(validCoachId);
+            
+            if (validCoachId === 'coach-custom') {
+              // Load custom coach data
+              const { getCustomCoach, } = await import('@/lib/firestore');
+              const { buildCoachFromCustom } = await import('@/lib/coachConfig');
+              const custom = await getCustomCoach(userProfile.lineUserId);
+              if (custom) {
+                setTtsCoach(buildCoachFromCustom(custom));
+                setCustomCoachForLLM({
+                  name: custom.name,
+                  personality: custom.personality,
+                  gender: custom.gender,
+                });
+              }
+            } else {
+              const coach = getCoachById(validCoachId);
+              if (coach) setTtsCoach(coach);
+            }
+          }
+          ttsSettingsLoadedRef.current = true;
+          console.log('🔊 [TTS] Settings fully loaded, ttsSettingsLoaded = true');
+        } catch (err) {
+          console.warn('Failed to load TTS settings:', err);
+          ttsSettingsLoadedRef.current = true; // mark as loaded even on error so we don't wait forever
+        }
+      } else {
+        ttsSettingsLoadedRef.current = true; // no user profile, use defaults
+      }
+    };
+    loadTTSSettings();
+  }, [userProfile?.lineUserId]);
   
   // MediaPipe pose detection - can be toggled on/off
   const { landmarks, opticalFlowPoints, getFlowHistory, isLoading: mediaPipeLoading, error: mediaPipeError } = useMediaPipePose(
@@ -448,21 +525,29 @@ export default function WorkoutUI() {
     console.log(`   ✅ เปอร์เซ็นต์ความสำเร็จ: ${completionPct}%`);
     console.log(`   ⏱️ เวลาทั้งหมด: ${Math.floor(totalTime / 60)}:${String(totalTime % 60).padStart(2, '0')}`);
 
-    navigate('/workout-complete', {
-      state: {
-        results: {
-          styleName: selectedStyle?.name || 'Workout',
-          styleNameTh: selectedStyle?.nameTh || 'ออกกำลังกาย',
-          exercises: results.filter(Boolean),
-          totalTime,
-          totalReps,
-          averageFormScore: avgFormScore,
-          caloriesBurned: 0, // Will be calculated in WorkoutComplete
-          completionPercentage: completionPct,
-          screenshots: screenshotsRef.current,
-        }
-      }
+    const navState = {
+      styleName: selectedStyle?.name || 'Workout',
+      styleNameTh: selectedStyle?.nameTh || 'ออกกำลังกาย',
+      exercises: results.filter(Boolean),
+      totalTime,
+      totalReps,
+      averageFormScore: avgFormScore,
+      caloriesBurned: 0,
+      completionPercentage: completionPct,
+      screenshots: screenshotsRef.current,
+    };
+
+    const doNavigate = () => {
+      if (navigatedRef.current) return;
+      navigatedRef.current = true;
+      navigate('/workout-complete', { state: { results: navState } });
+    };
+
+    // 🏆 Speak session_complete → amazing → navigate (fallback after 9s for both clips)
+    playCoachAudioRef.current('session_complete', () => {
+      playCoachAudioRef.current('amazing', doNavigate);
     });
+    setTimeout(doNavigate, 9000);
   }, [navigate, saveCurrentExerciseResult, selectedStyle, totalTime]);
 
   // Show rest screen between exercises
@@ -470,6 +555,9 @@ export default function WorkoutUI() {
     setShowRestScreen(true);
     setRestTimeLeft(REST_DURATION);
     setIsPaused(true);
+    // 💤 Announce rest — randomly alternate between 'rest' and 'dont_forget_rest'
+    const restCategory = Math.random() < 0.5 ? 'rest' : 'dont_forget_rest';
+    setTimeout(() => playCoachAudioRef.current(restCategory), 200);
   }, []);
 
   // Skip rest and go to next exercise
@@ -478,12 +566,88 @@ export default function WorkoutUI() {
     setIsPaused(false);
     if (currentExercise < exercises.length - 1) {
       kayaAnalysis.nextExercise();
+      lastSpokenExerciseRef.current = -1; // ensure exercise TTS fires
+      lastRepRef.current = 0;
       setCurrentExercise((prev) => prev + 1);
       setExerciseCompleted(false);
     } else {
       finishWorkout();
     }
   }, [currentExercise, exercises.length, kayaAnalysis, finishWorkout]);
+
+  // Beat countdown 4-3-2-1 during last 4 seconds of rest
+  useEffect(() => {
+    if (!showRestScreen || restTimeLeft <= 0 || restTimeLeft > 4) return;
+    const beatMap: Record<number, 'beat_4' | 'beat_3' | 'beat_2' | 'beat_1'> = {
+      4: 'beat_4', 3: 'beat_3', 2: 'beat_2', 1: 'beat_1',
+    };
+    const category = beatMap[restTimeLeft];
+    if (category) playCoachAudioRef.current(category);
+  }, [showRestScreen, restTimeLeft]);
+
+  // Time milestone audio for time-based exercises (plank, lunge)
+  useEffect(() => {
+    if (!currentExerciseIsTimeBased || exerciseCompleted) return;
+    const exerciseDuration = exercises[currentExercise]?.duration ?? 0;
+    if (!isTtsSpeakingRef.current) {
+      // Only play 30s milestone if total duration > 35s (avoid firing at start of 30s sets)
+      if (timeLeft === 30 && !timeMilestone30Ref.current && exerciseDuration > 35) {
+        timeMilestone30Ref.current = true;
+        playCoachAudioRef.current('timer_30s'); // "เหลืออีก 30 วินาที!"
+      } else if (timeLeft === 15 && !timeMilestone15Ref.current) {
+        timeMilestone15Ref.current = true;
+        playCoachAudioRef.current('timer_15s'); // "เหลืออีก 15 วินาที!"
+      }
+    }
+  }, [currentExerciseIsTimeBased, exerciseCompleted, timeLeft, currentExercise, exercises]);
+
+  // Tempo feedback audio — play when tempo quality is problematic (throttled 8s)
+  useEffect(() => {
+    if (!isKayaWorkout || exerciseCompleted || showRestScreen) return;
+    const quality = kayaAnalysis.tempoQuality;
+    if (quality !== 'too_fast' && quality !== 'too_slow' && quality !== 'inconsistent') return;
+    const now = Date.now();
+    if (now - lastTempoAudioTimeRef.current < 8000) return; // throttle 8s
+    if (quality === lastTempoQualityRef.current && now - lastTempoAudioTimeRef.current < 15000) return; // same quality: 15s extra cooldown
+    if (isTtsSpeakingRef.current) return;
+    const TEMPO_MAP: Partial<Record<string, AudioCategory>> = {
+      too_fast: 'tempo_too_fast',
+      too_slow: 'tempo_too_slow',
+      inconsistent: 'tempo_inconsistent',
+    };
+    const category = TEMPO_MAP[quality];
+    if (!category) return;
+    lastTempoAudioTimeRef.current = now;
+    lastTempoQualityRef.current = quality;
+    playCoachAudioRef.current(category);
+  }, [isKayaWorkout, exerciseCompleted, showRestScreen, kayaAnalysis.tempoQuality]);
+
+  // Body visibility audio — prompt user to move closer when body not detected (throttled 10s)
+  useEffect(() => {
+    if (!isKayaWorkout || exerciseCompleted || showRestScreen) return;
+    if (kayaAnalysis.isBodyVisible) return;
+    const now = Date.now();
+    if (now - lastVisibilityAudioTimeRef.current < 10000) return;
+    if (isTtsSpeakingRef.current) return;
+    lastVisibilityAudioTimeRef.current = now;
+    playCoachAudioRef.current('move_closer'); // "ขยับตัวเข้า(กล้อง)"
+  }, [isKayaWorkout, exerciseCompleted, showRestScreen, kayaAnalysis.isBodyVisible]);
+
+  // Motion quality audio — no motion → move_more, jerky movement → movement_jerky (throttled 8s)
+  useEffect(() => {
+    if (!isKayaWorkout || exerciseCompleted || showRestScreen || !kayaAnalysis.isBodyVisible) return;
+    const { isMoving, smoothness } = kayaAnalysis.motionQuality;
+    const now = Date.now();
+    if (now - lastMotionAudioTimeRef.current < 8000) return;
+    if (isTtsSpeakingRef.current) return;
+    if (!isMoving) {
+      lastMotionAudioTimeRef.current = now;
+      playCoachAudioRef.current('move_more'); // "ขยับตัวอีก / ขยับมากกว่า"
+    } else if (smoothness === 'jerky') {
+      lastMotionAudioTimeRef.current = now;
+      playCoachAudioRef.current('movement_jerky'); // "เคลื่อนไหวกระตุก"
+    }
+  }, [isKayaWorkout, exerciseCompleted, showRestScreen, kayaAnalysis.isBodyVisible, kayaAnalysis.motionQuality]);
 
   // Rest timer countdown
   useEffect(() => {
@@ -501,19 +665,56 @@ export default function WorkoutUI() {
     return () => clearInterval(timer);
   }, [showRestScreen, restTimeLeft, skipRest]);
 
-  // Stop all TTS immediately
+  // Stop ALL audio immediately (WorkoutUI + AICoachPopup)
   const stopAllTTS = useCallback(() => {
+    // Stop WorkoutUI audio
     if (ttsAudioRef.current) {
       ttsAudioRef.current.pause();
       ttsAudioRef.current.currentTime = 0;
       ttsAudioRef.current = null;
     }
     isTtsSpeakingRef.current = false;
+    // Stop AICoachPopup audio (separate audio element)
+    stopCoachPopupAudio();
   }, []);
+
+  // Play a pre-recorded coach audio clip by category (reads from refs — no stale closure)
+  const playCoachAudio = useCallback((category: AudioCategory, onEnd?: () => void): void => {
+    if (!ttsEnabledRef.current) { onEnd?.(); return; }
+    // Fallback to 'coach-aiko' when ttsCoach hasn't loaded yet (async Firestore load)
+    const coachId = ttsCoachRef.current?.id ?? 'coach-aiko';
+    const url = getLocalAudioUrl(coachId, category);
+    if (!url) { onEnd?.(); return; }
+    stopAllTTS();
+    const audio = new Audio(url);
+    ttsAudioRef.current = audio;
+    audio.playbackRate = ttsSpeedRef.current || 1.0;
+    audio.onended = () => { ttsAudioRef.current = null; onEnd?.(); };
+    audio.onerror = () => { ttsAudioRef.current = null; onEnd?.(); };
+    audio.play().catch(() => { ttsAudioRef.current = null; onEnd?.(); });
+  }, [stopAllTTS]);
+  // Keep ref updated so non-reactive code (setTimeout, useEffect) always has latest
+  useEffect(() => { playCoachAudioRef.current = playCoachAudio; }, [playCoachAudio]);
+
+  // Use refs to avoid stale closures in speakTTS
+  const ttsCoachRef = useRef(ttsCoach);
+  const ttsSpeakerRef = useRef(ttsSpeaker);
+  const ttsEnabledRef = useRef(ttsEnabled);
+  const ttsSpeedRef = useRef(ttsSpeed);
+  useEffect(() => { ttsCoachRef.current = ttsCoach; }, [ttsCoach]);
+  useEffect(() => { ttsSpeakerRef.current = ttsSpeaker; }, [ttsSpeaker]);
+  useEffect(() => { ttsEnabledRef.current = ttsEnabled; }, [ttsEnabled]);
+  useEffect(() => { ttsSpeedRef.current = ttsSpeed; }, [ttsSpeed]);
 
   // Speak text using TTS (returns Promise)
   // forcePlay = true will play even if user is recording (used for LLM response)
   const speakTTS = useCallback(async (text: string, forcePlay: boolean = false): Promise<void> => {
+    // Don't speak if TTS is disabled in settings
+    if (!ttsEnabledRef.current) {
+      console.log('🔇 [TTS] Skipped: TTS is disabled in settings');
+      return;
+    }
+
     // Don't speak if user is recording (unless forced)
     if (isRecording && !forcePlay) {
       return;
@@ -538,22 +739,34 @@ export default function WorkoutUI() {
     try {
       isTtsSpeakingRef.current = true;
       
+      // Read current coach/speaker from refs (avoids stale closure)
+      const currentCoach = ttsCoachRef.current;
+      const currentSpeaker = currentCoach?.voiceId || ttsSpeakerRef.current || '26';
+      
+      console.log('🔊 [TTS] Botnoi speaking with speaker:', currentSpeaker, '| coach:', currentCoach?.name || 'none', '| speed:', ttsSpeedRef.current);
+
+      // Call Botnoi TTS API (12s timeout — fallback to Web Speech if slow)
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000);
       const response = await fetch('/api/aift/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, speaker: 'nana' }),
+        body: JSON.stringify({ text, speaker: currentSpeaker }),
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
       
-      if (!response.ok) {
-        console.error('TTS API error:', response.status);
+      if (!response?.ok) {
+        console.error('🔊 [TTS] Botnoi API error:', response.status);
         isTtsSpeakingRef.current = false;
         return;
       }
       
       const result = await response.json();
+      console.log('🔊 [TTS] Botnoi response:', result.audio_base64 ? 'has audio' : 'no audio');
       
       if (!result.audio_base64) {
-        console.error('TTS API returned no audio');
+        console.error('🔊 [TTS] Botnoi returned no audio');
         isTtsSpeakingRef.current = false;
         return;
       }
@@ -579,6 +792,9 @@ export default function WorkoutUI() {
       return new Promise((resolve) => {
         const audio = new Audio(audioUrl);
         ttsAudioRef.current = audio;
+        
+        // Apply speed setting from user preferences
+        audio.playbackRate = ttsSpeedRef.current || 1.0;
         
         audio.onended = () => {
           URL.revokeObjectURL(audioUrl);
@@ -608,9 +824,53 @@ export default function WorkoutUI() {
     const message = REP_MESSAGES[rep];
     if (message && rep > lastSpokenRepRef.current) {
       lastSpokenRepRef.current = rep;
+
+      // Try local pre-recorded audio first (avoids API call)
+      const coachId = ttsCoachRef.current?.id ?? 'coach-aiko'; // fallback if not loaded yet
+      {
+        const localUrl = getRepAudioUrl(coachId, rep);
+        if (localUrl) {
+          console.log(`🔊 [RepCount] Playing local audio for rep ${rep}:`, localUrl);
+          try {
+            stopAllTTS();
+            isTtsSpeakingRef.current = true;
+            return new Promise<void>((resolve) => {
+              const audio = new Audio(localUrl);
+              ttsAudioRef.current = audio;
+              audio.playbackRate = ttsSpeedRef.current || 1.0;
+              audio.onended = () => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; resolve(); };
+              audio.onerror = () => { isTtsSpeakingRef.current = false; resolve(); };
+              audio.play().catch(() => { isTtsSpeakingRef.current = false; resolve(); });
+            });
+          } catch {
+            console.warn('🔊 [RepCount] Local audio failed, falling back to API');
+          }
+        }
+      }
+
+      // Fallback: API call
       await speakTTS(message);
     }
-  }, [speakTTS]);
+  }, [speakTTS, stopAllTTS]);
+
+  // Form feedback audio — throttled to avoid playing every frame
+  useEffect(() => {
+    if (!isKayaWorkout || exerciseCompleted || !kayaAnalysis.isBodyVisible) return;
+    const quality = kayaAnalysis.formQuality;
+    const score = kayaAnalysis.formScore;
+    const now = Date.now();
+    // Don't interrupt rep count or other audio in progress
+    if (isTtsSpeakingRef.current) return;
+    // Throttle: play form audio at most once every 5 seconds
+    if (now - lastFormAudioTimeRef.current < 5000) return;
+    if (quality === 'bad' && score < 50) {
+      lastFormAudioTimeRef.current = now;
+      playCoachAudioRef.current('form_correction');
+    } else if (quality === 'warn' && score < 75) {
+      lastFormAudioTimeRef.current = now;
+      playCoachAudioRef.current('form_check');
+    }
+  }, [isKayaWorkout, exerciseCompleted, kayaAnalysis.isBodyVisible, kayaAnalysis.formQuality, kayaAnalysis.formScore]);
 
   // Show rep counter animation when rep increases (only up to target)
   useEffect(() => {
@@ -629,9 +889,15 @@ export default function WorkoutUI() {
       setDisplayRep(kayaAnalysis.reps);
       setShowRepCounter(true);
       
-      // Speak rep count (only 1,5,9,10)
+      // Speak rep count for milestones (1,5,9,10); halfway once; others get encouragement
+      const halfwayThreshold = Math.floor(targetReps / 2) + 1; // first rep > 50%
       if (REP_MESSAGES[kayaAnalysis.reps]) {
         speakRepCount(kayaAnalysis.reps);
+      } else if (kayaAnalysis.reps === halfwayThreshold && !halfwayPlayedRef.current) {
+        halfwayPlayedRef.current = true;
+        playCoachAudioRef.current('halfway');
+      } else if (kayaAnalysis.reps < targetReps && !isTtsSpeakingRef.current) {
+        playCoachAudioRef.current('good_job');
       }
       
       // Hide after animation
@@ -644,10 +910,17 @@ export default function WorkoutUI() {
     }
   }, [isKayaWorkout, kayaAnalysis.reps, kayaAnalysis.formScore, currentExercise, exercises, speakRepCount]);
 
-  // Reset lastRepRef and lastSpokenRepRef when exercise changes
+  // Reset rep refs and halfway flag when exercise changes
   useEffect(() => {
     lastRepRef.current = 0;
     lastSpokenRepRef.current = 0;
+    halfwayPlayedRef.current = false;
+    timeMilestone30Ref.current = false;
+    timeMilestone15Ref.current = false;
+    lastTempoAudioTimeRef.current = 0;
+    lastTempoQualityRef.current = '';
+    lastMotionAudioTimeRef.current = 0;
+    lastVisibilityAudioTimeRef.current = 0;
   }, [currentExercise]);
 
   // Capture screenshot for voice interaction
@@ -913,6 +1186,8 @@ export default function WorkoutUI() {
             message: transcript,
             imageBase64: screenshot,
             userContext,
+            coachId: ttsCoachId,
+            customCoach: customCoachForLLM || undefined,
           }),
         });
         
@@ -969,6 +1244,41 @@ export default function WorkoutUI() {
   // Speak exercise instruction when exercise changes
   const speakExerciseInstruction = useCallback(async (exercise: WorkoutExercise) => {
     if (!exercise) return;
+
+    // Skip if TTS disabled
+    if (!ttsEnabledRef.current) {
+      console.log('🔇 [TTS] Exercise instruction skipped: TTS disabled');
+      return;
+    }
+
+    // Stop any currently playing audio (WorkoutUI + AICoachPopup) before speaking
+    stopAllTTS();
+
+    // Try local pre-recorded exercise-start audio first (avoids API call)
+    const coachId = ttsCoachRef.current?.id ?? 'coach-aiko'; // fallback if not loaded yet
+    if (exercise.kayaExercise) {
+      const localUrl = getExerciseStartAudioUrl(coachId, exercise.kayaExercise);
+      if (localUrl) {
+        console.log(`🔊 [ExerciseInstruction] Playing local audio for ${exercise.kayaExercise}:`, localUrl);
+        try {
+          return new Promise<void>((resolve) => {
+            const audio = new Audio(localUrl);
+            ttsAudioRef.current = audio;
+            audio.playbackRate = ttsSpeedRef.current || 1.0;
+            audio.onended = () => {
+              ttsAudioRef.current = null;
+              resolve();
+            };
+            audio.onerror = () => resolve();
+            audio.play().then(() => {
+              console.log('🔊 [ExerciseInstruction] Local audio playing at speed:', audio.playbackRate);
+            }).catch(() => resolve());
+          });
+        } catch {
+          console.warn('🔊 [ExerciseInstruction] Local audio failed, falling back to API');
+        }
+      }
+    }
     
     // Build instruction text - shortened for faster TTS
     const instruction = `ท่า${exercise.nameTh || exercise.name}`;
@@ -980,16 +1290,25 @@ export default function WorkoutUI() {
     };
     
     try {
+      // Use refs for current coach/speaker (avoid stale closure)
+      const currentCoach = ttsCoachRef.current;
+      const currentSpeaker = currentCoach?.voiceId || ttsSpeakerRef.current || '26';
+
+      console.log('🔊 [ExerciseInstruction] Botnoi speaker:', currentSpeaker, '| coach:', currentCoach?.name || 'none');
+
+      // Call Botnoi TTS API (12s timeout — fallback to Web Speech if slow)
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000);
       const response = await fetch('/api/aift/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: instruction, speaker: 'nana' }),
+        body: JSON.stringify({ text: instruction, speaker: currentSpeaker }),
+        signal: controller.signal,
       });
-      
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ [TTS Exercise] API error:', response.status, errorText);
+      clearTimeout(timeout);
+
+      if (!response || !response.ok) {
+        console.error('🔊 [ExerciseInstruction] Botnoi API error:', response?.status);
         fallbackToWebSpeech();
         return;
       }
@@ -1012,15 +1331,14 @@ export default function WorkoutUI() {
       const audioBlob = new Blob([audioArray], { type: 'audio/wav' });
       const audioUrl = URL.createObjectURL(audioBlob);
       
-      
-      // Stop previous audio if playing
-      if (ttsAudioRef.current) {
-        ttsAudioRef.current.pause();
-        ttsAudioRef.current = null;
-      }
+      // Stop any previous audio before playing new one
+      stopAllTTS();
       
       const audio = new Audio(audioUrl);
       ttsAudioRef.current = audio;
+      
+      // Apply speed setting from user preferences
+      audio.playbackRate = ttsSpeedRef.current || 1.0;
       
       audio.oncanplaythrough = () => {
       };
@@ -1031,6 +1349,7 @@ export default function WorkoutUI() {
       };
       
       audio.play().then(() => {
+        console.log('TTS: Audio playing at speed:', audio.playbackRate);
       }).catch((err) => {
         console.error('❌ [TTS Exercise] Play error:', err);
         fallbackToWebSpeech();
@@ -1045,45 +1364,99 @@ export default function WorkoutUI() {
       console.error('❌ [TTS Exercise] Exception:', error);
       fallbackToWebSpeech();
     }
-  }, [speakWithWebSpeech]);
+  }, [speakWithWebSpeech, stopAllTTS]);
+
+  // Fallback: Use Web Speech API when TTS API fails
+  const speakWithWebSpeechFallback = useCallback((text: string): Promise<void> => {
+    return new Promise((resolve) => {
+      if (typeof window === 'undefined' || !window.speechSynthesis) {
+        resolve();
+        return;
+      }
+      
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'th-TH';
+      utterance.rate = 1.0;
+      
+      utterance.onend = () => resolve();
+      utterance.onerror = () => resolve();
+      
+      window.speechSynthesis.speak(utterance);
+    });
+  }, []);
 
   // Speak coach introduction
   const speakCoachIntroduction = useCallback(async () => {
-    const userName = userProfile?.nickname || userProfile?.displayName || '';
-    // Shortened intro text to reduce API timeout
-    const introText = userName ? `สวัสดีครับคุณ${userName} เริ่มออกกำลังกายกันเลย!` : 'สวัสดีครับ เริ่มออกกำลังกายกันเลย!';
-    
-    
+    // Skip if TTS disabled
+    if (!ttsEnabledRef.current) {
+      console.log('🔇 [TTS] Coach intro skipped: TTS disabled');
+      // Still speak the first exercise instruction (it will also check ttsEnabled)
+      const exercise = exercises[0];
+      if (exercise) setTimeout(() => speakExerciseInstruction(exercise), 500);
+      return;
+    }
+
+    // Helper function to speak first exercise after intro
     const speakFirstExercise = () => {
       const exercise = exercises[0];
       if (exercise) {
-        setTimeout(() => {
-          speakExerciseInstruction(exercise);
-        }, 500);
+        setTimeout(() => speakExerciseInstruction(exercise), 500);
       }
     };
+
+    // Try local greeting audio first — play welcome → greeting → together → first exercise
+    const coachId = ttsCoachRef.current?.id ?? 'coach-aiko'; // fallback if not loaded yet
+    const localGreetingUrl = getGreetingAudioUrl(coachId);
+    if (localGreetingUrl) {
+      console.log('🔊 [CoachIntro] Playing welcome → greeting → together sequence');
+      // Chain: welcome (57) → greeting (42) → together (16) → first exercise
+      playCoachAudioRef.current('welcome', () => {
+        playCoachAudioRef.current('greeting', () => {
+          playCoachAudioRef.current('together', () => {
+            speakFirstExercise();
+          });
+        });
+      });
+      return;
+    }
+
+    // Fallback: Build dynamic intro and call API
+    const currentCoach = ttsCoachRef.current;
+    const speakerFromSettings = ttsSpeakerRef.current;
+    const userName = userProfile?.nickname || userProfile?.displayName || 'คุณ';
+    const coachName = currentCoach?.nameTh || 'น้องกาย';
+    const introText = `สวัสดีครับ ผมชื่อ${coachName} วันนี้จะมาเป็นโค้ชให้คุณ${userName}นะครับ พร้อมออกกำลังกายไปด้วยกันไหมครับ เริ่มกันเลย!`;
     
     try {
+      const currentSpeaker = currentCoach?.voiceId || speakerFromSettings || '26';
+      
+      console.log('🔊 [CoachIntro] Botnoi speaker:', currentSpeaker, '| coach:', currentCoach?.name || 'none');
+
+      // Call Botnoi TTS API (12s timeout — fallback to Web Speech if slow)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
       const response = await fetch('/api/aift/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: introText, speaker: 'nana' }),
+        body: JSON.stringify({ text: introText, speaker: currentSpeaker }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
       
-      
-      if (!response.ok) {
-        console.error('❌ [TTS Coach] API error:', response.status);
-        // Fallback to Web Speech API
-        speakWithWebSpeech(introText, speakFirstExercise);
+      if (!response || !response.ok) {
+        console.warn('🔊 [CoachIntro] Botnoi API error:', response?.status, '- using Web Speech fallback');
+        await speakWithWebSpeechFallback(introText);
+        speakFirstExercise();
         return;
       }
       
       const result = await response.json();
       
       if (!result.audio_base64) {
-        console.error('❌ [TTS Coach] No audio_base64 in response');
-        // Fallback to Web Speech API
-        speakWithWebSpeech(introText, speakFirstExercise);
+        console.warn('TTS Coach Intro: No audio_base64 - using fallback');
+        await speakWithWebSpeechFallback(introText);
+        speakFirstExercise();
         return;
       }
       
@@ -1095,33 +1468,35 @@ export default function WorkoutUI() {
       const audioBlob = new Blob([audioArray], { type: 'audio/wav' });
       const audioUrl = URL.createObjectURL(audioBlob);
       
-      
-      if (ttsAudioRef.current) {
-        ttsAudioRef.current.pause();
-        ttsAudioRef.current = null;
-      }
+      stopAllTTS();
       
       const audio = new Audio(audioUrl);
       ttsAudioRef.current = audio;
       
+      // Apply speed setting from user preferences
+      audio.playbackRate = ttsSpeedRef.current || 1.0;
+      
       audio.play().then(() => {
-      }).catch((err) => {
-        console.error('❌ [TTS Coach] Audio play failed:', err);
-        // Fallback to Web Speech API if audio play fails
-        speakWithWebSpeech(introText, speakFirstExercise);
-      });
+        console.log('TTS Coach Intro: Playing at speed:', audio.playbackRate);
+      }).catch(console.error);
       
       audio.onended = () => {
         URL.revokeObjectURL(audioUrl);
         ttsAudioRef.current = null;
         speakFirstExercise();
       };
-    } catch (error) {
-      console.error('❌ [TTS Coach] Exception:', error);
-      // Fallback to Web Speech API
-      speakWithWebSpeech(introText, speakFirstExercise);
+    } catch (error: unknown) {
+      const err = error as Error;
+      if (err.name === 'AbortError') {
+        console.warn('TTS Coach Intro timeout - using fallback');
+      } else {
+        console.error('TTS Coach Intro error:', err);
+      }
+      // Use Web Speech API as fallback
+      await speakWithWebSpeechFallback(introText);
+      speakFirstExercise();
     }
-  }, [userProfile, exercises, speakExerciseInstruction, speakWithWebSpeech]);
+  }, [userProfile, exercises, speakExerciseInstruction, speakWithWebSpeechFallback, stopAllTTS]);
 
   // Speak coach introduction when workout starts
   useEffect(() => {
@@ -1130,9 +1505,21 @@ export default function WorkoutUI() {
     
     coachIntroSpokenRef.current = true;
     
-    // Speak introduction first
-    const timeout = setTimeout(() => {
+    // Wait for TTS settings to load before speaking intro
+    // This prevents race condition where coach speaker ref is still default
+    const waitAndSpeak = async () => {
+      // Wait up to 3 seconds for settings to load
+      let waited = 0;
+      while (!ttsSettingsLoadedRef.current && waited < 3000) {
+        await new Promise(r => setTimeout(r, 100));
+        waited += 100;
+      }
+      console.log('🔊 [CoachIntro] Settings loaded after', waited, 'ms, speaker:', ttsCoachRef.current?.voiceId || ttsSpeakerRef.current);
       speakCoachIntroduction();
+    };
+    
+    const timeout = setTimeout(() => {
+      waitAndSpeak();
     }, 500);
     
     return () => clearTimeout(timeout);
@@ -1183,38 +1570,53 @@ export default function WorkoutUI() {
     if (targetReps > 0 && kayaAnalysis.reps >= targetReps) {
       setExerciseCompleted(true);
       saveCurrentExerciseResult();
-      
-      // Go directly to next exercise after short delay
+
+      // ✅ Short pause then speak set_complete → amazing → change_exercise → advance
       const timeout = setTimeout(() => {
-        if (currentExercise < exercises.length - 1) {
-          // Reset for next exercise
-          kayaAnalysis.nextExercise();
-          setCurrentExercise((prev) => prev + 1);
-          setExerciseCompleted(false);
-          lastRepRef.current = 0;
-          // Reset spoken ref to trigger TTS for new exercise
-          lastSpokenExerciseRef.current = -1;
-        } else {
-          finishWorkout();
-        }
-      }, 1500);
+        playCoachAudioRef.current('set_complete', () => {
+          playCoachAudioRef.current('amazing', () => {
+            if (currentExercise < exercises.length - 1) {
+              // If transitioning to the LAST exercise, announce "almost done" first
+              const isLastExercise = currentExercise === exercises.length - 2;
+              const doChangeExercise = () => {
+                playCoachAudioRef.current('change_exercise', () => {
+                  kayaAnalysis.nextExercise();
+                  setCurrentExercise((prev) => prev + 1);
+                  setExerciseCompleted(false);
+                  lastRepRef.current = 0;
+                  lastSpokenExerciseRef.current = -1;
+                });
+              };
+              if (isLastExercise) {
+                playCoachAudioRef.current('session_almost_done', doChangeExercise);
+              } else {
+                doChangeExercise();
+              }
+            } else {
+              finishWorkout();
+            }
+          });
+        });
+      }, 300); // Short delay so MediaPipe settles before audio plays
       return () => clearTimeout(timeout);
     }
   }, [isKayaWorkout, kayaAnalysis.reps, currentExercise, exercises, exerciseCompleted, showRestScreen, saveCurrentExerciseResult, kayaAnalysis, finishWorkout]);
 
   const handleNext = useCallback(() => {
+    stopAllTTS(); // ✂️ Cut all current audio immediately before speaking next exercise
     saveCurrentExerciseResult();
     if (currentExercise < exercises.length - 1) {
       if (isKayaWorkout) {
         kayaAnalysis.nextExercise();
       }
+      lastSpokenExerciseRef.current = -1; // ensure next exercise TTS fires
       setCurrentExercise((prev) => prev + 1);
       const nextExercise = exercises[currentExercise + 1];
       setTimeLeft(nextExercise.duration || 0);
     } else {
       finishWorkout();
     }
-  }, [currentExercise, exercises, isKayaWorkout, kayaAnalysis, saveCurrentExerciseResult, finishWorkout]);
+  }, [currentExercise, exercises, isKayaWorkout, kayaAnalysis, saveCurrentExerciseResult, finishWorkout, stopAllTTS]);
 
   const handlePrevious = useCallback(() => {
     if (currentExercise > 0) {
@@ -1512,6 +1914,10 @@ export default function WorkoutUI() {
         {isKayaWorkout && (
           <AICoachPopup
             currentMessage={kayaAnalysis.coachMessage}
+            coachId={ttsCoachId}
+            speaker={ttsCoach?.voiceId || ttsSpeaker}
+            ttsEnabled={ttsEnabled}
+            ttsSpeed={ttsSpeed}
           />
         )}
 

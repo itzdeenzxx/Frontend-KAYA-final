@@ -2,6 +2,8 @@ import { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWhackAMoleMediaPipe } from '@/hooks/useWhackAMoleMediaPipe';
 import { useGameScores } from '@/hooks/useGameScores';
+import { useAuth } from '@/contexts/AuthContext';
+import { addGameToDailyStats } from '@/lib/firestore';
 import { GameBoard } from './GameBoard';
 import { cn } from '@/lib/utils';
 import { 
@@ -56,6 +58,7 @@ export function WhackAMoleGame() {
   const navigate = useNavigate();
   const { videoRef, canvasRef, leftHand, rightHand, isLoading, error } = useWhackAMoleMediaPipe();
   const { submitScore, personalBest, loadPersonalBest } = useGameScores();
+  const { lineProfile } = useAuth();
   
   const [screen, setScreen] = useState<GameScreen>('MENU');
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
@@ -68,6 +71,8 @@ export function WhackAMoleGame() {
   const [customMoleImage, setCustomMoleImage] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isNewRecord, setIsNewRecord] = useState(false);
+  
+  const statsSavedRef = useRef(false); // Prevent double saving stats
   
   // Track game stats
   const gameStatsRef = useRef({
@@ -112,6 +117,7 @@ export function WhackAMoleGame() {
     setTimeLeft(GAME_DURATION);
     setScreen('PLAYING');
     setIsNewRecord(false);
+    statsSavedRef.current = false; // Reset stats saved flag
     gameStatsRef.current = {
       molesHit: 0,
       bombsHit: 0,
@@ -153,8 +159,24 @@ export function WhackAMoleGame() {
       if (result.isNewPersonalBest) {
         setIsNewRecord(true);
       }
+      
+      // Save to daily stats (calories, workout time, points, streak)
+      if (lineProfile?.userId && !statsSavedRef.current) {
+        statsSavedRef.current = true;
+        try {
+          await addGameToDailyStats(
+            lineProfile.userId,
+            'whackAMole',
+            GAME_DURATION,
+            score
+          );
+          console.log('Whack-a-Mole stats saved!', { duration: GAME_DURATION, score });
+        } catch (error) {
+          console.error('Error saving game stats:', error);
+        }
+      }
     }
-  }, [score, highScore, difficulty, submitScore]);
+  }, [score, highScore, difficulty, submitScore, lineProfile?.userId]);
 
   // Handle mole hit - track stats
   const handleMoleHit = useCallback(() => {

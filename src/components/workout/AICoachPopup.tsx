@@ -1,6 +1,6 @@
 // AI Coach Popup Component
 // Shows coaching messages as popup in top-right corner with TTS support
-// Using VAJA TTS API (AI for Thai) with queue system
+// Using Botnoi TTS API with queue system
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Volume2, VolumeX, MessageCircle, Sparkles } from 'lucide-react';
@@ -13,6 +13,7 @@ import {
   getRandomMessage,
   ExerciseType,
 } from '@/lib/exerciseConfig';
+import { getLocalAudioForEvent, playLocalAudio } from '@/lib/coachAudio';
 
 // Coach message interface
 export interface CoachMessage {
@@ -28,19 +29,47 @@ interface AICoachPopupProps {
   isMuted?: boolean;
   onMuteToggle?: () => void;
   className?: string;
+  coachId?: string;   // Coach ID for local audio lookup
+  speaker?: string;   // Botnoi speaker voice ID (fallback)
+  ttsEnabled?: boolean;
+  ttsSpeed?: number;
+}
+
+// Queue item: either local audio URL or text for API
+interface QueueItem {
+  text: string;
+  localUrl?: string; // If set, play this instead of calling API
 }
 
 // TTS State
 interface TTSState {
   isSpeaking: boolean;
-  queue: string[];
+  queue: QueueItem[];
   currentAudio: HTMLAudioElement | null;
+  speaker: string;
+  coachId: string;
+  ttsSpeed: number;
 }
+
+/**
+ * Event types that should ONLY show as popup — NO TTS.
+ * These are already spoken by WorkoutUI (local audio or Botnoi API),
+ * so AICoachPopup must not speak them to avoid duplicate/overlapping speech.
+ */
+const POPUP_ONLY_TYPES = new Set<CoachEventType>([
+  'rep_completed',      // WorkoutUI speakRepCount handles reps 1,5,9,10
+  'rep_counted_audio',  // same
+  'exercise_start',     // WorkoutUI speakExerciseInstruction handles this
+  'session_start',      // WorkoutUI speakCoachIntroduction handles this
+]);
 
 const ttsState: TTSState = {
   isSpeaking: false,
   queue: [],
   currentAudio: null,
+  speaker: '26',
+  coachId: 'coach-aiko',
+  ttsSpeed: 1.0,
 };
 
 /**
@@ -50,6 +79,7 @@ function playAudio(base64Audio: string): Promise<void> {
   return new Promise((resolve) => {
     const audio = new Audio('data:audio/wav;base64,' + base64Audio);
     ttsState.currentAudio = audio;
+    audio.playbackRate = ttsState.ttsSpeed || 1.0;
     
     // Timeout 10 seconds to prevent hanging
     const timeout = setTimeout(() => {
@@ -88,40 +118,93 @@ async function processQueue(): Promise<void> {
     return;
   }
   
-  const text = ttsState.queue.shift();
-  if (!text) return;
+  const item = ttsState.queue.shift();
+  if (!item) return;
+  
+  if (!item.text) return;
   
   ttsState.isSpeaking = true;
-  console.log(`🔊 Speaking: "${text}"`);
+
+  // ── Path A: Play local pre-recorded audio ────────────────────────────
+  if (item.localUrl) {
+    console.log(`🔊 [CoachPopup] Playing LOCAL audio: "${item.localUrl}"`);
+    try {
+      const audio = new Audio(item.localUrl);
+      ttsState.currentAudio = audio;
+      audio.playbackRate = ttsState.ttsSpeed || 1.0;
+      
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(() => {
+          console.warn('⚠️ Local audio playback timeout');
+          ttsState.currentAudio = null;
+          resolve();
+        }, 10000);
+        
+        audio.onended = () => { clearTimeout(timeout); ttsState.currentAudio = null; resolve(); };
+        audio.onerror = () => { clearTimeout(timeout); ttsState.currentAudio = null; resolve(); };
+        audio.play().catch(() => { clearTimeout(timeout); ttsState.currentAudio = null; resolve(); });
+      });
+    } catch (e) {
+      console.warn('🔊 [CoachPopup] Local audio failed, falling back to API:', e);
+      // Fall through to API below
+      await processQueueItemAPI(item.text);
+    }
+    ttsState.isSpeaking = false;
+    setTimeout(() => processQueue(), 100);
+    return;
+  }
+
+  // ── Path B: Call Botnoi TTS API ──────────────────────────────────────
+  await processQueueItemAPI(item.text);
+  ttsState.isSpeaking = false;
+  setTimeout(() => processQueue(), 100);
+}
+
+/**
+ * Call Botnoi TTS API and play the result (fallback path)
+ */
+async function processQueueItemAPI(text: string): Promise<void> {
+  console.log(`🔊 [CoachPopup] Botnoi speaking: "${text}" | speaker: ${ttsState.speaker}`);
   
   try {
-    const response = await fetch('/api/aift/tts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        text: text,
-        speaker: 'nana'  // เสียงผู้หญิง ชัดเจน
-      })
-    });
-    
-    const result = await response.json();
-    
-    if (result.success && result.audio_base64) {
-      await playAudio(result.audio_base64);
+    let audioBase64: string | null = null;
+
+    // Call Botnoi TTS API
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      const botnoiRes = await fetch('/api/aift/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, speaker: ttsState.speaker }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (botnoiRes.ok) {
+        const result = await botnoiRes.json();
+        if (result.success && result.audio_base64) {
+          audioBase64 = result.audio_base64;
+          console.log('🔊 [CoachPopup] Botnoi TTS success');
+        }
+      } else {
+        console.warn(`🔊 [CoachPopup] Botnoi TTS failed: ${botnoiRes.status}`);
+      }
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? (e.name === 'AbortError' ? 'timeout' : e.message) : 'unknown';
+      console.warn('🔊 [CoachPopup] Botnoi TTS error:', errMsg);
+    }
+
+    // Play audio if we got it, otherwise use Web Speech
+    if (audioBase64) {
+      await playAudio(audioBase64);
     } else {
-      console.warn('TTS API returned no audio:', result);
-      // Fallback to Web Speech API
+      console.warn('🔊 [CoachPopup] Botnoi TTS failed, using Web Speech fallback');
       await speakWithWebSpeech(text);
     }
     
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('TTS Error:', error);
-    // Fallback to Web Speech API
     await speakWithWebSpeech(text);
-  } finally {
-    ttsState.isSpeaking = false;
-    // Process next message in queue with small delay
-    setTimeout(() => processQueue(), 100);
   }
 }
 
@@ -150,9 +233,20 @@ function speakWithWebSpeech(text: string): Promise<void> {
 /**
  * Add text to TTS queue
  */
-function speakText(text: string): void {
+function speakText(text: string, speaker?: string, eventType?: CoachEventType): void {
+  // Update speaker if provided
+  if (speaker) {
+    ttsState.speaker = speaker;
+  }
+
+  // Skip TTS for event types handled by WorkoutUI (avoid duplicate speech)
+  if (eventType && POPUP_ONLY_TYPES.has(eventType)) {
+    console.log(`🔇 [CoachPopup] Popup-only: skip TTS for "${eventType}"`);
+    return;
+  }
+  
   // Don't add duplicates
-  if (ttsState.queue.includes(text)) {
+  if (ttsState.queue.some(item => item.text === text)) {
     return;
   }
   
@@ -161,12 +255,35 @@ function speakText(text: string): void {
     ttsState.queue.shift(); // Remove oldest
   }
   
-  ttsState.queue.push(text);
+  // Try to resolve local audio for this event type
+  let localUrl: string | undefined;
+  if (eventType) {
+    const local = getLocalAudioForEvent(ttsState.coachId, eventType);
+    if (local) {
+      localUrl = local.url;
+      console.log(`🔊 [CoachPopup] Resolved local audio: ${local.category} → ${local.url}`);
+    }
+  }
+  
+  ttsState.queue.push({ text, localUrl });
   processQueue();
 }
 
 /**
- * Clear TTS queue and stop current audio
+ * Clear TTS queue and stop current audio.
+ * Called by WorkoutUI before it starts speaking (exercise instruction, rep count, etc.)
+ */
+export function stopCoachPopupAudio(): void {
+  ttsState.queue = [];
+  if (ttsState.currentAudio) {
+    ttsState.currentAudio.pause();
+    ttsState.currentAudio = null;
+  }
+  ttsState.isSpeaking = false;
+}
+
+/**
+ * Clear TTS queue and stop current audio.
  */
 function clearTTSQueue(): void {
   ttsState.queue = [];
@@ -182,11 +299,29 @@ export function AICoachPopup({
   isMuted = false,
   onMuteToggle,
   className = '',
+  coachId = 'coach-aiko',
+  speaker = '26',
+  ttsEnabled = true,
+  ttsSpeed = 1.0,
 }: AICoachPopupProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [displayedMessage, setDisplayedMessage] = useState<CoachMessage | null>(null);
   const lastMessageIdRef = useRef<string>('');
   const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Reset TTS queue on mount (new workout session)
+  useEffect(() => {
+    stopCoachPopupAudio();
+    return () => stopCoachPopupAudio(); // cleanup on unmount
+  }, []);
+
+  // Update TTS state from props
+  useEffect(() => {
+    ttsState.speaker = speaker;
+    ttsState.coachId = coachId;
+    ttsState.ttsSpeed = ttsSpeed;
+    console.log('🔊 [CoachPopup] TTS settings updated:', { coachId, speaker, ttsEnabled, ttsSpeed });
+  }, [coachId, speaker, ttsSpeed]);
 
   // Handle new messages
   useEffect(() => {
@@ -198,9 +333,11 @@ export function AICoachPopup({
     setDisplayedMessage(currentMessage);
     setIsVisible(true);
 
-    // Speak the message if not muted
-    if (!isMuted) {
-      speakText(currentMessage.text);
+    // Speak the message if not muted AND TTS is enabled in settings
+    if (!isMuted && ttsEnabled) {
+      speakText(currentMessage.text, speaker, currentMessage.type);
+    } else if (!ttsEnabled) {
+      console.log('🔇 [CoachPopup] TTS disabled in settings, not speaking');
     }
 
     // Clear previous timeout

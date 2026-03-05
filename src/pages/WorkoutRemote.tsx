@@ -30,6 +30,8 @@ import {
   TTSState,
 } from '@/lib/session';
 import { useAuth } from '@/contexts/AuthContext';
+import { getUserSettings, DEFAULT_TTS_SETTINGS } from '@/lib/firestore';
+import { getCoachById, Coach, migrateSpeakerId, migrateCoachId } from '@/lib/coachConfig';
 
 // Voice status type
 type VoiceStatus = "idle" | "recording" | "processing" | "thinking" | "speaking";
@@ -66,6 +68,50 @@ export default function WorkoutRemote() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioStreamRef = useRef<MediaStream | null>(null);
   const pcmDataRef = useRef<Float32Array[]>([]);
+  
+  // TTS speaker setting
+  const [ttsSpeaker, setTtsSpeaker] = useState(DEFAULT_TTS_SETTINGS.speaker);
+  const [ttsCoach, setTtsCoach] = useState<Coach | null>(null);
+  const [ttsCoachId, setTtsCoachId] = useState<string>('coach-aiko');
+  const [customCoachForLLM, setCustomCoachForLLM] = useState<{ name: string; personality: string; gender: 'male' | 'female' } | null>(null);
+  
+  // Load TTS speaker setting from user preferences
+  useEffect(() => {
+    const loadTTSSettings = async () => {
+      if (userProfile?.lineUserId) {
+        try {
+          const settings = await getUserSettings(userProfile.lineUserId);
+          if (settings?.tts?.speaker) {
+            setTtsSpeaker(migrateSpeakerId(settings.tts.speaker));
+          }
+          if (settings?.selectedCoachId) {
+            const validCoachId = migrateCoachId(settings.selectedCoachId);
+            setTtsCoachId(validCoachId);
+            
+            if (validCoachId === 'coach-custom') {
+              const { getCustomCoach } = await import('@/lib/firestore');
+              const { buildCoachFromCustom } = await import('@/lib/coachConfig');
+              const custom = await getCustomCoach(userProfile.lineUserId);
+              if (custom) {
+                setTtsCoach(buildCoachFromCustom(custom));
+                setCustomCoachForLLM({
+                  name: custom.name,
+                  personality: custom.personality,
+                  gender: custom.gender,
+                });
+              }
+            } else {
+              const coach = getCoachById(validCoachId);
+              if (coach) setTtsCoach(coach);
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to load TTS settings:', err);
+        }
+      }
+    };
+    loadTTSSettings();
+  }, [userProfile?.lineUserId]);
 
   // Subscribe to session updates
   useEffect(() => {
@@ -171,12 +217,18 @@ export default function WorkoutRemote() {
     try {
       setVoiceStatus("speaking");
       
-      console.log('Calling TTS API...');
+      console.log('Calling Botnoi TTS API...');
+      // Use Botnoi TTS with coach voice
+      const botnoiSpeaker = ttsCoach?.voiceId || ttsSpeaker || '26';
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000);
       const response = await fetch('/api/aift/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, speaker: 'nana' }),
+        body: JSON.stringify({ text, speaker: botnoiSpeaker }),
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
       
       console.log('TTS API response status:', response.status);
       
@@ -461,6 +513,8 @@ export default function WorkoutRemote() {
         body: JSON.stringify({
           message: transcript,
           userContext,
+          coachId: ttsCoachId,
+          customCoach: customCoachForLLM || undefined,
         }),
       });
       

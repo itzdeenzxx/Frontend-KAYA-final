@@ -51,7 +51,7 @@ const workoutStyles: WorkoutStyle[] = [
   },
   {
     id: 'kaya-intermediate',
-    name: 'KAYA ระดับกลาง',
+    name: 'KAYA Intermediate',
     nameEn: 'KAYA Intermediate',
     description: 'สควอตยกแขน วิดพื้น ลันจ์อยู่กับที่ ฝึกกล้ามเนื้อรอบด้าน',
     icon: <Brain className="w-8 h-8" />,

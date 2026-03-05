@@ -189,16 +189,16 @@ export const EXERCISES: Record<ExerciseType, ExerciseDefinition> = {
     id: 'jump_squat',
     name: 'Jump Squat',
     nameTh: 'กระโดดสควอต',
-    description: 'Jump squat with explosive power. Knee < 130° + detect airborne phase.',
-    descriptionTh: 'กระโดดพร้อมทำสควอต ตรวจจับช่วงลอยตัว ฝึกพลังระเบิด',
+    description: 'Squat and optional jump. Knee < 160° squat, > 155° stand. Jump is optional — standing back up also counts.',
+    descriptionTh: 'ย่อเข่าลงแล้วลุกขึ้น หรือจะกระโดดด้วยก็ได้ แค่ย่อเข่าแล้วลุกก็นับ 1 ครั้งแล้ว',
     icon: 'jump-squat',
     camera: 'side',
     stages: ['squat', 'jump', 'down'],
     thresholds: {
-      knee_squat_angle: 150,    // knee angle < 150° (ง่ายมากมากมาก - แค่ย่อเข่าเบาๆ)
-      knee_standing_angle: 160, // knee angle > 160°
-      jump_height_ratio: 0.01,  // vertical movement (ง่ายมาก)
-      land_threshold: 0.008,    // landing detection threshold (ง่ายขึ้น)
+      knee_squat_angle: 160,    // knee angle < 160° (ง่ายมาก - ย่อเข่าเบาๆ ก็นับ)
+      knee_standing_angle: 165, // knee angle > 165° = standing
+      jump_height_ratio: 0.008, // vertical movement for jump detection
+      land_threshold: 0.005,    // landing detection threshold
     }
   },
 

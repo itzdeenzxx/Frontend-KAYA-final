@@ -7,6 +7,13 @@ declare const process: {
 interface ChatRequest {
   message: string;
   imageBase64?: string;
+  coachId?: string;
+  // Custom coach data (sent from frontend when coachId === 'coach-custom')
+  customCoach?: {
+    name: string;
+    personality: string;
+    gender: 'male' | 'female';
+  };
   userContext?: {
     name: string;
     weight?: number;
@@ -23,6 +30,30 @@ interface ChatRequest {
   };
 }
 
+// Coach configurations - must match frontend coachConfig.ts
+const COACH_CONFIGS: Record<string, { name: string; nameTh: string; systemPrompt: string }> = {
+  'coach-aiko': {
+    name: 'Aiko',
+    nameTh: 'ไอโกะ',
+    systemPrompt: `คุณชื่อ"ไอโกะ" โค้ชสาวร่าเริงน่ารัก พูดสั้นกระชับ ให้กำลังใจด้วยคำพูดบวกๆ ตอบไม่เกิน 2 ประโยค`
+  },
+  'coach-nadia': {
+    name: 'Nadia',
+    nameTh: 'นาเดียร์',
+    systemPrompt: `คุณชื่อ"นาเดียร์" โค้ชสาวจริงจังเข้มงวด พูดตรงประเด็น กระตุ้นให้ทำได้มากขึ้น ตอบไม่เกิน 2 ประโยค`
+  },
+  'coach-nattakan': {
+    name: 'Nattakan',
+    nameTh: 'ณัฐกานต์',
+    systemPrompt: `คุณชื่อ"ณัฐกานต์" โค้ชหนุ่มขี้เล่นสนุกสนาน พูดเป็นกันเอง ให้กำลังใจแบบเพื่อน ตอบไม่เกิน 2 ประโยค`
+  },
+  'coach-bread': {
+    name: 'Mr.Bread',
+    nameTh: 'นายเบรด',
+    systemPrompt: `คุณชื่อ"นายเบรด" โค้ชหนุ่มห้าวหาญแข็งแกร่ง พูดปลุกพลังตรงๆ ไม่ยอมให้ท้อ ตอบไม่เกิน 2 ประโยค`
+  }
+};
+
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method Not Allowed' }), {
@@ -32,9 +63,9 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   // Get API key from environment
-  const apiKey = process.env.GOOGLE_API_KEY;
+  const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'Server misconfigured: missing GOOGLE_API_KEY' }), {
+    return new Response(JSON.stringify({ error: 'Server misconfigured: missing OPENROUTER_API_KEY' }), {
       status: 500,
       headers: { 'content-type': 'application/json' },
     });
@@ -50,13 +81,34 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
-  const { message, imageBase64, userContext } = body;
+  const { message, imageBase64, userContext, coachId, customCoach } = body;
 
   if (!message?.trim()) {
     return new Response(JSON.stringify({ error: 'Missing message' }), {
       status: 400,
       headers: { 'content-type': 'application/json' },
     });
+  }
+
+  // Get coach configuration - support custom coach
+  let coach: { name: string; nameTh: string; systemPrompt: string };
+  
+  if (coachId === 'coach-custom' && customCoach?.name) {
+    // Build dynamic system prompt from user's custom coach personality
+    const personality = customCoach.personality || 'เป็นกันเอง ให้กำลังใจ';
+    const suffix = customCoach.gender === 'female' ? 'ค่ะ' : 'ครับ';
+    coach = {
+      name: customCoach.name,
+      nameTh: customCoach.name,
+      systemPrompt: `คุณชื่อ "${customCoach.name}" เป็นโค้ชออกกำลังกายส่วนตัว
+บุคลิกของคุณ: ${personality}
+ลักษณะการพูด:
+- พูดตามบุคลิกที่กำหนดอย่างเคร่งครัด
+- ใช้คำลงท้าย "${suffix}"
+- ให้กำลังใจและคำแนะนำตามบุคลิกของตัวเอง`,
+    };
+  } else {
+    coach = COACH_CONFIGS[coachId || 'coach-aiko'] || COACH_CONFIGS['coach-aiko'];
   }
 
   // Build system context
@@ -88,16 +140,17 @@ export default async function handler(req: Request): Promise<Response> {
   
   const nextExStr = nextExercises.length > 0 ? `ท่าถัดไป: ${nextExercises.join(', ')}` : 'นี่คือท่าสุดท้าย';
   
-  const systemPrompt = `คุณชื่อ "น้องกาย" เป็น AI โค้ชออกกำลังกายและดูแลสุขภาพส่วนตัว พูดภาษาไทยเป็นหลัก
+  // Use coach's system prompt and personality
+  const systemPrompt = `${coach.systemPrompt}
 
 กฎสำคัญ:
 - ตอบสั้นๆ กระชับ ไม่เกิน 2-3 ประโยค
 - ไม่ต้องทักทายหรือสวัสดีทุกครั้งที่ตอบ เพราะเราคุยกันอยู่แล้ว
-- ให้มีชื่อ "${userName}" อยู่ใน response เสมอ (เช่น "คุณ${userName}ครับ...")
+- ให้มีชื่อ "${userName}" อยู่ใน response เสมอ (เช่น "คุณ${userName}ครับ/ค่ะ...")
 - ห้ามบอกข้อมูลส่วนตัวของผู้ใช้ออกไปโดยตรง (น้ำหนัก ส่วนสูง อายุ BMI) แต่ให้ใช้ข้อมูลเหล่านี้เพื่อปรับคำแนะนำให้เหมาะสม
 ${toneTip ? `- ${toneTip}` : ''}
 ${bmiTip ? `- ${bmiTip}` : ''}
-- ให้กำลังใจและคำแนะนำที่เป็นประโยชน์ เป็นมิตร
+- ให้กำลังใจและคำแนะนำที่เป็นประโยชน์ ตามบุคลิกของตัวเอง
 - ถ้ามีรูปท่าทางให้วิเคราะห์ฟอร์มและให้คำแนะนำ
 
 สถานะการออกกำลังกายตอนนี้:
@@ -151,54 +204,55 @@ ${bmiTip ? `- ${bmiTip}` : ''}
   const fullPrompt = `${systemPrompt}${contextStr}\n\nคำถามจากผู้ใช้: ${message}`;
 
   try {
-    // Build request body for Gemma-3 via Google GenAI API
-    const requestBody: Record<string, unknown> = {
-      contents: [
-        {
-          parts: [] as Array<Record<string, unknown>>,
-        },
-      ],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 200,
-        topP: 0.8,
-        topK: 40,
-      },
-    };
-
-    const parts = (requestBody.contents as Array<{ parts: Array<Record<string, unknown>> }>)[0].parts;
+    // Build request body for OpenRouter API (OpenAI-compatible)
+    const contentParts: Array<Record<string, unknown>> = [];
 
     // Add image if provided
     if (imageBase64) {
       // Remove data URL prefix if present
       const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-      parts.push({
-        inlineData: {
-          mimeType: 'image/jpeg',
-          data: base64Data,
+      contentParts.push({
+        type: 'image_url',
+        image_url: {
+          url: `data:image/jpeg;base64,${base64Data}`,
         },
       });
     }
 
     // Add text prompt
-    parts.push({ text: fullPrompt });
+    contentParts.push({ type: 'text', text: fullPrompt });
 
-    // Use gemma-3-27b-it model
-    const gemmaUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemma-3-27b-it:generateContent?key=${apiKey}`;
+    const requestBody = {
+      model: 'google/gemma-3n-e4b-it:free',
+      messages: [
+        {
+          role: 'user',
+          content: contentParts,
+        },
+      ],
+      temperature: 0.7,
+      max_tokens: 200,
+      top_p: 0.8,
+    };
 
-    const response = await fetch(gemmaUrl, {
+    const openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
+
+    const response = await fetch(openRouterUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': 'https://kaya-fitness.vercel.app',
+        'X-Title': 'KAYA Fitness',
       },
       body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Gemma API error:', response.status, errorText);
+      console.error('OpenRouter API error:', response.status, errorText);
       return new Response(JSON.stringify({ 
-        error: 'Gemma API error', 
+        error: 'OpenRouter API error', 
         status: response.status,
         details: errorText 
       }), {
@@ -208,15 +262,15 @@ ${bmiTip ? `- ${bmiTip}` : ''}
     }
 
     const result = await response.json() as {
-      candidates?: Array<{
-        content?: {
-          parts?: Array<{ text?: string }>;
+      choices?: Array<{
+        message?: {
+          content?: string;
         };
       }>;
     };
     
     // Extract text from response
-    const responseText = result?.candidates?.[0]?.content?.parts?.[0]?.text || 
+    const responseText = result?.choices?.[0]?.message?.content || 
                          'ขอโทษครับ ผมไม่เข้าใจคำถาม ลองถามใหม่อีกครั้งนะครับ';
 
     return new Response(JSON.stringify({ 
@@ -232,7 +286,7 @@ ${bmiTip ? `- ${bmiTip}` : ''}
 
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-    console.error('Gemma request error:', err);
+    console.error('OpenRouter request error:', err);
     return new Response(JSON.stringify({ 
       error: 'Request failed', 
       details: errorMessage 

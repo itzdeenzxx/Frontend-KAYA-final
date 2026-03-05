@@ -1,7 +1,7 @@
 // Workout Complete Summary Page
 // Shows workout results, calories burned, form score, and shareable card
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -26,6 +26,9 @@ import {
   Zap,
 } from 'lucide-react';
 import type { WorkoutResults } from '@/types/workout';
+import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
+import { addWorkoutToDailyStats, incrementChallengeProgress, updateUserPoints, updateUserStreak } from '@/lib/firestore';
 
 // Calculate calories based on workout intensity and duration
 function calculateCalories(
@@ -114,6 +117,8 @@ export default function WorkoutComplete() {
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
+  const { lineProfile } = useAuth();
 
   // Get workout results from location state or use mock data
   const results: WorkoutResults = location.state?.results || {
@@ -140,6 +145,49 @@ export default function WorkoutComplete() {
       results.averageFormScore
     );
   }
+
+  // Save workout data to Firebase
+  useEffect(() => {
+    const saveWorkoutData = async () => {
+      if (!lineProfile?.userId || isSaved) return;
+      
+      try {
+        // Save to daily stats (calories, workout time, total workouts)
+        await addWorkoutToDailyStats(
+          lineProfile.userId,
+          results.caloriesBurned,
+          results.totalTime
+        );
+        
+        // Update challenges
+        // 1. Increment workout challenge
+        await incrementChallengeProgress(lineProfile.userId, 'workout', 1);
+        
+        // 2. Increment calories challenge
+        await incrementChallengeProgress(lineProfile.userId, 'calories', results.caloriesBurned);
+        
+        // 3. Add points based on total reps completed (1 point per rep)
+        if (results.totalReps > 0) {
+          await updateUserPoints(lineProfile.userId, results.totalReps);
+        }
+        
+        // 4. Update streak (tracks consecutive days of activity)
+        await updateUserStreak(lineProfile.userId);
+        
+        setIsSaved(true);
+        console.log('Workout data saved to Firebase successfully!', {
+          calories: results.caloriesBurned,
+          time: results.totalTime,
+          reps: results.totalReps,
+          pointsEarned: results.totalReps
+        });
+      } catch (error) {
+        console.error('Error saving workout data:', error);
+      }
+    };
+    
+    saveWorkoutData();
+  }, [lineProfile?.userId, results.caloriesBurned, results.totalTime, results.totalReps, isSaved]);
 
   // Get earned achievements
   const earnedAchievements = ACHIEVEMENTS.filter(a => a.condition(results));
@@ -381,7 +429,7 @@ export default function WorkoutComplete() {
 
         {/* Exercise Details */}
         <div className="max-w-md mx-auto mb-8">
-          <h3 className="font-semibold mb-4 flex items-center gap-2">
+          <h3 className="font-semibold mb-4 flex items-center gap-2 text-foreground">
             <Activity className="w-5 h-5 text-primary" />
             รายละเอียดท่าออกกำลังกาย
           </h3>
@@ -396,7 +444,7 @@ export default function WorkoutComplete() {
                     <span className="text-lg font-bold text-primary">{idx + 1}</span>
                   </div>
                   <div>
-                    <p className="font-medium">{exercise.nameTh}</p>
+                    <p className="font-medium text-foreground">{exercise.nameTh}</p>
                     <p className="text-sm text-muted-foreground">
                       {exercise.reps}/{exercise.targetReps} ครั้ง
                     </p>

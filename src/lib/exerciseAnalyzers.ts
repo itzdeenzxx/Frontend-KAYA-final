@@ -649,6 +649,7 @@ export class TorsoTwistAnalyzer extends ExerciseAnalyzer {
     }
 
     const formFeedback = this.evaluateForm(landmarks, holdingCorrectForm);
+    const nextRequired = this.lastCountedDirection === 'left' ? 'right' : this.lastCountedDirection === 'right' ? 'left' : 'any';
 
     return {
       stage: this.currentStage,
@@ -658,7 +659,7 @@ export class TorsoTwistAnalyzer extends ExerciseAnalyzer {
       angles: {
         twistAngle: Math.round(twistAngle),
         direction: twistOffset > 0 ? 'left' : 'right',
-        nextRequired: nextRequired,
+        nextRequired,
       },
       isVisible: true,
     };
@@ -1558,6 +1559,19 @@ export class JumpSquatAnalyzer extends ExerciseAnalyzer {
         this.hasSquatted = false;
         this.squatConfirmedFrames = 0;
         this.jumpConfirmedFrames = 0;
+        this.currentStage = 'down';
+      }
+    } else if (this.hasSquatted && this.jumpPhase === 'squat' && avgKneeAngle >= thresholds.knee_standing_angle) {
+      // Stood back up without jump — still counts as a rep (easier mode)
+      if (this.canCountRep()) {
+        console.log(`🏋️ JUMP_SQUAT Rep counted! Stood up (no jump)`);
+        this.reps++;
+        repCompleted = true;
+        this.markRepCounted();
+        this.hasSquatted = false;
+        this.squatConfirmedFrames = 0;
+        this.jumpConfirmedFrames = 0;
+        this.jumpPhase = 'squat'; // reset for next rep
         this.currentStage = 'down';
       }
     }

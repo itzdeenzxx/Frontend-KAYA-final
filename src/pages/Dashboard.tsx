@@ -1,14 +1,17 @@
 import { useState, useEffect } from "react";
-import { Flame, Timer, Droplets, Activity, Play, ChevronRight, Trophy, Loader2, Target, Zap, Sparkles, TrendingUp, Calendar, Dumbbell, Crown, Star, Brain } from "lucide-react";
+import { Flame, Timer, Droplets, Activity, Play, ChevronRight, Trophy, Loader2, Target, Zap, Sparkles, TrendingUp, Calendar, Dumbbell, Crown, Star, Brain, Plus, Minus } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { BadgeGrid } from "@/components/gamification/BadgeGrid";
 import { ChallengeCard } from "@/components/gamification/ChallengeCard";
-import { mockBadges, mockChallenges } from "@/lib/mockData";
+import { mockBadges } from "@/lib/mockData";
 import { useAuth } from "@/contexts/AuthContext";
-import { useWorkoutHistory, useNutrition } from "@/hooks/useFirestore";
+import { useWorkoutHistory, useNutrition, useChallenges, useDailyStats } from "@/hooks/useFirestore";
+import { getCalculatedStreak } from "@/lib/firestore";
 import { useTheme } from "@/contexts/ThemeContext";
+import { hasSelectedCoach } from "@/lib/firestore";
+import { CoachSelectionPopup } from "@/components/coach";
 
 // Tier configurations
 const tierConfig = {
@@ -55,8 +58,34 @@ export default function Dashboard() {
   const { lineProfile, userProfile, healthData, isAuthenticated, isLoading, isInitialized } = useAuth();
   const { stats } = useWorkoutHistory();
   const { logs: nutritionLogs } = useNutrition();
+  const { challenges, claimReward, refreshChallenges } = useChallenges();
+  const { todayStats, cumulativeStats, addWater, removeWater } = useDailyStats();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
+  const [isAddingWater, setIsAddingWater] = useState(false);
+  const [isRemovingWater, setIsRemovingWater] = useState(false);
+  const [showCoachPopup, setShowCoachPopup] = useState(false);
+  const [hasCheckedCoach, setHasCheckedCoach] = useState(false);
+  
+  // Check if user has selected a coach
+  useEffect(() => {
+    const checkCoachSelection = async () => {
+      if (!userProfile?.lineUserId || hasCheckedCoach) return;
+      
+      try {
+        const hasCoach = await hasSelectedCoach(userProfile.lineUserId);
+        if (!hasCoach) {
+          setShowCoachPopup(true);
+        }
+        setHasCheckedCoach(true);
+      } catch (error) {
+        console.error('Error checking coach selection:', error);
+        setHasCheckedCoach(true);
+      }
+    };
+    
+    checkCoachSelection();
+  }, [userProfile?.lineUserId, hasCheckedCoach]);
   
   useEffect(() => {
     if (isInitialized && !isAuthenticated) {
@@ -65,16 +94,24 @@ export default function Dashboard() {
   }, [isInitialized, isAuthenticated, navigate]);
 
   const displayName = userProfile?.nickname || lineProfile?.displayName || "User";
-  const userTier = (userProfile?.tier || "silver") as keyof typeof tierConfig;
-  const streakDays = userProfile?.streakDays || 0;
+  const userTier = (userProfile?.tier || "bronze") as keyof typeof tierConfig;
+  const streakDays = getCalculatedStreak(userProfile?.streakDays || 0, userProfile?.lastActivityDate);
   const userPoints = userProfile?.points || 0;
   
-  const caloriesBurned = stats?.totalCalories || 0;
-  const workoutTime = stats?.totalDuration ? Math.round(stats.totalDuration / 60) : 0;
-  const totalWorkouts = stats?.totalWorkouts || 0;
+  // Use daily stats from Firebase (today's data)
+  const caloriesBurned = todayStats?.caloriesBurned || 0;
+  const workoutTimeSeconds = todayStats?.workoutTime || 0;
+  const totalWorkouts = cumulativeStats?.totalWorkouts || 0;
+  const waterIntake = todayStats?.waterIntake || 0;
   
-  const todayLog = nutritionLogs.length > 0 ? nutritionLogs[0] : null;
-  const waterIntake = todayLog?.waterIntake ? Math.round(todayLog.waterIntake / 250) : 0;
+  // Format workout time as hh:mm:ss
+  const formatWorkoutTime = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+  const workoutTimeDisplay = formatWorkoutTime(workoutTimeSeconds);
   
   const caloriesGoal = healthData?.weight ? Math.round(healthData.weight * 30) : 2000;
   const waterGoal = 8;
@@ -82,6 +119,34 @@ export default function Dashboard() {
   const progress = caloriesGoal > 0 ? Math.round((caloriesBurned / caloriesGoal) * 100) : 0;
   const tier = tierConfig[userTier] || tierConfig.silver;
   const TierIcon = tier.icon;
+
+  // Handle adding water
+  const handleAddWater = async () => {
+    if (isAddingWater || waterIntake >= waterGoal) return;
+    
+    setIsAddingWater(true);
+    try {
+      await addWater();
+      // Refresh challenges to update water challenge progress
+      await refreshChallenges();
+    } finally {
+      setIsAddingWater(false);
+    }
+  };
+
+  // Handle removing water
+  const handleRemoveWater = async () => {
+    if (isRemovingWater || waterIntake <= 0) return;
+    
+    setIsRemovingWater(true);
+    try {
+      await removeWater();
+      // Refresh challenges to update water challenge progress
+      await refreshChallenges();
+    } finally {
+      setIsRemovingWater(false);
+    }
+  };
 
   if (isLoading || !isInitialized) {
     return (
@@ -159,7 +224,7 @@ export default function Dashboard() {
                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                   <Timer className="w-6 h-6 text-white" />
                 </div>
-                <p className="text-3xl font-black mb-1">{workoutTime}</p>
+                <p className="text-2xl font-black mb-1 font-mono">{workoutTimeDisplay}</p>
                 <p className={cn("text-xs", isDark ? "text-gray-400" : "text-gray-500")}>{t('dashboard.workoutTime')}</p>
               </div>
             </div>
@@ -180,17 +245,64 @@ export default function Dashboard() {
             </div>
 
             {/* Water */}
-            <div className={cn(
-              "group relative overflow-hidden rounded-2xl p-5 transition-all hover:scale-[1.02] cursor-pointer",
-              isDark ? "bg-gradient-to-br from-cyan-500/20 to-blue-500/10 border border-cyan-500/20" : "bg-white shadow-lg shadow-cyan-500/10"
-            )}>
+            <div 
+              onClick={handleAddWater}
+              className={cn(
+                "group relative overflow-hidden rounded-2xl p-5 transition-all hover:scale-[1.02] cursor-pointer",
+                isDark ? "bg-gradient-to-br from-cyan-500/20 to-blue-500/10 border border-cyan-500/20" : "bg-white shadow-lg shadow-cyan-500/10",
+                waterIntake >= waterGoal && "opacity-70"
+              )}
+            >
               <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-cyan-500/20 to-transparent rounded-full blur-2xl" />
               <div className="relative">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                  <Droplets className="w-6 h-6 text-white" />
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <Droplets className="w-6 h-6 text-white" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {waterIntake > 0 && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleRemoveWater(); }}
+                        disabled={isRemovingWater}
+                        className={cn(
+                          "w-8 h-8 rounded-full flex items-center justify-center transition-all",
+                          isDark 
+                            ? "bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-400" 
+                            : "bg-cyan-100 hover:bg-cyan-200 text-cyan-600",
+                          isRemovingWater && "animate-pulse"
+                        )}
+                      >
+                        <Minus className="w-5 h-5" />
+                      </button>
+                    )}
+                    {waterIntake < waterGoal && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleAddWater(); }}
+                        disabled={isAddingWater}
+                        className={cn(
+                          "w-8 h-8 rounded-full flex items-center justify-center transition-all",
+                          isDark 
+                            ? "bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-400" 
+                            : "bg-cyan-100 hover:bg-cyan-200 text-cyan-600",
+                          isAddingWater && "animate-pulse"
+                        )}
+                      >
+                        <Plus className="w-5 h-5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <p className="text-3xl font-black mb-1">{waterIntake}/{waterGoal}</p>
-                <p className={cn("text-xs", isDark ? "text-gray-400" : "text-gray-500")}>{t('dashboard.waterIntake')}</p>
+                <p className={cn("text-xs", isDark ? "text-gray-400" : "text-gray-500")}>
+                  {waterIntake >= waterGoal ? "✓ " : ""}{t('dashboard.waterIntake')}
+                </p>
+                {/* Water progress bar */}
+                <div className={cn("mt-2 h-1.5 rounded-full overflow-hidden", isDark ? "bg-white/10" : "bg-gray-200")}>
+                  <div 
+                    className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full transition-all duration-300" 
+                    style={{ width: `${(waterIntake / waterGoal) * 100}%` }} 
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -250,14 +362,25 @@ export default function Dashboard() {
                   </Link>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                  {mockChallenges.slice(0, 4).map(challenge => (
-                    <div key={challenge.id} className={cn(
-                      "p-4 rounded-2xl border transition-all hover:scale-[1.02] cursor-pointer",
-                      isDark ? "bg-white/5 border-white/10 hover:border-primary/50" : "bg-gray-50 border-gray-200 hover:border-primary/50"
+                  {challenges.length > 0 ? (
+                    challenges.slice(0, 4).map(challenge => (
+                      <div key={challenge.id} className={cn(
+                        "p-4 rounded-2xl border transition-all hover:scale-[1.02] cursor-pointer",
+                        isDark ? "bg-white/5 border-white/10 hover:border-primary/50" : "bg-gray-50 border-gray-200 hover:border-primary/50"
+                      )}>
+                        <ChallengeCard challenge={challenge} onClaimReward={claimReward} />
+                      </div>
+                    ))
+                  ) : (
+                    <div className={cn(
+                      "col-span-2 p-8 rounded-2xl border text-center",
+                      isDark ? "bg-white/5 border-white/10" : "bg-gray-50 border-gray-200"
                     )}>
-                      <ChallengeCard challenge={challenge} />
+                      <Target className={cn("w-12 h-12 mx-auto mb-3", isDark ? "text-gray-500" : "text-gray-400")} />
+                      <p className={cn("font-medium", isDark ? "text-gray-400" : "text-gray-500")}>ยังไม่มี Challenge</p>
+                      <p className={cn("text-sm", isDark ? "text-gray-500" : "text-gray-400")}>เริ่มออกกำลังกายเพื่อรับ Challenge ใหม่!</p>
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
             </div>
@@ -505,7 +628,7 @@ export default function Dashboard() {
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center mb-3">
                   <Timer className="w-5 h-5 text-white" />
                 </div>
-                <p className="text-2xl font-bold">{workoutTime}</p>
+                <p className="text-xl font-bold font-mono">{workoutTimeDisplay}</p>
                 <p className={cn("text-xs", isDark ? "text-gray-400" : "text-gray-500")}>{t('dashboard.workoutTime')}</p>
               </div>
             </div>
@@ -531,22 +654,69 @@ export default function Dashboard() {
             </div>
 
             {/* Water Intake */}
-            <div className={cn(
-              "backdrop-blur border rounded-2xl p-4 relative overflow-hidden group transition-colors",
-              isDark 
-                ? "bg-white/5 border-white/10 hover:border-cyan-500/50" 
-                : "bg-white border-gray-200 shadow-sm hover:border-cyan-500/50"
-            )}>
+            <div 
+              onClick={handleAddWater}
+              className={cn(
+                "backdrop-blur border rounded-2xl p-4 relative overflow-hidden group transition-colors cursor-pointer",
+                isDark 
+                  ? "bg-white/5 border-white/10 hover:border-cyan-500/50" 
+                  : "bg-white border-gray-200 shadow-sm hover:border-cyan-500/50",
+                waterIntake >= waterGoal && "opacity-70"
+              )}
+            >
               <div className={cn(
                 "absolute top-0 right-0 w-20 h-20 rounded-full blur-2xl transition-colors",
                 isDark ? "bg-cyan-500/10 group-hover:bg-cyan-500/20" : "bg-cyan-500/5 group-hover:bg-cyan-500/10"
               )} />
               <div className="relative">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center mb-3">
-                  <Droplets className="w-5 h-5 text-white" />
+                <div className="flex items-center justify-between mb-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center">
+                    <Droplets className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {waterIntake > 0 && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleRemoveWater(); }}
+                        disabled={isRemovingWater}
+                        className={cn(
+                          "w-7 h-7 rounded-full flex items-center justify-center transition-all",
+                          isDark 
+                            ? "bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-400" 
+                            : "bg-cyan-100 hover:bg-cyan-200 text-cyan-600",
+                          isRemovingWater && "animate-pulse"
+                        )}
+                      >
+                        <Minus className="w-4 h-4" />
+                      </button>
+                    )}
+                    {waterIntake < waterGoal && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleAddWater(); }}
+                        disabled={isAddingWater}
+                        className={cn(
+                          "w-7 h-7 rounded-full flex items-center justify-center transition-all",
+                          isDark 
+                            ? "bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-400" 
+                            : "bg-cyan-100 hover:bg-cyan-200 text-cyan-600",
+                          isAddingWater && "animate-pulse"
+                        )}
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <p className="text-2xl font-bold">{waterIntake}/{waterGoal}</p>
-                <p className={cn("text-xs", isDark ? "text-gray-400" : "text-gray-500")}>{t('dashboard.waterIntake')}</p>
+                <p className={cn("text-xs", isDark ? "text-gray-400" : "text-gray-500")}>
+                  {waterIntake >= waterGoal ? "✓ " : ""}{t('dashboard.waterIntake')}
+                </p>
+                {/* Water progress bar */}
+                <div className={cn("mt-2 h-1 rounded-full overflow-hidden", isDark ? "bg-white/10" : "bg-gray-200")}>
+                  <div 
+                    className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full transition-all duration-300" 
+                    style={{ width: `${(waterIntake / waterGoal) * 100}%` }} 
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -613,16 +783,26 @@ export default function Dashboard() {
               </Link>
             </div>
             <div className="space-y-3">
-              {mockChallenges.slice(0, 2).map(challenge => (
-                <div key={challenge.id} className={cn(
-                  "backdrop-blur border rounded-xl p-4 transition-colors",
-                  isDark 
-                    ? "bg-white/5 border-white/10 hover:border-primary/30" 
-                    : "bg-white border-gray-200 shadow-sm hover:border-primary/30"
+              {challenges.length > 0 ? (
+                challenges.slice(0, 2).map(challenge => (
+                  <div key={challenge.id} className={cn(
+                    "backdrop-blur border rounded-xl p-4 transition-colors",
+                    isDark 
+                      ? "bg-white/5 border-white/10 hover:border-primary/30" 
+                      : "bg-white border-gray-200 shadow-sm hover:border-primary/30"
+                  )}>
+                    <ChallengeCard challenge={challenge} onClaimReward={claimReward} />
+                  </div>
+                ))
+              ) : (
+                <div className={cn(
+                  "p-6 rounded-xl border text-center",
+                  isDark ? "bg-white/5 border-white/10" : "bg-white border-gray-200"
                 )}>
-                  <ChallengeCard challenge={challenge} />
+                  <Target className={cn("w-10 h-10 mx-auto mb-2", isDark ? "text-gray-500" : "text-gray-400")} />
+                  <p className={cn("font-medium text-sm", isDark ? "text-gray-400" : "text-gray-500")}>ยังไม่มี Challenge</p>
                 </div>
-              ))}
+              )}
             </div>
 
           {/* Badges Section - Mobile */}
@@ -683,5 +863,17 @@ export default function Dashboard() {
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
 
-  return isDesktop ? <DesktopLayout /> : <MobileLayout />;
+  return (
+    <>
+      {isDesktop ? <DesktopLayout /> : <MobileLayout />}
+      
+      {/* Coach Selection Popup for new users */}
+      <CoachSelectionPopup
+        open={showCoachPopup}
+        onClose={() => setShowCoachPopup(false)}
+        onCoachSelected={() => setShowCoachPopup(false)}
+        canSkip={true}
+      />
+    </>
+  );
 }
