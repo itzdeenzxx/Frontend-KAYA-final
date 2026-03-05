@@ -11,6 +11,7 @@ import { useExerciseAnalysis } from "@/hooks/useExerciseAnalysis";
 import { VisualPoseGuide, StageIndicator, BeatCounter } from "@/components/workout/VisualPoseGuide";
 import { AICoachPopup } from "@/components/workout/AICoachPopup";
 import { ExerciseType } from "@/lib/exerciseConfig";
+import { getExerciseStartAudioUrl, getRepAudioUrl, getGreetingAudioUrl } from "@/lib/coachAudio";
 import { WorkoutLoader } from "@/components/shared/WorkoutLoader";
 import { useAuth } from "@/contexts/AuthContext";
 import { getUserSettings, DEFAULT_TTS_SETTINGS } from "@/lib/firestore";
@@ -659,9 +660,34 @@ export default function WorkoutUI() {
     const message = REP_MESSAGES[rep];
     if (message && rep > lastSpokenRepRef.current) {
       lastSpokenRepRef.current = rep;
+
+      // Try local pre-recorded audio first (avoids API call)
+      const coachId = ttsCoachRef.current?.id;
+      if (coachId) {
+        const localUrl = getRepAudioUrl(coachId, rep);
+        if (localUrl) {
+          console.log(`🔊 [RepCount] Playing local audio for rep ${rep}:`, localUrl);
+          try {
+            stopAllTTS();
+            isTtsSpeakingRef.current = true;
+            return new Promise<void>((resolve) => {
+              const audio = new Audio(localUrl);
+              ttsAudioRef.current = audio;
+              audio.playbackRate = ttsSpeedRef.current || 1.0;
+              audio.onended = () => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; resolve(); };
+              audio.onerror = () => { isTtsSpeakingRef.current = false; resolve(); };
+              audio.play().catch(() => { isTtsSpeakingRef.current = false; resolve(); });
+            });
+          } catch {
+            console.warn('🔊 [RepCount] Local audio failed, falling back to API');
+          }
+        }
+      }
+
+      // Fallback: API call
       await speakTTS(message);
     }
-  }, [speakTTS]);
+  }, [speakTTS, stopAllTTS]);
 
   // Show rep counter animation when rep increases (only up to target)
   useEffect(() => {
@@ -996,8 +1022,44 @@ export default function WorkoutUI() {
   // Speak exercise instruction when exercise changes
   const speakExerciseInstruction = useCallback(async (exercise: WorkoutExercise) => {
     if (!exercise) return;
+
+    // Skip if TTS disabled
+    if (!ttsEnabledRef.current) {
+      console.log('🔇 [TTS] Exercise instruction skipped: TTS disabled');
+      return;
+    }
+
+    // Try local pre-recorded exercise-start audio first (avoids API call)
+    const coachId = ttsCoachRef.current?.id;
+    if (coachId && exercise.kayaExercise) {
+      const localUrl = getExerciseStartAudioUrl(coachId, exercise.kayaExercise);
+      if (localUrl) {
+        console.log(`🔊 [ExerciseInstruction] Playing local audio for ${exercise.kayaExercise}:`, localUrl);
+        try {
+          if (ttsAudioRef.current) {
+            ttsAudioRef.current.pause();
+            ttsAudioRef.current = null;
+          }
+          return new Promise<void>((resolve) => {
+            const audio = new Audio(localUrl);
+            ttsAudioRef.current = audio;
+            audio.playbackRate = ttsSpeedRef.current || 1.0;
+            audio.onended = () => {
+              ttsAudioRef.current = null;
+              resolve();
+            };
+            audio.onerror = () => resolve();
+            audio.play().then(() => {
+              console.log('🔊 [ExerciseInstruction] Local audio playing at speed:', audio.playbackRate);
+            }).catch(() => resolve());
+          });
+        } catch {
+          console.warn('🔊 [ExerciseInstruction] Local audio failed, falling back to API');
+        }
+      }
+    }
     
-    // Build instruction text
+    // Fallback: Build instruction text and call Botnoi TTS API
     const instruction = `ท่า${exercise.nameTh || exercise.name}. ${exercise.description || 'ทำตามท่าที่แสดง'}`;
     
     console.log('TTS: Calling API with text:', instruction);
@@ -1006,12 +1068,6 @@ export default function WorkoutUI() {
       // Use refs for current coach/speaker (avoid stale closure)
       const currentCoach = ttsCoachRef.current;
       const currentSpeaker = currentCoach?.voiceId || ttsSpeakerRef.current || '26';
-      
-      // Skip if TTS disabled
-      if (!ttsEnabledRef.current) {
-        console.log('🔇 [TTS] Exercise instruction skipped: TTS disabled');
-        return;
-      }
 
       console.log('🔊 [ExerciseInstruction] Botnoi speaker:', currentSpeaker, '| coach:', currentCoach?.name || 'none');
 
@@ -1127,6 +1183,43 @@ export default function WorkoutUI() {
       return;
     }
 
+    // Helper function to speak first exercise after intro
+    const speakFirstExercise = () => {
+      const exercise = exercises[0];
+      if (exercise) {
+        setTimeout(() => speakExerciseInstruction(exercise), 500);
+      }
+    };
+
+    // Try local greeting audio first (avoids API call)
+    const coachId = ttsCoachRef.current?.id;
+    if (coachId) {
+      const localUrl = getGreetingAudioUrl(coachId);
+      if (localUrl) {
+        console.log('🔊 [CoachIntro] Playing local greeting audio:', localUrl);
+        try {
+          if (ttsAudioRef.current) {
+            ttsAudioRef.current.pause();
+            ttsAudioRef.current = null;
+          }
+          const audio = new Audio(localUrl);
+          ttsAudioRef.current = audio;
+          audio.playbackRate = ttsSpeedRef.current || 1.0;
+          audio.play().then(() => {
+            console.log('🔊 [CoachIntro] Local greeting playing at speed:', audio.playbackRate);
+          }).catch(console.error);
+          audio.onended = () => {
+            ttsAudioRef.current = null;
+            speakFirstExercise();
+          };
+          return;
+        } catch {
+          console.warn('🔊 [CoachIntro] Local audio failed, falling back to API');
+        }
+      }
+    }
+
+    // Fallback: Build dynamic intro and call API
     const currentCoach = ttsCoachRef.current;
     const speakerFromSettings = ttsSpeakerRef.current;
     const userName = userProfile?.nickname || userProfile?.displayName || 'คุณ';
@@ -1134,16 +1227,6 @@ export default function WorkoutUI() {
     const introText = `สวัสดีครับ ผมชื่อ${coachName} วันนี้จะมาเป็นโค้ชให้คุณ${userName}นะครับ พร้อมออกกำลังกายไปด้วยกันไหมครับ เริ่มกันเลย!`;
     
     console.log('TTS Coach Intro: Calling API with text:', introText);
-    
-    // Helper function to speak first exercise after intro
-    const speakFirstExercise = () => {
-      const exercise = exercises[0];
-      if (exercise) {
-        setTimeout(() => {
-          speakExerciseInstruction(exercise);
-        }, 500);
-      }
-    };
     
     try {
       const currentSpeaker = currentCoach?.voiceId || speakerFromSettings || '26';
