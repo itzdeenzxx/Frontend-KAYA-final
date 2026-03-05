@@ -442,26 +442,26 @@ export default function Onboarding({ lineDisplayName, onComplete }: OnboardingPr
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">ชื่อเล่น</p>
-                    <p className="font-semibold text-lg">{data.nickname}</p>
+                    <p className="font-semibold text-black">{data.nickname}</p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-muted/50 rounded-xl p-3">
                     <p className="text-xs text-muted-foreground">น้ำหนัก</p>
-                    <p className="font-semibold">{data.weight} กก.</p>
+                    <p className="font-semibold text-black">{data.weight} กก.</p>
                   </div>
                   <div className="bg-muted/50 rounded-xl p-3">
                     <p className="text-xs text-muted-foreground">ส่วนสูง</p>
-                    <p className="font-semibold">{data.height} ซม.</p>
+                    <p className="font-semibold text-black">{data.height} ซม.</p>
                   </div>
                   <div className="bg-muted/50 rounded-xl p-3">
                     <p className="text-xs text-muted-foreground">อายุ</p>
-                    <p className="font-semibold">{data.age} ปี</p>
+                    <p className="font-semibold text-black">{data.age} ปี</p>
                   </div>
                   <div className="bg-muted/50 rounded-xl p-3">
                     <p className="text-xs text-muted-foreground">เพศ</p>
-                    <p className="font-semibold">
+                    <p className="font-semibold text-black">
                       {data.gender === "male" ? "ชาย" : data.gender === "female" ? "หญิง" : "อื่นๆ"}
                     </p>
                   </div>

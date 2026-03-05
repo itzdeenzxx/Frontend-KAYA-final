@@ -144,7 +144,7 @@ export default function Profile() {
   const { lineProfile, userProfile, isAuthenticated, isLoading: authLoading, logout } = useAuth();
   const { healthData, saveHealth, isLoading: healthLoading } = useHealthData();
   const { profile, updateProfile } = useUserProfile();
-  const { stats } = useWorkoutHistory();
+  const { workouts, stats } = useWorkoutHistory();
   const { todayStats, cumulativeStats } = useDailyStats();
   
   const [isEditing, setIsEditing] = useState(false);
@@ -598,7 +598,13 @@ export default function Profile() {
                 return (
                   <button
                     key={item.id}
-                    onClick={() => setActiveSection(item.id as typeof activeSection)}
+                    onClick={() => {
+                      if (item.id === 'settings') {
+                        navigate('/settings');
+                      } else {
+                        setActiveSection(item.id as typeof activeSection);
+                      }
+                    }}
                     className={cn(
                       "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-left text-base",
                       isActive 
@@ -926,6 +932,93 @@ export default function Profile() {
                       <p className={cn("text-xs", isDark ? "text-gray-400" : "text-gray-500")}>วัน</p>
                     </div>
                   </div>
+                </div>
+                
+                {/* Recent Workout History */}
+                <div className={cn(
+                  "p-6 rounded-2xl border",
+                  isDark ? "bg-white/5 border-white/10" : "bg-white border-gray-200"
+                )}>
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="font-bold text-lg mb-1">📊 ประวัติการออกกำลังกาย</h3>
+                      <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>
+                        รายการล่าสุด 5 รายการ
+                      </p>
+                    </div>
+                    <Link
+                      to="/workout-history"
+                      className={cn(
+                        "text-sm font-medium px-3 py-2 rounded-lg transition-colors",
+                        isDark 
+                          ? "text-primary hover:bg-primary/10" 
+                          : "text-primary hover:bg-primary/10"
+                      )}
+                    >
+                      ดูทั้งหมด →
+                    </Link>
+                  </div>
+                  
+                  {workouts && workouts.length > 0 ? (
+                    <div className="space-y-3">
+                      {workouts.slice(0, 5).map((workout, index) => (
+                        <div key={workout.id || index} className={cn(
+                          "p-4 rounded-lg border",
+                          isDark ? "bg-white/5 border-white/10" : "bg-gray-50 border-gray-200"
+                        )}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-sm font-medium text-foreground">
+                                  {workout.styleNameTh || workout.styleName || 'ออกกำลังกาย'}
+                                </span>
+                                <span className={cn("text-xs px-2 py-1 rounded-full", 
+                                  isDark ? "bg-primary/20 text-primary" : "bg-primary/10 text-primary"
+                                )}>
+                                  {workout.exercises?.length || 0} ท่า
+                                </span>
+                              </div>
+                              <p className={cn("text-xs", isDark ? "text-gray-400" : "text-gray-500")}>
+                                {workout.exercises?.map(ex => ex.nameTh || ex.name).join(', ') || 'ไม่มีข้อมูลท่า'}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-4 text-right">
+                              <div>
+                                <p className="text-sm font-medium text-green-400">
+                                  {workout.totalReps || 0} ครั้ง
+                                </p>
+                                <p className={cn("text-xs", isDark ? "text-gray-400" : "text-gray-500")}>
+                                  รวม
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-orange-400">
+                                  {workout.caloriesBurned || 0} cal
+                                </p>
+                                <p className={cn("text-xs", isDark ? "text-gray-400" : "text-gray-500")}>
+                                  แคลลอรี่
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-blue-400">
+                                  {formatWorkoutTime(workout.totalTime || 0)}
+                                </p>
+                                <p className={cn("text-xs", isDark ? "text-gray-400" : "text-gray-500")}>
+                                  เวลา
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className={cn("text-center py-8", isDark ? "text-gray-400" : "text-gray-500")}>
+                      <Activity className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                      <p className="text-sm">ยังไม่มีประวัติการออกกำลังกาย</p>
+                      <p className="text-xs mt-1">เริ่มออกกำลังกายเพื่อดูประวัติ</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
