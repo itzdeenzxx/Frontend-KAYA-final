@@ -12,4 +12,7 @@ export {
   BankAvatar,
   KaiAvatar,
   PhuyaiLeeAvatar,
+  AlanAvatar,
+  HomchanAvatar,
+  ManeeAvatar,
 } from './CoachAvatars';
