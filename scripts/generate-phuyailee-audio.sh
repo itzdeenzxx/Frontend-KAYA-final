@@ -6,7 +6,7 @@
 # คำลงท้าย: "จ้า" "ครับผม" "เอ้า" "น้า" "โอ้โห"
 # =============================================================================
 
-BOTNOI_TOKEN="2XtOvwLar6vW5Pu2uGNQ1qZEVH72ZMad"
+BOTNOI_TOKEN=""
 BOTNOI_URL="https://api-voice.botnoi.ai/openapi/v1/generate_audio"
 BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)/public/assets/ผู้ใหญ่ลี"
 
