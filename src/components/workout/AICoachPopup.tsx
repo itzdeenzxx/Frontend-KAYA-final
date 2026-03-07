@@ -194,40 +194,16 @@ async function processQueueItemAPI(text: string): Promise<void> {
       console.warn('🔊 [CoachPopup] Botnoi TTS error:', errMsg);
     }
 
-    // Play audio if we got it, otherwise use Web Speech
+    // Play audio if we got it, otherwise skip silently
     if (audioBase64) {
       await playAudio(audioBase64);
     } else {
-      console.warn('🔊 [CoachPopup] Botnoi TTS failed, using Web Speech fallback');
-      await speakWithWebSpeech(text);
+      console.warn('🔊 [CoachPopup] Botnoi TTS failed, skipping silently');
     }
     
   } catch (error: unknown) {
     console.error('TTS Error:', error);
-    await speakWithWebSpeech(text);
   }
-}
-
-/**
- * Fallback: Use Web Speech API
- */
-function speakWithWebSpeech(text: string): Promise<void> {
-  return new Promise((resolve) => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) {
-      resolve();
-      return;
-    }
-    
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'th-TH';
-    utterance.rate = 1.0;
-    
-    utterance.onend = () => resolve();
-    utterance.onerror = () => resolve();
-    
-    window.speechSynthesis.speak(utterance);
-  });
 }
 
 /**
