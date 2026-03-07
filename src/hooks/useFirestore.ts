@@ -6,6 +6,7 @@ import {
   saveWorkoutSession,
   getUserWorkoutHistory,
   getUserWorkoutStats,
+  createSampleWorkoutHistory,
   saveNutritionLog,
   getUserNutritionLogs,
   getUserBadges,

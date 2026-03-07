@@ -28,7 +28,7 @@ import {
 import type { WorkoutResults } from '@/types/workout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { addWorkoutToDailyStats, incrementChallengeProgress, updateUserPoints, updateUserStreak } from '@/lib/firestore';
+import { addWorkoutToDailyStats, incrementChallengeProgress, updateUserPoints, updateUserStreak, saveWorkoutSession } from '@/lib/firestore';
 
 // Calculate calories based on workout intensity and duration
 function calculateCalories(
@@ -118,7 +118,7 @@ export default function WorkoutComplete() {
   const [copied, setCopied] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
-  const { lineProfile } = useAuth();
+  const { lineProfile, refreshUser } = useAuth();
 
   // Get workout results from location state or use mock data
   const results: WorkoutResults = location.state?.results || {
@@ -158,6 +158,26 @@ export default function WorkoutComplete() {
           results.caloriesBurned,
           results.totalTime
         );
+
+        // Save detailed workout history
+        await saveWorkoutSession({
+          userId: lineProfile.userId,
+          styleName: results.styleName,
+          styleNameTh: results.styleNameTh,
+          totalTime: results.totalTime,
+          totalReps: results.totalReps,
+          caloriesBurned: results.caloriesBurned,
+          completionPercentage: results.completionPercentage,
+          averageFormScore: results.averageFormScore,
+          exercises: results.exercises.map(exercise => ({
+            name: exercise.name,
+            nameTh: exercise.nameTh,
+            reps: exercise.reps,
+            targetReps: exercise.targetReps,
+            formScore: exercise.formScore,
+            duration: exercise.duration,
+          })),
+        });
         
         // Update challenges
         // 1. Increment workout challenge
@@ -174,12 +194,16 @@ export default function WorkoutComplete() {
         // 4. Update streak (tracks consecutive days of activity)
         await updateUserStreak(lineProfile.userId);
         
+        // 5. Refresh user profile in global state so Dashboard shows updated streak/points
+        await refreshUser();
+        
         setIsSaved(true);
         console.log('Workout data saved to Firebase successfully!', {
           calories: results.caloriesBurned,
           time: results.totalTime,
           reps: results.totalReps,
-          pointsEarned: results.totalReps
+          pointsEarned: results.totalReps,
+          exercises: results.exercises.length
         });
       } catch (error) {
         console.error('Error saving workout data:', error);
@@ -187,7 +211,7 @@ export default function WorkoutComplete() {
     };
     
     saveWorkoutData();
-  }, [lineProfile?.userId, results.caloriesBurned, results.totalTime, results.totalReps, isSaved]);
+  }, [lineProfile?.userId, results.caloriesBurned, results.totalTime, results.totalReps, isSaved, refreshUser]);
 
   // Get earned achievements
   const earnedAchievements = ACHIEVEMENTS.filter(a => a.condition(results));
@@ -444,7 +468,7 @@ export default function WorkoutComplete() {
                     <span className="text-lg font-bold text-primary">{idx + 1}</span>
                   </div>
                   <div>
-                    <p className="font-medium text-foreground">{exercise.nameTh}</p>
+                    <p className="font-medium text-black">{exercise.nameTh}</p>
                     <p className="text-sm text-muted-foreground">
                       {exercise.reps}/{exercise.targetReps} ครั้ง
                     </p>
@@ -453,7 +477,7 @@ export default function WorkoutComplete() {
                 <div className="text-right">
                   <div className={cn("font-bold", getFormColor(exercise.formScore))}>
                     {exercise.formScore}%
-                  </div>
+                  </div>  
                   <div className="text-xs text-muted-foreground">ฟอร์ม</div>
                 </div>
               </div>

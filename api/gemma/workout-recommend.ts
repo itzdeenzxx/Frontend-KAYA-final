@@ -152,9 +152,9 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
-  const apiKey = process.env.OPENROUTER_API_KEY || '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';
+  const apiKey = process.env.TOGETHER_API_KEY;
   if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'Server misconfigured: missing OPENROUTER_API_KEY' }), {
+    return new Response(JSON.stringify({ error: 'Server misconfigured: missing TOGETHER_API_KEY' }), {
       status: 500,
       headers: { 'content-type': 'application/json' },
     });
@@ -235,7 +235,7 @@ ${quizSummary}
 
   try {
     const requestBody = {
-      model: 'google/gemma-3n-e4b-it:free',
+      model: 'google/gemma-3n-E4B-it',
       messages: [
         {
           role: 'user',
@@ -243,43 +243,41 @@ ${quizSummary}
         },
       ],
       temperature: 0.3,
-      max_tokens: 1024,
+      max_tokens: 800,
       top_p: 0.8,
     };
 
-    const openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
+    const togetherUrl = 'https://api.together.xyz/v1/chat/completions';
 
     let response: Response | null = null;
     let lastError = '';
 
     try {
-      response = await fetch(openRouterUrl, {
+      response = await fetch(togetherUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`,
-          'HTTP-Referer': 'https://kaya-fitness.vercel.app',
-          'X-Title': 'KAYA Fitness',
         },
         body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
         const errText = await response.text();
-        lastError = `OpenRouter: ${response.status} - ${errText}`;
-        console.warn(`OpenRouter API failed (${response.status})`);
+        lastError = `Together AI: ${response.status} - ${errText}`;
+        console.warn(`Together AI API failed (${response.status})`);
         response = null;
       } else {
-        console.log('Successfully used OpenRouter with google/gemma-3n-e4b-it:free');
+        console.log('Successfully used Together AI with google/gemma-3n-E4B-it');
       }
     } catch (fetchErr) {
-      lastError = `OpenRouter: fetch error - ${fetchErr}`;
-      console.warn('OpenRouter fetch error');
+      lastError = `Together AI: fetch error - ${fetchErr}`;
+      console.warn('Together AI fetch error');
       response = null;
     }
 
     if (!response || !response.ok) {
-      console.error('OpenRouter API failed. Last error:', lastError);
+      console.error('Together AI API failed. Last error:', lastError);
       // Return fallback instead of error
       const fallback = getFallbackRecommendation(quizAnswers);
       const enrichedFallback = fallback.recommended_exercises.map(
@@ -320,7 +318,7 @@ ${quizSummary}
         throw new Error('No JSON found in response');
       }
     } catch (parseError) {
-      console.error('Failed to parse OpenRouter response:', responseText);
+      console.error('Failed to parse Together AI response:', responseText);
       // Return a fallback recommendation
       parsedResponse = getFallbackRecommendation(quizAnswers);
     }
@@ -371,7 +369,7 @@ ${quizSummary}
     });
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-    console.error('OpenRouter workout recommend error:', err);
+    console.error('Together AI workout recommend error:', err);
     return new Response(JSON.stringify({
       error: 'Request failed',
       details: errorMessage,

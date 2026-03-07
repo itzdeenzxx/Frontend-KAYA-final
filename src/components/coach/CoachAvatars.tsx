@@ -213,12 +213,136 @@ export const KaiAvatar = ({ className, size = 80 }: AvatarProps) => (
   </svg>
 );
 
+// Male Coach Avatar - PhuyaiLee (Friendly Suphanburi Uncle)
+export const PhuyaiLeeAvatar = ({ className, size = 80 }: AvatarProps) => (
+  <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+    <circle cx="50" cy="50" r="48" fill="#F5E6D3"/>
+    {/* Hat - หมวกผู้ใหญ่บ้าน */}
+    <ellipse cx="50" cy="26" rx="30" ry="8" fill="#8B5E3C"/>
+    <path d="M30 26 Q30 14 50 12 Q70 14 70 26" fill="#A0724A"/>
+    <rect x="30" y="24" width="40" height="4" rx="2" fill="#6B4226"/>
+    {/* Face */}
+    <ellipse cx="50" cy="52" rx="24" ry="26" fill="#D7A574"/>
+    {/* Kind eyes - ตาใจดี */}
+    <path d="M36 48 Q40 52 44 48" stroke="#2D2D2D" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+    <path d="M56 48 Q60 52 64 48" stroke="#2D2D2D" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+    {/* Eyebrows - เบาสบาย */}
+    <path d="M34 43 Q40 41 46 43" stroke="#5D4037" strokeWidth="1.5" fill="none"/>
+    <path d="M54 43 Q60 41 66 43" stroke="#5D4037" strokeWidth="1.5" fill="none"/>
+    {/* Warm smile - ยิ้มเป็นกันเอง */}
+    <path d="M38 60 Q50 70 62 60" stroke="#C49A6C" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+    {/* Mustache - หนวด */}
+    <path d="M38 56 Q44 60 50 57 Q56 60 62 56" stroke="#5D4037" strokeWidth="2" fill="none"/>
+    {/* Jawline */}
+    <path d="M26 50 Q26 76 50 80 Q74 76 74 50" stroke="#C49A6C" strokeWidth="2" fill="none"/>
+    {/* Blush - แก้มแดง (อบอุ่น) */}
+    <ellipse cx="33" cy="56" rx="4" ry="2.5" fill="#E8A87C" opacity="0.5"/>
+    <ellipse cx="67" cy="56" rx="4" ry="2.5" fill="#E8A87C" opacity="0.5"/>
+  </svg>
+);
+
+// Male Coach Avatar - Alan (Kind, Clear Voice, Serious)
+export const AlanAvatar = ({ className, size = 80 }: AvatarProps) => (
+  <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+    <circle cx="50" cy="50" r="48" fill="#D6EAF8"/>
+    {/* Short neat hair */}
+    <ellipse cx="50" cy="34" rx="27" ry="20" fill="#2C3E50"/>
+    <path d="M25 38 Q25 28 50 24 Q75 28 75 38" fill="#2C3E50"/>
+    {/* Face */}
+    <ellipse cx="50" cy="52" rx="24" ry="26" fill="#FFDBB4"/>
+    {/* Confident kind eyes */}
+    <ellipse cx="40" cy="48" rx="4" ry="4" fill="#2D2D2D"/>
+    <ellipse cx="60" cy="48" rx="4" ry="4" fill="#2D2D2D"/>
+    <circle cx="41" cy="47" r="1.5" fill="white"/>
+    <circle cx="61" cy="47" r="1.5" fill="white"/>
+    {/* Strong eyebrows */}
+    <path d="M33 42 L46 41" stroke="#2C3E50" strokeWidth="2" fill="none"/>
+    <path d="M54 41 L67 42" stroke="#2C3E50" strokeWidth="2" fill="none"/>
+    {/* Warm smile */}
+    <path d="M40 60 Q50 66 60 60" stroke="#D4A5A5" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+    {/* Strong jaw */}
+    <path d="M26 50 Q26 74 50 78 Q74 74 74 50" stroke="#E8C5A8" strokeWidth="2" fill="none"/>
+    {/* Microphone icon (clear voice) */}
+    <rect x="72" y="62" width="6" height="10" rx="3" fill="#2E86AB"/>
+    <path d="M72 68 Q72 74 78 74" stroke="#2E86AB" strokeWidth="1.5" fill="none"/>
+  </svg>
+);
+
+// Female Coach Avatar - Homchan (Southern Thai, Kind, Serious)
+export const HomchanAvatar = ({ className, size = 80 }: AvatarProps) => (
+  <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+    <circle cx="50" cy="50" r="48" fill="#FFF3E0"/>
+    {/* Long hair with southern style */}
+    <ellipse cx="50" cy="48" rx="34" ry="34" fill="#3E2723"/>
+    <ellipse cx="50" cy="62" rx="30" ry="24" fill="#3E2723"/>
+    {/* Face */}
+    <ellipse cx="50" cy="48" rx="21" ry="23" fill="#FFDBB4"/>
+    {/* Kind gentle eyes */}
+    <ellipse cx="40" cy="46" rx="4" ry="4" fill="#2D2D2D"/>
+    <ellipse cx="60" cy="46" rx="4" ry="4" fill="#2D2D2D"/>
+    <circle cx="41" cy="45" r="1.5" fill="white"/>
+    <circle cx="61" cy="45" r="1.5" fill="white"/>
+    {/* Gentle eyebrows */}
+    <path d="M34 40 Q40 38 46 40" stroke="#3E2723" strokeWidth="1.5" fill="none"/>
+    <path d="M54 40 Q60 38 66 40" stroke="#3E2723" strokeWidth="1.5" fill="none"/>
+    {/* Warm smile */}
+    <path d="M42 56 Q50 62 58 56" stroke="#E88B8B" strokeWidth="2" fill="none" strokeLinecap="round"/>
+    {/* Blush */}
+    <ellipse cx="35" cy="52" rx="4" ry="2" fill="#FFB6C1" opacity="0.5"/>
+    <ellipse cx="65" cy="52" rx="4" ry="2" fill="#FFB6C1" opacity="0.5"/>
+    {/* Flower accessory - ดอกไม้ใต้ */}
+    <circle cx="26" cy="38" r="5" fill="#FF8C42"/>
+    <circle cx="26" cy="38" r="2" fill="#FFD54F"/>
+  </svg>
+);
+
+// Female Coach Avatar - Manee (Anime, Playful, Flirty)
+export const ManeeAvatar = ({ className, size = 80 }: AvatarProps) => (
+  <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+    <circle cx="50" cy="50" r="48" fill="#FFE4F0"/>
+    {/* Long flowing anime hair */}
+    <ellipse cx="50" cy="42" rx="32" ry="28" fill="#FF69B4"/>
+    <ellipse cx="50" cy="60" rx="30" ry="26" fill="#FF69B4"/>
+    <ellipse cx="28" cy="55" rx="10" ry="15" fill="#FF69B4"/>
+    <ellipse cx="72" cy="55" rx="10" ry="15" fill="#FF69B4"/>
+    {/* Face */}
+    <ellipse cx="50" cy="48" rx="21" ry="23" fill="#FFEBD6"/>
+    {/* Big anime eyes */}
+    <ellipse cx="40" cy="46" rx="5" ry="6" fill="#2D2D2D"/>
+    <ellipse cx="60" cy="46" rx="5" ry="6" fill="#2D2D2D"/>
+    <circle cx="42" cy="44" r="2" fill="white"/>
+    <circle cx="62" cy="44" r="2" fill="white"/>
+    <circle cx="39" cy="47" r="1" fill="white"/>
+    <circle cx="59" cy="47" r="1" fill="white"/>
+    {/* Sparkle eyes */}
+    <path d="M38 42 L39 40 L40 42" stroke="#FF69B4" strokeWidth="0.8" fill="none"/>
+    <path d="M58 42 L59 40 L60 42" stroke="#FF69B4" strokeWidth="0.8" fill="none"/>
+    {/* Cute eyebrows */}
+    <path d="M35 38 Q40 36 46 38" stroke="#FF69B4" strokeWidth="1.5" fill="none"/>
+    <path d="M54 38 Q60 36 65 38" stroke="#FF69B4" strokeWidth="1.5" fill="none"/>
+    {/* Cat smile (playful) */}
+    <path d="M44 56 Q47 58 50 55 Q53 58 56 56" stroke="#E88B8B" strokeWidth="2" fill="none" strokeLinecap="round"/>
+    {/* Heavy blush */}
+    <ellipse cx="34" cy="52" rx="5" ry="2.5" fill="#FFB6C1" opacity="0.7"/>
+    <ellipse cx="66" cy="52" rx="5" ry="2.5" fill="#FFB6C1" opacity="0.7"/>
+    {/* Heart accessories */}
+    <path d="M20 30 Q20 26 24 26 Q28 26 28 30 Q28 34 24 38 Q20 34 20 30Z" fill="#FF69B4"/>
+    <path d="M72 30 Q72 26 76 26 Q80 26 80 30 Q80 34 76 38 Q72 34 72 30Z" fill="#FF69B4"/>
+    {/* Star sparkle */}
+    <path d="M75 20 L76 18 L77 20 L79 21 L77 22 L76 24 L75 22 L73 21Z" fill="#FFD700"/>
+  </svg>
+);
+
 // Map coach ID to avatar component
 export const CoachAvatarMap: Record<string, React.FC<AvatarProps>> = {
   'coach-aiko': NanaAvatar,      // Reuse: cute female
   'coach-nadia': PrimAvatar,     // Reuse: serious female
   'coach-nattakan': KaiAvatar,   // Reuse: playful male
   'coach-bread': TonAvatar,      // Reuse: tough male
+  'coach-phuyailee': PhuyaiLeeAvatar, // Friendly Suphanburi uncle
+  'coach-alan': AlanAvatar,      // Kind, clear voice, serious male
+  'coach-homchan': HomchanAvatar, // Southern Thai, kind female
+  'coach-manee': ManeeAvatar,    // Anime, playful, flirty female
   // Legacy mappings kept so old saved IDs still render
   'coach-nana': NanaAvatar,
   'coach-farsai': FarsaiAvatar,

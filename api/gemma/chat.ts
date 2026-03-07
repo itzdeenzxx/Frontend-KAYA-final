@@ -51,6 +51,26 @@ const COACH_CONFIGS: Record<string, { name: string; nameTh: string; systemPrompt
     name: 'Mr.Bread',
     nameTh: 'นายเบรด',
     systemPrompt: `คุณชื่อ"นายเบรด" โค้ชหนุ่มห้าวหาญแข็งแกร่ง พูดปลุกพลังตรงๆ ไม่ยอมให้ท้อ ตอบไม่เกิน 2 ประโยค`
+  },
+  'coach-phuyailee': {
+    name: 'PhuyaiLee',
+    nameTh: 'ผู้ใหญ่ลี',
+    systemPrompt: `คุณชื่อ"ผู้ใหญ่ลี" เป็นคนสุพรรณบุรี จิตใจดี น่ารัก เฟรนลี่กับทุกคน สนุกเฮฮา ติดเล่น พูดสำเนียงท้องถิ่นสุพรรณ ใช้คำว่า "จ้า" "น้า" "เอ้า" "ครับผม" "โอ้โห" ให้กำลังใจแบบอบอุ่นเป็นกันเอง ตอบไม่เกิน 2 ประโยค`
+  },
+  'coach-alan': {
+    name: 'Alan',
+    nameTh: 'อลัน',
+    systemPrompt: `คุณชื่อ"อลัน" โค้ชฟิตเนสชาย จิตใจดี เสียงชัดเจน เฟรนลี่กับทุกคน จริงจังมาก พูดตรงประเด็น ให้กำลังใจอย่างจริงใจ ใช้คำลงท้าย "ครับ" "นะครับ" ตอบไม่เกิน 2 ประโยค`
+  },
+  'coach-homchan': {
+    name: 'Homchan',
+    nameTh: 'หอมจันทน์',
+    systemPrompt: `คุณชื่อ"หอมจันทน์" โค้ชฟิตเนสหญิง เป็นคนใต้ น่ารัก จิตใจดี เฟรนลี่กับทุกคน จริงจังมาก พูดสำเนียงใต้บ้าง ใช้คำลงท้าย "ค่ะ" "นะคะ" "จ้า" ตอบไม่เกิน 2 ประโยค`
+  },
+  'coach-manee': {
+    name: 'Manee',
+    nameTh: 'มานี',
+    systemPrompt: `คุณชื่อ"มานี" โค้ชฟิตเนสหญิง แนวอนิเมะ น่ารักมาก ขี้เล่นสุดๆ ขี้จีบคนออกกำลังกาย ชมจนคนเขิน ชอบเล่นมุกความรัก ใช้คำลงท้าย "ค่ะ~" "นะคะ~" "น้า~" ตอบไม่เกิน 2 ประโยค`
   }
 };
 
@@ -63,9 +83,9 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   // Get API key from environment
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = process.env.TOGETHER_API_KEY;
   if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'Server misconfigured: missing OPENROUTER_API_KEY' }), {
+    return new Response(JSON.stringify({ error: 'Server misconfigured: missing TOGETHER_API_KEY' }), {
       status: 500,
       headers: { 'content-type': 'application/json' },
     });
@@ -204,7 +224,7 @@ ${bmiTip ? `- ${bmiTip}` : ''}
   const fullPrompt = `${systemPrompt}${contextStr}\n\nคำถามจากผู้ใช้: ${message}`;
 
   try {
-    // Build request body for OpenRouter API (OpenAI-compatible)
+    // Build request body for Together AI API (OpenAI-compatible)
     const contentParts: Array<Record<string, unknown>> = [];
 
     // Add image if provided
@@ -223,7 +243,7 @@ ${bmiTip ? `- ${bmiTip}` : ''}
     contentParts.push({ type: 'text', text: fullPrompt });
 
     const requestBody = {
-      model: 'google/gemma-3n-e4b-it:free',
+      model: 'google/gemma-3n-E4B-it',
       messages: [
         {
           role: 'user',
@@ -231,28 +251,26 @@ ${bmiTip ? `- ${bmiTip}` : ''}
         },
       ],
       temperature: 0.7,
-      max_tokens: 200,
+      max_tokens: 150,
       top_p: 0.8,
     };
 
-    const openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
+    const togetherUrl = 'https://api.together.xyz/v1/chat/completions';
 
-    const response = await fetch(openRouterUrl, {
+    const response = await fetch(togetherUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
-        'HTTP-Referer': 'https://kaya-fitness.vercel.app',
-        'X-Title': 'KAYA Fitness',
       },
       body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('OpenRouter API error:', response.status, errorText);
+      console.error('Together AI API error:', response.status, errorText);
       return new Response(JSON.stringify({ 
-        error: 'OpenRouter API error', 
+        error: 'Together AI API error', 
         status: response.status,
         details: errorText 
       }), {
@@ -286,7 +304,7 @@ ${bmiTip ? `- ${bmiTip}` : ''}
 
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-    console.error('OpenRouter request error:', err);
+    console.error('Together AI request error:', err);
     return new Response(JSON.stringify({ 
       error: 'Request failed', 
       details: errorMessage 
