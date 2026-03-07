@@ -6,7 +6,6 @@ import {
   saveWorkoutSession,
   getUserWorkoutHistory,
   getUserWorkoutStats,
-  createSampleWorkoutHistory,
   saveNutritionLog,
   getUserNutritionLogs,
   getUserBadges,
@@ -451,17 +450,6 @@ export const useChallenges = () => {
     }
   }, [lineProfile?.userId, fetchChallenges]);
 
-  const updateProgress = useCallback(async (challengeId: string, progress: number) => {
-    try {
-      await updateChallengeProgress(challengeId, progress);
-      await fetchChallenges();
-      return true;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update challenge');
-      return false;
-    }
-  }, [fetchChallenges]);
-
   const incrementProgress = useCallback(async (
     challengeType: 'workout' | 'calories' | 'water',
     amount: number = 1
@@ -509,7 +497,6 @@ export const useChallenges = () => {
 
   return {
     challenges,
-    updateProgress,
     incrementProgress,
     claimReward,
     refreshChallenges: fetchChallenges,

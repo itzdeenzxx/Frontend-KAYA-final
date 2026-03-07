@@ -210,7 +210,7 @@ export default function GameMode() {
                   <p className={cn("text-xs", isDark ? "text-gray-500" : "text-gray-400")}>Total Score</p>
                 </div>
               </div>
-              <div className={cn(
+              {/* <div className={cn(
                 "flex items-center gap-3 px-5 py-3 rounded-2xl",
                 isDark ? "bg-white/5 border border-white/10" : "bg-white shadow-lg"
               )}>
@@ -219,7 +219,7 @@ export default function GameMode() {
                   <p className="text-2xl font-bold">{starsEarned}</p>
                   <p className={cn("text-xs", isDark ? "text-gray-500" : "text-gray-400")}>Stars Earned</p>
                 </div>
-              </div>
+              </div> */}
             </div>
           </div>
 
