@@ -1323,20 +1323,23 @@ export default function WorkoutUI() {
       if (localUrl) {
         console.log(`🔊 [ExerciseInstruction] Playing local audio for ${exercise.kayaExercise}:`, localUrl);
         try {
+          isTtsSpeakingRef.current = true;
           return new Promise<void>((resolve) => {
             const audio = new Audio(localUrl);
             ttsAudioRef.current = audio;
             audio.playbackRate = ttsSpeedRef.current || 1.0;
             audio.onended = () => {
               ttsAudioRef.current = null;
+              isTtsSpeakingRef.current = false;
               resolve();
             };
-            audio.onerror = () => resolve();
+            audio.onerror = () => { isTtsSpeakingRef.current = false; resolve(); };
             audio.play().then(() => {
               console.log('🔊 [ExerciseInstruction] Local audio playing at speed:', audio.playbackRate);
-            }).catch(() => resolve());
+            }).catch(() => { isTtsSpeakingRef.current = false; resolve(); });
           });
         } catch {
+          isTtsSpeakingRef.current = false;
           console.warn('🔊 [ExerciseInstruction] Local audio failed, falling back to API');
         }
       }
@@ -1395,6 +1398,7 @@ export default function WorkoutUI() {
       
       // Stop any previous audio before playing new one
       stopAllTTS();
+      isTtsSpeakingRef.current = true;
       
       const audio = new Audio(audioUrl);
       ttsAudioRef.current = audio;
@@ -1407,6 +1411,7 @@ export default function WorkoutUI() {
       
       audio.onerror = (e) => {
         console.error('❌ [TTS Exercise] Audio error:', e);
+        isTtsSpeakingRef.current = false;
         fallbackToWebSpeech();
       };
       
@@ -1414,6 +1419,7 @@ export default function WorkoutUI() {
         console.log('TTS: Audio playing at speed:', audio.playbackRate);
       }).catch((err) => {
         console.error('❌ [TTS Exercise] Play error:', err);
+        isTtsSpeakingRef.current = false;
         fallbackToWebSpeech();
       });
       
@@ -1421,9 +1427,11 @@ export default function WorkoutUI() {
       audio.onended = () => {
         URL.revokeObjectURL(audioUrl);
         ttsAudioRef.current = null;
+        isTtsSpeakingRef.current = false;
       };
     } catch (error) {
       console.error('❌ [TTS Exercise] Exception:', error);
+      isTtsSpeakingRef.current = false;
       fallbackToWebSpeech();
     }
   }, [speakWithWebSpeech, stopAllTTS]);
@@ -1538,13 +1546,15 @@ export default function WorkoutUI() {
       // Apply speed setting from user preferences
       audio.playbackRate = ttsSpeedRef.current || 1.0;
       
+      isTtsSpeakingRef.current = true;
       audio.play().then(() => {
         console.log('TTS Coach Intro: Playing at speed:', audio.playbackRate);
-      }).catch(console.error);
+      }).catch((err) => { console.error(err); isTtsSpeakingRef.current = false; speakFirstExercise(); });
       
       audio.onended = () => {
         URL.revokeObjectURL(audioUrl);
         ttsAudioRef.current = null;
+        isTtsSpeakingRef.current = false;
         speakFirstExercise();
       };
     } catch (error: unknown) {
