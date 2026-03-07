@@ -10,6 +10,7 @@ import { getCoachAvatar } from './CoachAvatars';
 import { getCustomAvatar } from './CustomAvatars';
 import { useTTS } from '@/hooks/useTTS';
 import { getCustomCoach } from '@/lib/firestore';
+import { getLocalAudioUrl } from '@/lib/coachAudio';
 
 interface CoachSelectorProps {
   userId?: string;
@@ -92,7 +93,20 @@ export const CoachSelector = ({
 
     setPlayingCoachId(coach.id);
     try {
-      // Call Botnoi TTS directly with the coach's voiceId
+      // Try local pre-recorded greeting first (instant, no network needed)
+      const localUrl = getLocalAudioUrl(coach.id, 'greeting');
+      if (localUrl) {
+        await new Promise<void>((resolve) => {
+          if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+          const audio = new Audio(localUrl);
+          audioRef.current = audio;
+          audio.onended = () => { audioRef.current = null; resolve(); };
+          audio.onerror = () => { audioRef.current = null; resolve(); };
+          audio.play().catch(() => resolve());
+        });
+        return;
+      }
+      // Fallback: Call Botnoi TTS API with the coach's voiceId
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 12000);
       const res = await fetch('/api/aift/tts', {

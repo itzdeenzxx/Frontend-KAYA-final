@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserSettings, updateTTSSettings, DEFAULT_TTS_SETTINGS, getCustomCoach } from '@/lib/firestore';
 import { getCoachById, Coach, buildCoachFromCustom, CustomCoach, CustomAvatarId, migrateCoachId } from '@/lib/coachConfig';
+import { getLocalAudioUrl } from '@/lib/coachAudio';
 import { getCoachAvatar } from '@/components/coach/CoachAvatars';
 import { getCustomAvatar } from '@/components/coach/CustomAvatars';
 import { CoachSelectionPopup } from '@/components/coach/CoachSelectionPopup';
@@ -206,6 +207,17 @@ export function CoachSettings({ isDark }: CoachSettingsProps) {
         }
       }
 
+      // Try local pre-recorded greeting first (instant, no network needed)
+      const localUrl = getLocalAudioUrl(selectedCoachId, 'greeting');
+      if (localUrl) {
+        await new Promise<void>((resolve) => {
+          const audio = new Audio(localUrl);
+          audio.onended = () => resolve();
+          audio.onerror = () => resolve();
+          audio.play().catch(() => resolve());
+        });
+        return;
+      }
       // Fallback: Botnoi TTS (for preset coaches or custom without voice refs)
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 12000);

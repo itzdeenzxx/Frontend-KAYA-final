@@ -741,7 +741,8 @@ export default function WorkoutUI() {
     if (!ttsEnabledRef.current) { onEnd?.(); return; }
     // Fallback to 'coach-aiko' when ttsCoach hasn't loaded yet (async Firestore load)
     const coachId = ttsCoachRef.current?.id ?? 'coach-aiko';
-    const url = getLocalAudioUrl(coachId, category);
+    // If coach lacks this audio category (e.g. new coaches missing timer_15s/timer_30s), fall back to aiko
+    const url = getLocalAudioUrl(coachId, category) ?? getLocalAudioUrl('coach-aiko', category);
     if (!url) { onEnd?.(); return; }
     stopAllTTS();
     isTtsSpeakingRef.current = true; // mark speaking so other audio effects respect this

@@ -334,6 +334,10 @@ export const BOTNOI_SPEAKERS = [
   { id: '9', name: 'นาเดียร์ (Nadia)', description: 'ผู้หญิง | เสียงเล่าเรื่อง / มั่นใจ' },
   { id: '543', name: 'ณัฐกานต์ (Nattakarn)', description: 'ผู้ชาย | เสียงผู้ชาย' },
   { id: '31', name: 'นายเบรด (Mr.Bread)', description: 'ผู้ชาย | เสียงขี้เล่น' },
+  { id: '37', name: 'ผู้ใหญ่ลี (PhuyaiLee)', description: 'ผู้ชาย | เสียงผู้ใหญ่ / สุพรรณ' },
+  { id: '5', name: 'อลัน (Alan)', description: 'ผู้ชาย | เสียงชัดเจน / จริงจัง' },
+  { id: '299', name: 'หอมจันทน์ (Homchan)', description: 'ผู้หญิง | เสียงคนใต้ / น่ารัก' },
+  { id: '52', name: 'มานี (Manee)', description: 'ผู้หญิง | เสียงอนิเมะ / ขี้เล่น' },
 ] as const;
 
 // Default TTS Settings
