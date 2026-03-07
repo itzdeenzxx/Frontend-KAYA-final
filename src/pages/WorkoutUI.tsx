@@ -605,14 +605,15 @@ export default function WorkoutUI() {
     }
   }, [currentExerciseIsTimeBased, exerciseCompleted, timeLeft, currentExercise, exercises]);
 
-  // Tempo feedback audio — play when tempo quality is problematic (throttled 8s)
+  // Tempo feedback audio — play when tempo quality is problematic (throttled 10s, needs >=5 reps)
   useEffect(() => {
     if (!isKayaWorkout || exerciseCompleted || showRestScreen) return;
+    if (kayaAnalysis.reps < 5) return; // need at least 5 reps for reliable tempo data
     const quality = kayaAnalysis.tempoQuality;
     if (quality !== 'too_fast' && quality !== 'too_slow' && quality !== 'inconsistent') return;
     const now = Date.now();
-    if (now - lastTempoAudioTimeRef.current < 8000) return; // throttle 8s
-    if (quality === lastTempoQualityRef.current && now - lastTempoAudioTimeRef.current < 15000) return; // same quality: 15s extra cooldown
+    if (now - lastTempoAudioTimeRef.current < 10000) return; // throttle 10s (was 8s)
+    if (quality === lastTempoQualityRef.current && now - lastTempoAudioTimeRef.current < 20000) return; // same quality: 20s extra cooldown
     if (isTtsSpeakingRef.current) return;
     const TEMPO_MAP: Partial<Record<string, AudioCategory>> = {
       too_fast: 'tempo_too_fast',
@@ -734,12 +735,13 @@ export default function WorkoutUI() {
     const url = getLocalAudioUrl(coachId, category);
     if (!url) { onEnd?.(); return; }
     stopAllTTS();
+    isTtsSpeakingRef.current = true; // mark speaking so other audio effects respect this
     const audio = new Audio(url);
     ttsAudioRef.current = audio;
     audio.playbackRate = ttsSpeedRef.current || 1.0;
-    audio.onended = () => { ttsAudioRef.current = null; onEnd?.(); };
-    audio.onerror = () => { ttsAudioRef.current = null; onEnd?.(); };
-    audio.play().catch(() => { ttsAudioRef.current = null; onEnd?.(); });
+    audio.onended = () => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; onEnd?.(); };
+    audio.onerror = () => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; onEnd?.(); };
+    audio.play().catch(() => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; onEnd?.(); });
   }, [stopAllTTS]);
   // Keep ref updated so non-reactive code (setTimeout, useEffect) always has latest
   useEffect(() => { playCoachAudioRef.current = playCoachAudio; }, [playCoachAudio]);
@@ -909,12 +911,13 @@ export default function WorkoutUI() {
     const now = Date.now();
     // Don't interrupt rep count or other audio in progress
     if (isTtsSpeakingRef.current) return;
-    // Throttle: play form audio at most once every 5 seconds
-    if (now - lastFormAudioTimeRef.current < 5000) return;
+    // Throttle: play form audio at most once every 8 seconds (was 5s — too frequent)
+    if (now - lastFormAudioTimeRef.current < 8000) return;
     if (quality === 'bad' && score < 50) {
       lastFormAudioTimeRef.current = now;
       playCoachAudioRef.current('form_correction');
-    } else if (quality === 'warn' && score < 75) {
+    } else if (quality === 'warn' && score < 70) {
+      // Raise warn threshold: 75 → 70 to reduce false positives
       lastFormAudioTimeRef.current = now;
       playCoachAudioRef.current('form_check');
     }
@@ -937,14 +940,19 @@ export default function WorkoutUI() {
       setDisplayRep(kayaAnalysis.reps);
       setShowRepCounter(true);
       
-      // Speak rep count for milestones (1,5,9,10); halfway once; others get encouragement
+      // Speak rep count for milestones (1,5,9,10); halfway once; others get light encouragement
       const halfwayThreshold = Math.floor(targetReps / 2) + 1; // first rep > 50%
       if (REP_MESSAGES[kayaAnalysis.reps]) {
         speakRepCount(kayaAnalysis.reps);
       } else if (kayaAnalysis.reps === halfwayThreshold && !halfwayPlayedRef.current) {
         halfwayPlayedRef.current = true;
         playCoachAudioRef.current('halfway');
-      } else if (kayaAnalysis.reps < targetReps && !isTtsSpeakingRef.current) {
+      } else if (
+        kayaAnalysis.reps < targetReps &&
+        !isTtsSpeakingRef.current &&
+        currentKayaExercise !== 'arm_raise' && // arm_raise has its own hold countdown
+        kayaAnalysis.reps % 3 === 0 // only every 3rd non-milestone rep to avoid over-coaching
+      ) {
         playCoachAudioRef.current('good_job');
       }
       
