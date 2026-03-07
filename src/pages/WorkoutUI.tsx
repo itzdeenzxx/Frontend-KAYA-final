@@ -146,6 +146,7 @@ export default function WorkoutUI() {
   const lastTempoQualityRef = useRef<string>(''); // last tempo quality that triggered audio
   const lastMotionAudioTimeRef = useRef<number>(Date.now()); // throttle motion quality audio
   const lastVisibilityAudioTimeRef = useRef<number>(Date.now()); // throttle move_closer audio
+  const bodyInvisibleSinceRef = useRef<number>(0); // tracks when body first became continuously invisible
   // Hold countdown refs for arm_raise (3-second hold)
   const stageUpEnteredTimeRef = useRef<number>(0);
   const holdCountdownRef = useRef<number>(4); // counts 4→3→2→1 so beats 3,2,1 all fire
@@ -627,11 +628,23 @@ export default function WorkoutUI() {
     playCoachAudioRef.current(category);
   }, [isKayaWorkout, exerciseCompleted, showRestScreen, kayaAnalysis.tempoQuality]);
 
-  // Body visibility audio — prompt user to move closer when body not detected (throttled 10s)
+  // Body visibility audio — only after 4.5s of continuous invisibility (throttled 10s)
   useEffect(() => {
     if (!isKayaWorkout || exerciseCompleted || showRestScreen) return;
-    if (kayaAnalysis.isBodyVisible) return;
+    if (kayaAnalysis.isBodyVisible) {
+      // Body just became visible — reset the invisible-since timer
+      bodyInvisibleSinceRef.current = 0;
+      return;
+    }
     const now = Date.now();
+    // Mark when body first became invisible
+    if (bodyInvisibleSinceRef.current === 0) {
+      bodyInvisibleSinceRef.current = now;
+      return;
+    }
+    // Wait at least 4.5 seconds of continuous invisibility before speaking
+    if (now - bodyInvisibleSinceRef.current < 4500) return;
+    // Throttle: don't repeat more often than once every 10s
     if (now - lastVisibilityAudioTimeRef.current < 10000) return;
     if (isTtsSpeakingRef.current) return;
     lastVisibilityAudioTimeRef.current = now;
@@ -667,27 +680,23 @@ export default function WorkoutUI() {
       return;
     }
 
-    // Just entered 'up' stage — schedule stretch_up + 3-2-1 countdown
+    // Just entered 'up' stage — schedule 3-2-1 beat countdown
     if (stageUpEnteredTimeRef.current === 0) {
       stageUpEnteredTimeRef.current = Date.now();
       holdCountdownRef.current = 4;
       holdAnnouncedRef.current = true;
 
-      // Play "ยืดตัวขึ้น!" immediately
-      if (!isTtsSpeakingRef.current) {
-        playCoachAudioRef.current('stretch_up');
-      }
-
-      // Schedule 3-2-1 countdown spaced after stretch_up (~700ms each)
+      // Schedule 3-2-1 countdown starting immediately (no stretch_up here —
+      // stretch_up is reserved for form correction when user's back is bent)
       const t3 = setTimeout(() => {
         if (stageUpEnteredTimeRef.current !== 0) playCoachAudioRef.current('beat_3');
-      }, 800);
+      }, 100);
       const t2 = setTimeout(() => {
         if (stageUpEnteredTimeRef.current !== 0) playCoachAudioRef.current('beat_2');
-      }, 1700);
+      }, 1000);
       const t1 = setTimeout(() => {
         if (stageUpEnteredTimeRef.current !== 0) playCoachAudioRef.current('beat_1');
-      }, 2600);
+      }, 1900);
 
       // Cleanup cancels all pending beats if user lowers arms early
       return () => {
@@ -914,11 +923,18 @@ export default function WorkoutUI() {
     if (now - lastFormAudioTimeRef.current < 8000) return;
     if (quality === 'bad' && score < 50) {
       lastFormAudioTimeRef.current = now;
-      playCoachAudioRef.current('form_correction');
+      // Play stretch_up when the issue is body leaning/bending (e.g. เอนตัว, ลำตัวเอียง)
+      const hasBodyLean = kayaAnalysis.formFeedback?.issues?.some(
+        (i) => i.includes('เอนตัว') || i.includes('ลำตัวเอียง')
+      );
+      playCoachAudioRef.current(hasBodyLean ? 'stretch_up' : 'form_correction');
     } else if (quality === 'warn' && score < 70) {
       // Raise warn threshold: 75 → 70 to reduce false positives
       lastFormAudioTimeRef.current = now;
-      playCoachAudioRef.current('form_check');
+      const hasBodyLean = kayaAnalysis.formFeedback?.issues?.some(
+        (i) => i.includes('เอนตัว') || i.includes('ลำตัวเอียง')
+      );
+      playCoachAudioRef.current(hasBodyLean ? 'stretch_up' : 'form_check');
     }
   }, [isKayaWorkout, exerciseCompleted, kayaAnalysis.isBodyVisible, kayaAnalysis.formQuality, kayaAnalysis.formScore]);
 
