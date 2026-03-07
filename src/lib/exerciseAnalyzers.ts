@@ -352,7 +352,7 @@ export class ArmRaiseAnalyzer extends ExerciseAnalyzer {
     super('arm_raise');
     this.repCooldown = 250; // Faster cooldown
     this.minHoldTime = 100; // 0.1 วินาที - ถึงปุ๊บนับเลย
-    this.minFramesInStage = 1; // Just 1 frame needed
+    this.minFramesInStage = 2; // 2 frames to confirm stage — prevents single-frame flicker
   }
 
   analyze(landmarks: Landmark[]): ExerciseAnalysisResult {

@@ -325,8 +325,8 @@ export interface MotionQuality {
 export class MotionAnalyzer {
   private positionHistory: { x: number; y: number; timestamp: number }[] = [];
   private maxHistoryLength = 30;
-  private lastFeedbackTime = 0;
-  private minFeedbackInterval = 3000; // 3 seconds between feedback
+  private lastFeedbackTime = Date.now(); // Initialize to now so feedback doesn't fire immediately
+  private minFeedbackInterval = 5000; // 5 seconds between feedback (was 3s)
 
   // Update with new position
   update(x: number, y: number, timestamp: number = Date.now()): void {
@@ -430,6 +430,6 @@ export class MotionAnalyzer {
   // Reset analyzer
   reset(): void {
     this.positionHistory = [];
-    this.lastFeedbackTime = 0;
+    this.lastFeedbackTime = Date.now(); // Reset to now so feedback doesn't fire immediately
   }
 }

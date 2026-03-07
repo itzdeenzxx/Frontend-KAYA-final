@@ -654,42 +654,47 @@ export default function WorkoutUI() {
     }
   }, [isKayaWorkout, exerciseCompleted, showRestScreen, kayaAnalysis.isBodyVisible, kayaAnalysis.motionQuality, kayaAnalysis.reps]);
 
-  // Arm raise hold countdown — play "stretch up" + beat 3-2-1 during 3-second hold
+  // Arm raise hold countdown — play "stretch up" then 3-2-1 beat countdown via timeouts
   useEffect(() => {
     if (!isKayaWorkout || currentKayaExercise !== 'arm_raise') return;
 
     if (kayaAnalysis.stage !== 'up') {
-      // Left 'up' stage — reset hold tracking
+      // Left 'up' stage — reset hold tracking (cleanup will cancel any pending timeouts)
       stageUpEnteredTimeRef.current = 0;
       holdCountdownRef.current = 4;
       holdAnnouncedRef.current = false;
       return;
     }
 
-    // Just entered 'up' stage — announce hold
+    // Just entered 'up' stage — schedule stretch_up + 3-2-1 countdown
     if (stageUpEnteredTimeRef.current === 0) {
       stageUpEnteredTimeRef.current = Date.now();
       holdCountdownRef.current = 4;
+      holdAnnouncedRef.current = true;
+
+      // Play "ยืดตัวขึ้น!" immediately
       if (!isTtsSpeakingRef.current) {
-        holdAnnouncedRef.current = true;
-        playCoachAudioRef.current('stretch_up'); // "ยืดตัวขึ้น!"
+        playCoachAudioRef.current('stretch_up');
       }
+
+      // Schedule 3-2-1 countdown spaced after stretch_up (~700ms each)
+      const t3 = setTimeout(() => {
+        if (stageUpEnteredTimeRef.current !== 0) playCoachAudioRef.current('beat_3');
+      }, 800);
+      const t2 = setTimeout(() => {
+        if (stageUpEnteredTimeRef.current !== 0) playCoachAudioRef.current('beat_2');
+      }, 1700);
+      const t1 = setTimeout(() => {
+        if (stageUpEnteredTimeRef.current !== 0) playCoachAudioRef.current('beat_1');
+      }, 2600);
+
+      // Cleanup cancels all pending beats if user lowers arms early
+      return () => {
+        clearTimeout(t3);
+        clearTimeout(t2);
+        clearTimeout(t1);
+      };
     }
-
-    // Interval to count down 3-2-1 while holding up
-    const interval = setInterval(() => {
-      if (stageUpEnteredTimeRef.current === 0) return;
-      const elapsed = Math.floor((Date.now() - stageUpEnteredTimeRef.current) / 1000);
-      const remaining = 3 - elapsed; // 3,2,1 as hold progresses
-      if (remaining >= 1 && remaining <= 3 && remaining < holdCountdownRef.current) {
-        holdCountdownRef.current = remaining;
-        if (!isTtsSpeakingRef.current) {
-          playCoachAudioRef.current(`beat_${remaining}` as AudioCategory);
-        }
-      }
-    }, 300);
-
-    return () => clearInterval(interval);
   }, [isKayaWorkout, currentKayaExercise, kayaAnalysis.stage]);
 
   // Rest timer countdown
@@ -965,6 +970,7 @@ export default function WorkoutUI() {
     lastTempoQualityRef.current = '';
     lastMotionAudioTimeRef.current = Date.now();
     lastVisibilityAudioTimeRef.current = Date.now();
+    lastFormAudioTimeRef.current = Date.now();
     // Reset arm_raise hold countdown
     stageUpEnteredTimeRef.current = 0;
     holdCountdownRef.current = 4;
