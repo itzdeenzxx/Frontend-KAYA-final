@@ -121,7 +121,7 @@ export const EXERCISES: Record<ExerciseType, ExerciseDefinition> = {
     thresholds: {
       up_angle: 120,     // hip flexion angle < 120° (easier: was 90)
       down_angle: 140,   // hip flexion angle > 140° (easier: was 150)
-      min_hold_frames: 1, // hold for 1 frame (easier: was 2)
+      min_hold_frames: 3, // hold for 3 frames to confirm rep (was 1)
     }
   },
 

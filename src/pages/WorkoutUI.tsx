@@ -138,14 +138,18 @@ export default function WorkoutUI() {
   const [displayRep, setDisplayRep] = useState(0);
   const lastRepRef = useRef(0);
   const lastSpokenRepRef = useRef(0);
-  const lastFormAudioTimeRef = useRef<number>(0); // throttle form feedback audio
+  const lastFormAudioTimeRef = useRef<number>(Date.now()); // throttle form feedback audio
   const halfwayPlayedRef = useRef(false); // play 'halfway' audio only once per exercise
   const timeMilestone30Ref = useRef(false); // play audio when timeLeft hits 30
   const timeMilestone15Ref = useRef(false); // play audio when timeLeft hits 15
-  const lastTempoAudioTimeRef = useRef<number>(0); // throttle tempo feedback audio
+  const lastTempoAudioTimeRef = useRef<number>(Date.now()); // throttle tempo feedback audio
   const lastTempoQualityRef = useRef<string>(''); // last tempo quality that triggered audio
-  const lastMotionAudioTimeRef = useRef<number>(0); // throttle motion quality audio
-  const lastVisibilityAudioTimeRef = useRef<number>(0); // throttle move_closer audio
+  const lastMotionAudioTimeRef = useRef<number>(Date.now()); // throttle motion quality audio
+  const lastVisibilityAudioTimeRef = useRef<number>(Date.now()); // throttle move_closer audio
+  // Hold countdown refs for arm_raise (3-second hold)
+  const stageUpEnteredTimeRef = useRef<number>(0);
+  const holdCountdownRef = useRef<number>(4); // counts 4→3→2→1 so beats 3,2,1 all fire
+  const holdAnnouncedRef = useRef<boolean>(false);
   
   // TTS audio ref
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -640,14 +644,53 @@ export default function WorkoutUI() {
     const now = Date.now();
     if (now - lastMotionAudioTimeRef.current < 8000) return;
     if (isTtsSpeakingRef.current) return;
-    if (!isMoving) {
+    // Only fire move_more when user has had reps (body visible and clearly not moving after doing some reps)
+    if (!isMoving && kayaAnalysis.reps > 0) {
       lastMotionAudioTimeRef.current = now;
       playCoachAudioRef.current('move_more'); // "ขยับตัวอีก / ขยับมากกว่า"
-    } else if (smoothness === 'jerky') {
+    } else if (isMoving && smoothness === 'jerky') {
       lastMotionAudioTimeRef.current = now;
       playCoachAudioRef.current('movement_jerky'); // "เคลื่อนไหวกระตุก"
     }
-  }, [isKayaWorkout, exerciseCompleted, showRestScreen, kayaAnalysis.isBodyVisible, kayaAnalysis.motionQuality]);
+  }, [isKayaWorkout, exerciseCompleted, showRestScreen, kayaAnalysis.isBodyVisible, kayaAnalysis.motionQuality, kayaAnalysis.reps]);
+
+  // Arm raise hold countdown — play "stretch up" + beat 3-2-1 during 3-second hold
+  useEffect(() => {
+    if (!isKayaWorkout || currentKayaExercise !== 'arm_raise') return;
+
+    if (kayaAnalysis.stage !== 'up') {
+      // Left 'up' stage — reset hold tracking
+      stageUpEnteredTimeRef.current = 0;
+      holdCountdownRef.current = 4;
+      holdAnnouncedRef.current = false;
+      return;
+    }
+
+    // Just entered 'up' stage — announce hold
+    if (stageUpEnteredTimeRef.current === 0) {
+      stageUpEnteredTimeRef.current = Date.now();
+      holdCountdownRef.current = 4;
+      if (!isTtsSpeakingRef.current) {
+        holdAnnouncedRef.current = true;
+        playCoachAudioRef.current('stretch_up'); // "ยืดตัวขึ้น!"
+      }
+    }
+
+    // Interval to count down 3-2-1 while holding up
+    const interval = setInterval(() => {
+      if (stageUpEnteredTimeRef.current === 0) return;
+      const elapsed = Math.floor((Date.now() - stageUpEnteredTimeRef.current) / 1000);
+      const remaining = 3 - elapsed; // 3,2,1 as hold progresses
+      if (remaining >= 1 && remaining <= 3 && remaining < holdCountdownRef.current) {
+        holdCountdownRef.current = remaining;
+        if (!isTtsSpeakingRef.current) {
+          playCoachAudioRef.current(`beat_${remaining}` as AudioCategory);
+        }
+      }
+    }, 300);
+
+    return () => clearInterval(interval);
+  }, [isKayaWorkout, currentKayaExercise, kayaAnalysis.stage]);
 
   // Rest timer countdown
   useEffect(() => {
@@ -917,10 +960,15 @@ export default function WorkoutUI() {
     halfwayPlayedRef.current = false;
     timeMilestone30Ref.current = false;
     timeMilestone15Ref.current = false;
-    lastTempoAudioTimeRef.current = 0;
+    // Use Date.now() so throttles give a proper grace period at exercise start
+    lastTempoAudioTimeRef.current = Date.now();
     lastTempoQualityRef.current = '';
-    lastMotionAudioTimeRef.current = 0;
-    lastVisibilityAudioTimeRef.current = 0;
+    lastMotionAudioTimeRef.current = Date.now();
+    lastVisibilityAudioTimeRef.current = Date.now();
+    // Reset arm_raise hold countdown
+    stageUpEnteredTimeRef.current = 0;
+    holdCountdownRef.current = 4;
+    holdAnnouncedRef.current = false;
   }, [currentExercise]);
 
   // Capture screenshot for voice interaction

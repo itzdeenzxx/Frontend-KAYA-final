@@ -750,9 +750,9 @@ export class KneeRaiseAnalyzer extends ExerciseAnalyzer {
 
   constructor() {
     super('knee_raise');
-    this.repCooldown = 250; // Faster cooldown
-    this.minFramesInStage = 1; // Just 1 frame needed
-    this.minHoldTime = 100; // 0.1 วินาที - ยกถึงปุ๊บนับเลย
+    this.repCooldown = 500; // Cooldown between reps (was 250ms)
+    this.minFramesInStage = 3; // Require 3 consecutive frames to confirm knee up (was 1)
+    this.minHoldTime = 150; // 0.15 วินาที
   }
 
   analyze(landmarks: Landmark[]): ExerciseAnalysisResult {
