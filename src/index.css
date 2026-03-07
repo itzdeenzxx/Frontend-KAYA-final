@@ -142,4 +142,87 @@
       opacity: 0;
     }
   }
+
+  /* AI Search glow animation */
+  @keyframes ai-border-spin {
+    0% { --ai-angle: 0deg; }
+    100% { --ai-angle: 360deg; }
+  }
+
+  @keyframes ai-glow-pulse {
+    0%, 100% { opacity: 0.4; filter: blur(15px); }
+    50% { opacity: 0.7; filter: blur(20px); }
+  }
+
+  @keyframes ai-shimmer {
+    0% { background-position: -200% center; }
+    100% { background-position: 200% center; }
+  }
+
+  @keyframes ai-sparkle {
+    0%, 100% { opacity: 0; transform: scale(0) rotate(0deg); }
+    50% { opacity: 1; transform: scale(1) rotate(180deg); }
+  }
+
+  .ai-search-wrapper {
+    position: relative;
+    border-radius: 1.25rem;
+    padding: 2px;
+    background: conic-gradient(
+      from var(--ai-angle, 0deg),
+      #a855f7, #6366f1, #3b82f6, #22d3ee, #10b981, #a855f7
+    );
+    animation: ai-border-spin 3s linear infinite;
+  }
+
+  .ai-search-wrapper::before {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 1.5rem;
+    background: conic-gradient(
+      from var(--ai-angle, 0deg),
+      #a855f7, #6366f1, #3b82f6, #22d3ee, #10b981, #a855f7
+    );
+    animation: ai-glow-pulse 2s ease-in-out infinite;
+    z-index: -1;
+  }
+
+  .ai-search-inner {
+    border-radius: calc(1.25rem - 2px);
+  }
+
+  .ai-shimmer-text {
+    background: linear-gradient(
+      90deg,
+      #a855f7 0%,
+      #6366f1 25%,
+      #22d3ee 50%,
+      #10b981 75%,
+      #a855f7 100%
+    );
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: ai-shimmer 3s linear infinite;
+  }
+
+  .ai-badge {
+    background: linear-gradient(135deg, #a855f7, #6366f1);
+    animation: ai-glow-pulse 2s ease-in-out infinite;
+  }
+
+  /* Personalized AI section sparkle card */
+  @keyframes ai-shimmer-bg {
+    0% { background-position: -300% 0; }
+    100% { background-position: 300% 0; }
+  }
+
+  /* Register custom property for conic gradient animation */
+  @property --ai-angle {
+    syntax: '<angle>';
+    initial-value: 0deg;
+    inherits: false;
+  }
 }
