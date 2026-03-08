@@ -1379,20 +1379,24 @@ export default function WorkoutUI() {
       return;
     }
 
-    // Play greeting only — exercise-start files (30-41) also open with a greeting
-    // phrase, so chaining them after greeting(42) causes "สวัสดีค่ะ" to be heard twice.
-    // Exercises 1+ get their start instruction via the exercise-change useEffect below.
-    const coachId = ttsCoachRef.current?.id ?? 'coach-aiko'; // fallback if not loaded yet
-    const localGreetingUrl = getGreetingAudioUrl(coachId);
-    if (localGreetingUrl) {
-      console.log('🔊 [CoachIntro] Playing greeting only');
-      playCoachAudioRef.current('greeting');
-      return;
+    const exercise = exercises[0];
+    if (exercise?.kayaExercise) {
+      // Exercise-start files (30-41) already open with a greeting phrase + exercise name.
+      // Play them directly for exercise 0 — this avoids the double "สวัสดีค่ะ" that
+      // occurred when chaining greeting(42) → exercise-start(30-41).
+      // Exercises 1+ get their start instruction via the exercise-change useEffect.
+      console.log('🔊 [CoachIntro] Playing exercise-start directly (contains greeting)');
+      setTimeout(() => speakExerciseInstruction(exercise), 500);
+    } else {
+      // Non-KAYA exercise: no start audio exists, fall back to greeting(42) only.
+      const coachId = ttsCoachRef.current?.id ?? 'coach-aiko';
+      const localGreetingUrl = getGreetingAudioUrl(coachId);
+      if (localGreetingUrl) {
+        console.log('🔊 [CoachIntro] Non-KAYA exercise — playing greeting only');
+        playCoachAudioRef.current('greeting');
+      }
     }
-
-    // No greeting audio found — skip intro
-    console.log('🔇 [CoachIntro] No local greeting audio, skipping intro');
-  }, []);
+  }, [exercises, speakExerciseInstruction]);
   // Keep ref updated so intro effect always calls the latest version
   useEffect(() => { speakCoachIntroductionRef.current = speakCoachIntroduction; }, [speakCoachIntroduction]);
 
