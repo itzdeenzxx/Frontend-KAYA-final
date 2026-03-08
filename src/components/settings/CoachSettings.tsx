@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Volume2, Play, Loader2, Settings2, Sparkles, ChevronRight } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
@@ -24,6 +24,14 @@ export function CoachSettings({ isDark }: CoachSettingsProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCoachSelector, setShowCoachSelector] = useState(false);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Stop preview audio when component unmounts (user navigates away mid-play)
+  useEffect(() => {
+    return () => {
+      if (previewAudioRef.current) { previewAudioRef.current.pause(); previewAudioRef.current = null; }
+    };
+  }, []);
   
   // Selected coach
   const [selectedCoachId, setSelectedCoachId] = useState<string>('coach-aiko');
@@ -158,10 +166,17 @@ export function CoachSettings({ isDark }: CoachSettingsProps) {
     });
   }, []);
 
-  // Play preview
+  // Play preview (clicking while playing will stop the audio)
   const playPreview = useCallback(async () => {
     if (!selectedCoach) return;
-    
+
+    // If already playing, stop it
+    if (isPlaying) {
+      if (previewAudioRef.current) { previewAudioRef.current.pause(); previewAudioRef.current = null; }
+      setIsPlaying(false);
+      return;
+    }
+
     setIsPlaying(true);
     setError(null);
     
@@ -212,9 +227,10 @@ export function CoachSettings({ isDark }: CoachSettingsProps) {
       if (localUrl) {
         const played = await new Promise<boolean>((resolve) => {
           const audio = new Audio(localUrl);
-          audio.onended = () => resolve(true);
-          audio.onerror = () => resolve(false);
-          audio.play().catch(() => resolve(false));
+          previewAudioRef.current = audio;
+          audio.onended = () => { previewAudioRef.current = null; resolve(true); };
+          audio.onerror = () => { previewAudioRef.current = null; resolve(false); };
+          audio.play().catch(() => { previewAudioRef.current = null; resolve(false); });
         });
         if (played) return;
         // Local file failed — fall through to Botnoi TTS below
@@ -252,7 +268,7 @@ export function CoachSettings({ isDark }: CoachSettingsProps) {
     } finally {
       setIsPlaying(false);
     }
-  }, [selectedCoach, selectedCoachId, customCoachData, playAudioBase64]);
+  }, [selectedCoach, selectedCoachId, customCoachData, isPlaying, playAudioBase64]);
 
   if (isLoading) {
     return (
@@ -404,7 +420,6 @@ export function CoachSettings({ isDark }: CoachSettingsProps) {
           <div className="p-4">
             <Button
               onClick={playPreview}
-              disabled={isPlaying}
               className={cn(
                 "w-full gap-2",
                 isDark 
@@ -447,6 +462,7 @@ export function CoachSettings({ isDark }: CoachSettingsProps) {
         open={showCoachSelector}
         onClose={() => setShowCoachSelector(false)}
         onCoachSelected={handleCoachSelected}
+        currentCoachId={selectedCoachId}
         canSkip={false}
       />
     </>

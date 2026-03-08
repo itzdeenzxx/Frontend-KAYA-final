@@ -19,6 +19,8 @@ interface CoachSelectionPopupProps {
   onClose: () => void;
   onCoachSelected?: (coachId: string) => void;
   canSkip?: boolean;
+  /** Pre-select this coach when the popup opens (e.g. user's current coach in Settings) */
+  currentCoachId?: string;
 }
 
 export const CoachSelectionPopup = ({
@@ -26,18 +28,22 @@ export const CoachSelectionPopup = ({
   onClose,
   onCoachSelected,
   canSkip = false,
+  currentCoachId,
 }: CoachSelectionPopupProps) => {
   const { userProfile } = useAuth();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const [selectedCoachId, setSelectedCoachId] = useState<string | undefined>();
+  const [selectedCoachId, setSelectedCoachId] = useState<string | undefined>(currentCoachId);
   const [isSaving, setIsSaving] = useState(false);
   const [view, setView] = useState<'select' | 'create-custom'>('select');
 
-  // Reset view when popup opens
+  // Reset view and pre-select current coach each time the popup opens
   useEffect(() => {
-    if (open) setView('select');
-  }, [open]);
+    if (open) {
+      setView('select');
+      setSelectedCoachId(currentCoachId);
+    }
+  }, [open, currentCoachId]);
 
   const handleSelect = (coachId: string) => {
     setSelectedCoachId(coachId);

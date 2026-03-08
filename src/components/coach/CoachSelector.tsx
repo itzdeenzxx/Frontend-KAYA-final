@@ -58,7 +58,11 @@ export const CoachSelector = ({
   }, [userId, selectedCoachId]);
 
   useEffect(() => {
-    return () => { stop(); };
+    return () => {
+      stop();
+      // Stop any local audio element on unmount to prevent memory leaks
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+    };
   }, [stop]);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -91,6 +95,9 @@ export const CoachSelector = ({
       return;
     }
 
+    // Stop any currently playing audio before starting a new one
+    stop();
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
     setPlayingCoachId(coach.id);
     try {
       // Try local pre-recorded greeting first (instant, no network needed)
@@ -407,7 +414,13 @@ export const CoachSelector = ({
     <div className={cn('w-full', className)}>
       <Tabs
         value={currentTab}
-        onValueChange={(v) => setCurrentTab(v as 'female' | 'male' | 'custom')}
+        onValueChange={(v) => {
+          // Stop any playing audio when switching tabs
+          stop();
+          if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+          setPlayingCoachId(null);
+          setCurrentTab(v as 'female' | 'male' | 'custom');
+        }}
         className="w-full"
       >
         <TabsList className="grid w-full grid-cols-3 mb-4">
