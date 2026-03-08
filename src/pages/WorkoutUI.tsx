@@ -270,7 +270,16 @@ export default function WorkoutUI() {
               }
             } else {
               const coach = getCoachById(validCoachId);
-              if (coach) setTtsCoach(coach);
+              if (coach) {
+                // Update ref synchronously BEFORE setting the loaded flag.
+                // waitAndSpeak() polls ttsSettingsLoadedRef then immediately calls
+                // speakCoachIntroduction(), which reads ttsCoachRef at call-time.
+                // Without this, the ref is still updated via a useEffect which fires
+                // AFTER the next React render — after the intro already started with
+                // the wrong (default aiko) coach.
+                ttsCoachRef.current = coach;
+                setTtsCoach(coach);
+              }
             }
           }
           ttsSettingsLoadedRef.current = true;
@@ -776,6 +785,17 @@ export default function WorkoutUI() {
   }, [stopAllTTS]);
   // Keep ref updated so non-reactive code (setTimeout, useEffect) always has latest
   useEffect(() => { playCoachAudioRef.current = playCoachAudio; }, [playCoachAudio]);
+
+  // Stop all audio when component unmounts (e.g. back button, navigate away)
+  useEffect(() => {
+    return () => {
+      if (ttsAudioRef.current) {
+        ttsAudioRef.current.pause();
+        ttsAudioRef.current = null;
+      }
+      stopCoachPopupAudio();
+    };
+  }, []);
 
   // Use refs to avoid stale closures in speakTTS
   const ttsCoachRef = useRef(ttsCoach);
@@ -1372,14 +1392,12 @@ export default function WorkoutUI() {
     const coachId = ttsCoachRef.current?.id ?? 'coach-aiko'; // fallback if not loaded yet
     const localGreetingUrl = getGreetingAudioUrl(coachId);
     if (localGreetingUrl) {
-      console.log('🔊 [CoachIntro] Playing greeting → together sequence');
-      // Chain: greeting (42) → together (16) → first exercise
-      // NOTE: welcome (57) is intentionally skipped — both welcome and greeting start
-      // with "สวัสดีค่ะ เรามาออกกำลังกาย..." causing the phrase to be heard twice.
+      console.log('🔊 [CoachIntro] Playing greeting → exercise instruction');
+      // Chain: greeting (42) → first exercise
+      // NOTE: 'together' (15/16) has been removed — its content overlaps with the
+      // greeting file, causing the intro to sound like the same phrase spoken twice.
       playCoachAudioRef.current('greeting', () => {
-        playCoachAudioRef.current('together', () => {
-          speakFirstExercise();
-        });
+        speakFirstExercise();
       });
       return;
     }
@@ -1525,6 +1543,7 @@ export default function WorkoutUI() {
   }, [currentExercise, exercises, isKayaWorkout, kayaAnalysis, stopAllTTS]);
 
   const handleStop = () => {
+    stopAllTTS();
     navigate("/dashboard");
   };
 
