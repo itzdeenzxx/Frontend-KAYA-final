@@ -879,39 +879,39 @@ export default function Profile() {
             {/* Stats Section */}
             {activeSection === 'stats' && (
               <div className="space-y-6">
-                {/* Main Stats - Using cumulativeStats from dailyStats */}
+                {/* Main Stats - Using stats from workoutHistory */}
                 <div className="grid grid-cols-4 gap-4">
                   <div className={cn(
                     "p-6 rounded-2xl border bg-gradient-to-br from-primary/20 to-orange-500/10",
                     isDark ? "border-primary/30" : "border-primary/20"
                   )}>
-                    <Dumbbell className="w-8 h-8 text-primary mb-4" />
-                    <p className="text-3xl font-bold text-primary">{cumulativeStats?.totalWorkouts || 0}</p>
-                    <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>Workouts</p>
+                    <Trophy className="w-8 h-8 text-primary mb-4" />
+                    <p className="text-3xl font-bold text-primary">{stats?.totalWorkouts || 0}</p>
+                    <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>รวมทั้งหมด</p>
                   </div>
                   <div className={cn(
                     "p-6 rounded-2xl border bg-gradient-to-br from-green-500/20 to-emerald-500/10",
                     isDark ? "border-green-500/30" : "border-green-500/20"
                   )}>
                     <Flame className="w-8 h-8 text-green-400 mb-4" />
-                    <p className="text-3xl font-bold text-green-400">{(cumulativeStats?.totalCalories || 0).toLocaleString()}</p>
-                    <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>Calories Burned</p>
+                    <p className="text-3xl font-bold text-green-400">{(stats?.totalCalories || 0).toLocaleString()}</p>
+                    <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>แคลลอรี่</p>
                   </div>
                   <div className={cn(
                     "p-6 rounded-2xl border bg-gradient-to-br from-blue-500/20 to-cyan-500/10",
                     isDark ? "border-blue-500/30" : "border-blue-500/20"
                   )}>
                     <Timer className="w-8 h-8 text-blue-400 mb-4" />
-                    <p className="text-2xl font-bold text-blue-400 font-mono">{formatWorkoutTime(cumulativeStats?.totalWorkoutTime || 0)}</p>
-                    <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>Total Time</p>
+                    <p className="text-2xl font-bold text-blue-400 font-mono">{formatWorkoutTime(stats?.totalDuration || 0)}</p>
+                    <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>เวลารวม</p>
                   </div>
                   <div className={cn(
                     "p-6 rounded-2xl border bg-gradient-to-br from-purple-500/20 to-pink-500/10",
                     isDark ? "border-purple-500/30" : "border-purple-500/20"
                   )}>
-                    <Zap className="w-8 h-8 text-purple-400 mb-4" />
-                    <p className="text-3xl font-bold text-purple-400">{userPoints.toLocaleString()}</p>
-                    <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>Total Points</p>
+                    <Target className="w-8 h-8 text-purple-400 mb-4" />
+                    <p className="text-3xl font-bold text-purple-400">{Math.round(stats?.averageAccuracy || 0)}%</p>
+                    <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>ความแม่นยำ</p>
                   </div>
                 </div>
               

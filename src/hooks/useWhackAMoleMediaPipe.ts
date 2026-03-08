@@ -4,8 +4,8 @@ interface HandPosition {
   x: number;
   y: number;
   isDetected: boolean;
-  isSmashing: boolean; // กำลังทุบอยู่ (เคลื่อนที่ลงเร็ว)
-  isFist: boolean; // กำมืออยู่
+  isSmashing: boolean; // กำลังทุบอยู่ (เคลื่อนที่เร็ว)
+  isFist: boolean; // ใช้แทนสถานะ "แขนพร้อมทุบ"
 }
 
 interface UseWhackAMoleMediaPipeReturn {
@@ -15,70 +15,60 @@ interface UseWhackAMoleMediaPipeReturn {
   rightHand: HandPosition | null;
   isLoading: boolean;
   error: string | null;
+  isBodyInFrame: boolean;
 }
 
 declare global {
   interface Window {
-    Hands: any;
+    Pose: any;
     Camera: any;
     drawConnectors: any;
     drawLandmarks: any;
-    HAND_CONNECTIONS: any;
+    POSE_CONNECTIONS: any;
   }
 }
+
+// MediaPipe Pose landmark indices สำหรับแขน
+const POSE_LANDMARKS = {
+  NOSE: 0,
+  LEFT_SHOULDER: 11,
+  RIGHT_SHOULDER: 12,
+  LEFT_ELBOW: 13,
+  RIGHT_ELBOW: 14,
+  LEFT_WRIST: 15,
+  RIGHT_WRIST: 16,
+};
+
+// กรอบตรวจจับว่าผู้ใช้ยืนอยู่ในเฟรมหรือเปล่า (normalized 0-1)
+const BODY_FRAME = {
+  left: 0.25,
+  right: 0.75,
+  top: 0.05,
+  bottom: 0.70,
+};
 
 export function useWhackAMoleMediaPipe(): UseWhackAMoleMediaPipeReturn {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const handsRef = useRef<any>(null);
+  const poseRef = useRef<any>(null);
   const cameraRef = useRef<any>(null);
   
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [leftHand, setLeftHand] = useState<HandPosition | null>(null);
   const [rightHand, setRightHand] = useState<HandPosition | null>(null);
+  const [isBodyInFrame, setIsBodyInFrame] = useState(false);
   
-  // สำหรับตรวจจับการทุบ (velocity tracking)
-  const lastLeftY = useRef<number | null>(null);
-  const lastRightY = useRef<number | null>(null);
+  // สำหรับตรวจจับการทุบ (Optical Flow - velocity tracking) ที่ข้อมือ
+  const lastLeftPos = useRef<{ x: number; y: number } | null>(null);
+  const lastRightPos = useRef<{ x: number; y: number } | null>(null);
   const lastFrameTime = useRef<number>(0);
   
   // Smash buffer - เก็บว่าเพิ่งทุบไปหรือเปล่า (ช่วยไม่ให้หลุดเฟรม)
   const leftSmashBuffer = useRef<number>(0);
   const rightSmashBuffer = useRef<number>(0);
-  const SMASH_BUFFER_TIME = 250; // เพิ่มเป็น 250ms ที่ยังถือว่าอยู่ในสถานะทุบ
-  const SMASH_VELOCITY_THRESHOLD = 0.003; // ลดลงมากเพื่อ detect ง่ายขึ้น
-  
-  // ฟังก์ชันตรวจจับกำมือ (Fist detection)
-  const detectFist = useCallback((landmarks: any[]): boolean => {
-    // ตรวจสอบว่านิ้วพับอยู่หรือเปล่า
-    // โดยเทียบตำแหน่งปลายนิ้วกับ MCP joint
-    // นิ้วชี้ (8), นิ้วกลาง (12), นิ้วนาง (16), นิ้วก้อย (20)
-    // MCP: นิ้วชี้ (5), นิ้วกลาง (9), นิ้วนาง (13), นิ้วก้อย (17)
-    
-    const fingerTips = [landmarks[8], landmarks[12], landmarks[16], landmarks[20]];
-    const fingerMcps = [landmarks[5], landmarks[9], landmarks[13], landmarks[17]];
-    const wrist = landmarks[0];
-    
-    let foldedFingers = 0;
-    
-    for (let i = 0; i < 4; i++) {
-      const tip = fingerTips[i];
-      const mcp = fingerMcps[i];
-      
-      // คำนวณระยะห่างจาก wrist ไป tip และจาก wrist ไป mcp
-      const tipDist = Math.sqrt(Math.pow(tip.x - wrist.x, 2) + Math.pow(tip.y - wrist.y, 2));
-      const mcpDist = Math.sqrt(Math.pow(mcp.x - wrist.x, 2) + Math.pow(mcp.y - wrist.y, 2));
-      
-      // ถ้าปลายนิ้วอยู่ใกล้ข้อมือกว่า MCP = นิ้วพับอยู่
-      if (tipDist < mcpDist * 1.2) {
-        foldedFingers++;
-      }
-    }
-    
-    // ถ้าพับอย่างน้อย 3 นิ้ว = กำมือ
-    return foldedFingers >= 3;
-  }, []);
+  const SMASH_BUFFER_TIME = 300; // 300ms ที่ยังถือว่าอยู่ในสถานะทุบ
+  const SMASH_VELOCITY_THRESHOLD = 0.002; // velocity magnitude threshold (optical flow)
 
   const onResults = useCallback((results: any) => {
     if (!canvasRef.current) return;
@@ -104,152 +94,186 @@ export function useWhackAMoleMediaPipe(): UseWhackAMoleMediaPipeReturn {
     let detectedLeftHand: HandPosition | null = null;
     let detectedRightHand: HandPosition | null = null;
     
-    if (results.multiHandLandmarks && results.multiHandedness) {
-      for (let i = 0; i < results.multiHandLandmarks.length; i++) {
-        const landmarks = results.multiHandLandmarks[i];
-        const handedness = results.multiHandedness[i];
-        
-        // คำนวณจุดกลางฝ่ามือ (palm center)
-        // ใช้ wrist(0), index_mcp(5), middle_mcp(9), ring_mcp(13), pinky_mcp(17)
-        const wrist = landmarks[0];
-        const indexMcp = landmarks[5];
-        const middleMcp = landmarks[9];
-        const ringMcp = landmarks[13];
-        const pinkyMcp = landmarks[17];
-        
-        // Palm center = average of these 5 points
-        const palmX = (wrist.x + indexMcp.x + middleMcp.x + ringMcp.x + pinkyMcp.x) / 5;
-        const palmY = (wrist.y + indexMcp.y + middleMcp.y + ringMcp.y + pinkyMcp.y) / 5;
-        
-        // Note: MediaPipe returns "Left" for what appears on the right side of the screen
-        const isRightHand = handedness.label === 'Left'; // Reversed due to mirror
-        
-        // ตรวจจับกำมือ
-        const isFist = detectFist(landmarks);
-        
-        // คำนวณ velocity และ smash detection
-        if (isRightHand) {
-          let rightSmashing = false;
-          if (lastRightY.current !== null) {
-            const velocityY = (palmY - lastRightY.current) / deltaTime;
-            if (velocityY > SMASH_VELOCITY_THRESHOLD) {
-              rightSmashing = true;
-              rightSmashBuffer.current = now;
-            }
-          }
-          // ถ้าเพิ่งทุบไปไม่นาน ยังถือว่ากำลังทุบ (smash buffer)
-          if (now - rightSmashBuffer.current < SMASH_BUFFER_TIME) {
-            rightSmashing = true;
-          }
-          lastRightY.current = palmY;
-          
-          detectedRightHand = {
-            x: 1 - palmX, // Mirror X coordinate
-            y: palmY,
-            isDetected: true,
-            isSmashing: rightSmashing,
-            isFist: isFist
-          };
-        } else {
-          let leftSmashing = false;
-          if (lastLeftY.current !== null) {
-            const velocityY = (palmY - lastLeftY.current) / deltaTime;
-            if (velocityY > SMASH_VELOCITY_THRESHOLD) {
-              leftSmashing = true;
-              leftSmashBuffer.current = now;
-            }
-          }
-          // ถ้าเพิ่งทุบไปไม่นาน ยังถือว่ากำลังทุบ (smash buffer)
-          if (now - leftSmashBuffer.current < SMASH_BUFFER_TIME) {
-            leftSmashing = true;
-          }
-          lastLeftY.current = palmY;
-          
-          detectedLeftHand = {
-            x: 1 - palmX, // Mirror X coordinate
-            y: palmY,
-            isDetected: true,
-            isSmashing: leftSmashing,
-            isFist: isFist
-          };
-        }
-        
-        // วาด hand skeleton (mirrored)
-        ctx.save();
-        ctx.translate(canvas.width, 0);
-        ctx.scale(-1, 1);
-        
-        const handColor = isRightHand ? '#00ff00' : '#00ff00';
+    if (results.poseLandmarks) {
+      const landmarks = results.poseLandmarks;
+      const MIN_VISIBILITY = 0.5;
+
+      // === ตรวจจับว่าผู้ใช้อยู่ในเฟรมหรือไม่ ===
+      const nose = landmarks[POSE_LANDMARKS.NOSE];
+      const lSh = landmarks[POSE_LANDMARKS.LEFT_SHOULDER];
+      const rSh = landmarks[POSE_LANDMARKS.RIGHT_SHOULDER];
+      const bodyInFrame = !!(nose && lSh && rSh &&
+        (nose.visibility ?? 0) > MIN_VISIBILITY &&
+        (lSh.visibility ?? 0) > MIN_VISIBILITY &&
+        (rSh.visibility ?? 0) > MIN_VISIBILITY &&
+        nose.x > BODY_FRAME.left && nose.x < BODY_FRAME.right &&
+        nose.y > BODY_FRAME.top && nose.y < BODY_FRAME.bottom &&
+        lSh.x > BODY_FRAME.left && lSh.x < BODY_FRAME.right &&
+        lSh.y > BODY_FRAME.top && lSh.y < BODY_FRAME.bottom &&
+        rSh.x > BODY_FRAME.left && rSh.x < BODY_FRAME.right &&
+        rSh.y > BODY_FRAME.top && rSh.y < BODY_FRAME.bottom);
+      setIsBodyInFrame(bodyInFrame);
+
+      // === แขนขวา (Pose RIGHT = หน้าจอซ้าย เพราะ mirror) ===
+      const rShoulder = landmarks[POSE_LANDMARKS.RIGHT_SHOULDER];
+      const rElbow = landmarks[POSE_LANDMARKS.RIGHT_ELBOW];
+      const rWrist = landmarks[POSE_LANDMARKS.RIGHT_WRIST];
       
-        // วาดเส้นเชื่อมนิ้ว
-        if (window.drawConnectors && window.HAND_CONNECTIONS) {
-          window.drawConnectors(ctx, landmarks, window.HAND_CONNECTIONS, {
-            color: handColor,
-            lineWidth: 2
-          });
+      if (rWrist && rElbow && rShoulder &&
+          (rWrist.visibility ?? 0) > MIN_VISIBILITY &&
+          (rElbow.visibility ?? 0) > MIN_VISIBILITY) {
+        
+        const wristX = rWrist.x;
+        const wristY = rWrist.y;
+        
+        // คำนวณ Optical Flow velocity ที่ข้อมือขวา
+        let rightSmashing = false;
+        if (lastRightPos.current !== null) {
+          const dx = wristX - lastRightPos.current.x;
+          const dy = wristY - lastRightPos.current.y;
+          const velocityMag = Math.sqrt(dx * dx + dy * dy) / deltaTime;
+          if (velocityMag > SMASH_VELOCITY_THRESHOLD) {
+            rightSmashing = true;
+            rightSmashBuffer.current = now;
+          }
         }
+        if (now - rightSmashBuffer.current < SMASH_BUFFER_TIME) {
+          rightSmashing = true;
+        }
+        lastRightPos.current = { x: wristX, y: wristY };
         
-        // วาดจุด landmarks
-        landmarks.forEach((point: any, idx: number) => {
-          ctx.fillStyle = idx === 0 ? '#ffffff' : handColor;
-          ctx.shadowColor = handColor;
-          ctx.shadowBlur = 6;
-          ctx.beginPath();
-          ctx.arc(point.x * canvas.width, point.y * canvas.height, idx === 0 ? 5 : 3, 0, 2 * Math.PI);
-          ctx.fill();
-        });
+        detectedRightHand = {
+          x: 1 - wristX, // Mirror X
+          y: wristY,
+          isDetected: true,
+          isSmashing: rightSmashing,
+          isFist: true, // Pose ไม่ตรวจนิ้ว - ถือว่าแขนพร้อมตีเสมอ
+        };
         
-        // วาดวงกลมที่ palm center (จุดตี)
-        const mirrPalmX = palmX * canvas.width;
-        const mirrPalmY = palmY * canvas.height;
-        
-        // Glow เมื่อกำมือ + ทุบ
-        // const isSmashing = isRightHand 
-        //   ? (now - rightSmashBuffer.current < SMASH_BUFFER_TIME)
-        //   : (now - leftSmashBuffer.current < SMASH_BUFFER_TIME);
-        
-        // สีตามสถานะ: กำมือ, กำมือ=แดง, ปกติ=สีมือ
-        const circleColor = isFist ? '#ff0000' : handColor;
-        
-        ctx.shadowColor = circleColor;
-        ctx.shadowBlur = (isFist) ? 25 : (isFist ? 15 : 10);
-        ctx.strokeStyle = circleColor;
-        ctx.lineWidth = isFist ? 4 : 3;
-        ctx.beginPath();
-        ctx.arc(mirrPalmX, mirrPalmY, (isFist) ? 30 : (isFist ? 22 : 18), 0, 2 * Math.PI);
-        ctx.stroke();
-        
-        // วาด icon มือ - แสดงสถานะกำมือ
-        ctx.shadowBlur = 0;
-        ctx.font = isFist ? '22px Arial' : '14px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(isFist ? '👊' : '✋', mirrPalmX, mirrPalmY + 5);
-        
-        ctx.restore();
+        // วาดแขนขวา (shoulder → elbow → wrist)
+        drawArm(ctx, canvas, rShoulder, rElbow, rWrist, rightSmashing, now, rightSmashBuffer.current);
+      } else {
+        lastRightPos.current = null;
       }
-    }
-    
-    // ถ้าไม่เจอมือ reset Y tracking
-    if (!detectedLeftHand) {
-      lastLeftY.current = null;
-    }
-    if (!detectedRightHand) {
-      lastRightY.current = null;
+      
+      // === แขนซ้าย (Pose LEFT = หน้าจอขวา เพราะ mirror) ===
+      const lShoulder = landmarks[POSE_LANDMARKS.LEFT_SHOULDER];
+      const lElbow = landmarks[POSE_LANDMARKS.LEFT_ELBOW];
+      const lWrist = landmarks[POSE_LANDMARKS.LEFT_WRIST];
+      
+      if (lWrist && lElbow && lShoulder &&
+          (lWrist.visibility ?? 0) > MIN_VISIBILITY &&
+          (lElbow.visibility ?? 0) > MIN_VISIBILITY) {
+        
+        const wristX = lWrist.x;
+        const wristY = lWrist.y;
+        
+        // คำนวณ Optical Flow velocity ที่ข้อมือซ้าย
+        let leftSmashing = false;
+        if (lastLeftPos.current !== null) {
+          const dx = wristX - lastLeftPos.current.x;
+          const dy = wristY - lastLeftPos.current.y;
+          const velocityMag = Math.sqrt(dx * dx + dy * dy) / deltaTime;
+          if (velocityMag > SMASH_VELOCITY_THRESHOLD) {
+            leftSmashing = true;
+            leftSmashBuffer.current = now;
+          }
+        }
+        if (now - leftSmashBuffer.current < SMASH_BUFFER_TIME) {
+          leftSmashing = true;
+        }
+        lastLeftPos.current = { x: wristX, y: wristY };
+        
+        detectedLeftHand = {
+          x: 1 - wristX, // Mirror X
+          y: wristY,
+          isDetected: true,
+          isSmashing: leftSmashing,
+          isFist: true,
+        };
+        
+        // วาดแขนซ้าย
+        drawArm(ctx, canvas, lShoulder, lElbow, lWrist, leftSmashing, now, leftSmashBuffer.current);
+      } else {
+        lastLeftPos.current = null;
+      }
+    } else {
+      lastLeftPos.current = null;
+      lastRightPos.current = null;
     }
     
     setLeftHand(detectedLeftHand);
     setRightHand(detectedRightHand);
   }, []);
 
+  // วาดแขน (shoulder → elbow → wrist) พร้อม visual feedback
+  function drawArm(
+    ctx: CanvasRenderingContext2D,
+    canvas: HTMLCanvasElement,
+    shoulder: any, elbow: any, wrist: any,
+    isSmashing: boolean,
+    now: number, smashBufferTime: number
+  ) {
+    ctx.save();
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    
+    const armColor = isSmashing ? '#ff0000' : '#00ff00';
+    
+    const pts = [shoulder, elbow, wrist];
+    
+    // วาดเส้นเชื่อม shoulder → elbow → wrist
+    ctx.strokeStyle = armColor;
+    ctx.lineWidth = isSmashing ? 5 : 3;
+    ctx.shadowColor = armColor;
+    ctx.shadowBlur = isSmashing ? 20 : 8;
+    ctx.beginPath();
+    ctx.moveTo(shoulder.x * canvas.width, shoulder.y * canvas.height);
+    ctx.lineTo(elbow.x * canvas.width, elbow.y * canvas.height);
+    ctx.lineTo(wrist.x * canvas.width, wrist.y * canvas.height);
+    ctx.stroke();
+    
+    // วาดจุด landmark ที่ shoulder, elbow, wrist
+    pts.forEach((pt, idx) => {
+      ctx.fillStyle = idx === 2 ? '#ffffff' : armColor;
+      ctx.shadowColor = armColor;
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.arc(pt.x * canvas.width, pt.y * canvas.height, idx === 2 ? 8 : 5, 0, 2 * Math.PI);
+      ctx.fill();
+    });
+    
+    // วาดวงกลมที่ข้อมือ (จุดตี)
+    const wX = wrist.x * canvas.width;
+    const wY = wrist.y * canvas.height;
+    
+    const circleColor = isSmashing ? '#ff0000' : '#00ff00';
+    ctx.shadowColor = circleColor;
+    ctx.shadowBlur = isSmashing ? 30 : 10;
+    ctx.strokeStyle = circleColor;
+    ctx.lineWidth = isSmashing ? 5 : 3;
+    ctx.beginPath();
+    ctx.arc(wX, wY, isSmashing ? 35 : 20, 0, 2 * Math.PI);
+    ctx.stroke();
+    
+    // วาด icon - แสดงสถานะ: ทุบ=💥, ปกติ=👊
+    ctx.shadowBlur = 0;
+    ctx.font = isSmashing ? '26px Arial' : '18px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(isSmashing ? '💥' : '👊', wX, wY + 5);
+    
+    ctx.restore();
+  }
+
   useEffect(() => {
     if (!videoRef.current || !canvasRef.current) return;
 
     const loadScripts = async () => {
-      // Load MediaPipe Hands scripts from CDN
+      // Load MediaPipe Pose scripts from CDN
       const scripts = [
         'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js',
         'https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js',
-        'https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js'
+        'https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js'
       ];
 
       for (const src of scripts) {
@@ -266,7 +290,7 @@ export function useWhackAMoleMediaPipe(): UseWhackAMoleMediaPipeReturn {
       }
     };
 
-    const initHands = async () => {
+    const initPose = async () => {
       try {
         setIsLoading(true);
         
@@ -275,26 +299,26 @@ export function useWhackAMoleMediaPipe(): UseWhackAMoleMediaPipeReturn {
         // Wait a bit for scripts to initialize
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        if (!window.Hands) {
-          throw new Error('MediaPipe Hands not loaded');
+        if (!window.Pose) {
+          throw new Error('MediaPipe Pose not loaded');
         }
         
-        const hands = new window.Hands({
+        const pose = new window.Pose({
           locateFile: (file: string) => {
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
           }
         });
         
-        // ปรับ settings สำหรับ tracking ที่ดี
-        hands.setOptions({
-          maxNumHands: 2,
+        // ปรับ settings สำหรับ arm tracking
+        pose.setOptions({
           modelComplexity: 1,
+          smoothLandmarks: true,
           minDetectionConfidence: 0.6,
           minTrackingConfidence: 0.5
         });
         
-        hands.onResults(onResults);
-        handsRef.current = hands;
+        pose.onResults(onResults);
+        poseRef.current = pose;
         
         // Wait for video element to be ready with valid dimensions
         const waitForVideo = (): Promise<void> => {
@@ -314,11 +338,10 @@ export function useWhackAMoleMediaPipe(): UseWhackAMoleMediaPipeReturn {
         
         const camera = new window.Camera(videoRef.current!, {
           onFrame: async () => {
-            if (handsRef.current && videoRef.current) {
+            if (poseRef.current && videoRef.current) {
               const video = videoRef.current;
-              // Only send frame if video has valid dimensions
               if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
-                await handsRef.current.send({ image: video });
+                await poseRef.current.send({ image: video });
               }
             }
           },
@@ -329,24 +352,23 @@ export function useWhackAMoleMediaPipe(): UseWhackAMoleMediaPipeReturn {
         cameraRef.current = camera;
         await camera.start();
         
-        // Wait for video to be ready before marking loading as complete
         await waitForVideo();
         setIsLoading(false);
       } catch (err) {
-        console.error('MediaPipe Hands initialization error:', err);
+        console.error('MediaPipe Pose initialization error:', err);
         setError('Failed to initialize camera. Please ensure camera permissions are granted.');
         setIsLoading(false);
       }
     };
 
-    initHands();
+    initPose();
 
     return () => {
       if (cameraRef.current) {
         cameraRef.current.stop();
       }
-      if (handsRef.current) {
-        handsRef.current.close();
+      if (poseRef.current) {
+        poseRef.current.close();
       }
     };
   }, [onResults]);
@@ -357,6 +379,7 @@ export function useWhackAMoleMediaPipe(): UseWhackAMoleMediaPipeReturn {
     leftHand,
     rightHand,
     isLoading,
-    error
+    error,
+    isBodyInFrame,
   };
 }
