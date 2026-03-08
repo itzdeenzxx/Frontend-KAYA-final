@@ -77,10 +77,12 @@ export const CoachSelectionPopup = ({
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      {/* h-[90vh] + flex-col: header and footer stay fixed, only the coach list scrolls */}
+      <DialogContent className="max-w-4xl h-[90vh] flex flex-col overflow-hidden p-0 gap-0">
         {view === 'select' ? (
           <>
-            <DialogHeader className="text-center space-y-4 pb-4">
+            {/* Fixed header — always visible */}
+            <DialogHeader className="flex-none text-center space-y-4 px-6 pt-8 pb-4">
               <div className="flex items-center justify-center gap-2">
                 <Sparkles className="w-8 h-8 text-primary" />
                 <DialogTitle className="text-2xl font-bold">
@@ -94,7 +96,8 @@ export const CoachSelectionPopup = ({
               </DialogDescription>
             </DialogHeader>
 
-            <div className="py-4">
+            {/* Scrollable coach list — takes remaining space */}
+            <div className="flex-1 overflow-y-auto px-6 py-2">
               <CoachSelector
                 userId={userProfile?.lineUserId}
                 selectedCoachId={selectedCoachId}
@@ -105,7 +108,8 @@ export const CoachSelectionPopup = ({
               />
             </div>
 
-            <div className="flex justify-between items-center pt-4 border-t">
+            {/* Fixed footer — always visible */}
+            <div className="flex-none flex justify-between items-center px-6 py-4 border-t">
               {canSkip ? (
                 <Button variant="ghost" onClick={handleSkip}>
                   ข้ามไปก่อน
@@ -134,12 +138,14 @@ export const CoachSelectionPopup = ({
         ) : (
           /* Custom Coach Creator View */
           userProfile?.lineUserId && (
-            <CustomCoachCreator
-              userId={userProfile.lineUserId}
-              isDark={isDark}
-              onDone={handleCustomCoachDone}
-              onBack={() => setView('select')}
-            />
+            <div className="flex-1 overflow-y-auto p-6">
+              <CustomCoachCreator
+                userId={userProfile.lineUserId}
+                isDark={isDark}
+                onDone={handleCustomCoachDone}
+                onBack={() => setView('select')}
+              />
+            </div>
           )
         )}
       </DialogContent>

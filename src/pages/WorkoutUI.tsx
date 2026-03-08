@@ -629,6 +629,7 @@ export default function WorkoutUI() {
   }, [isKayaWorkout, exerciseCompleted, showRestScreen, kayaAnalysis.tempoQuality]);
 
   // Body visibility audio — only after 4.5s of continuous invisibility (throttled 10s)
+  // Uses setTimeout so the delay works correctly without needing dep to change again
   useEffect(() => {
     if (!isKayaWorkout || exerciseCompleted || showRestScreen) return;
     if (kayaAnalysis.isBodyVisible) {
@@ -636,19 +637,17 @@ export default function WorkoutUI() {
       bodyInvisibleSinceRef.current = 0;
       return;
     }
-    const now = Date.now();
-    // Mark when body first became invisible
-    if (bodyInvisibleSinceRef.current === 0) {
-      bodyInvisibleSinceRef.current = now;
-      return;
-    }
-    // Wait at least 4.5 seconds of continuous invisibility before speaking
-    if (now - bodyInvisibleSinceRef.current < 4500) return;
-    // Throttle: don't repeat more often than once every 10s
-    if (now - lastVisibilityAudioTimeRef.current < 10000) return;
-    if (isTtsSpeakingRef.current) return;
-    lastVisibilityAudioTimeRef.current = now;
-    playCoachAudioRef.current('move_closer'); // "ขยับตัวเข้า(กล้อง)"
+    // Body just became invisible — schedule audio after 4.5s
+    bodyInvisibleSinceRef.current = Date.now();
+    const timer = setTimeout(() => {
+      if (bodyInvisibleSinceRef.current === 0) return; // body became visible again
+      const now = Date.now();
+      if (now - lastVisibilityAudioTimeRef.current < 10000) return; // throttle 10s
+      if (isTtsSpeakingRef.current) return;
+      lastVisibilityAudioTimeRef.current = now;
+      playCoachAudioRef.current('move_closer'); // "ขยับตัวเข้า(กล้อง)"
+    }, 4500);
+    return () => clearTimeout(timer);
   }, [isKayaWorkout, exerciseCompleted, showRestScreen, kayaAnalysis.isBodyVisible]);
 
   // Motion quality audio — no motion → move_more, jerky movement → movement_jerky (throttled 8s)
