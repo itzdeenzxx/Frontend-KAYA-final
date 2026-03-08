@@ -187,6 +187,8 @@ export default function WorkoutUI() {
   // Simple loading state - auto skip after 3 seconds
   const [showLoader, setShowLoader] = useState(true);
   const [showScreenshotFlash, setShowScreenshotFlash] = useState(false);
+  // Pre-fetched camera stream (fetched during loader phase to eliminate black screen)
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   
   // Auto-skip loader after 3 seconds regardless of status
   useEffect(() => {
@@ -310,69 +312,77 @@ export default function WorkoutUI() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Initialize webcam - wait until loader is hidden
+  // Phase 1: Pre-fetch camera stream DURING loader phase (so it's ready when loader dismisses)
   useEffect(() => {
-    // Don't start camera while loader is showing (videoRef won't be mounted)
-    if (showLoader) return;
-    
+    // If camera disabled — stop and clear any existing stream
+    if (!cameraEnabled) {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(t => t.stop());
+        setCameraStream(null);
+      }
+      return;
+    }
+    // Stream already acquired — nothing to do
+    if (cameraStream) return;
+
+    let cancelled = false;
+    navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+      audio: false,
+    }).then(stream => {
+      if (!cancelled) {
+        setCameraStream(stream);
+        setCameraError('');
+      } else {
+        stream.getTracks().forEach(t => t.stop());
+      }
+    }).catch(error => {
+      if (!cancelled) {
+        console.error('Camera error:', error);
+        setCameraError('ไม่สามารถเข้าถึงกล้องได้ - กรุณาอนุญาตการใช้กล้อง');
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [cameraEnabled, cameraStream]); // cameraStream needed to avoid re-fetching if already acquired
+
+  // Phase 2: Attach pre-fetched stream to video element when loader dismisses
+  useEffect(() => {
     if (!cameraEnabled) {
       if (videoRef.current?.srcObject) {
         const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-        tracks.forEach((track) => track.stop());
+        tracks.forEach(t => t.stop());
         videoRef.current.srcObject = null;
       }
       return;
     }
 
-    const startCamera = async () => {
+    if (showLoader || !cameraStream || !videoRef.current) return;
+    // Skip if stream is already attached
+    if (videoRef.current.srcObject === cameraStream) return;
+
+    const attachCamera = async () => {
+      if (!videoRef.current) return;
+      videoRef.current.srcObject = cameraStream;
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            facingMode: 'user',
-          },
-          audio: false,
-        });
-        
-          if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-
-          // Ensure video plays
-          try {
-            await videoRef.current.play();
-            setAutoplayBlocked(false);
-          } catch (playError) {
-            setAutoplayBlocked(true);
-          }
-
-          // Mark camera as ready
-          setCameraReady(true);
-          
-          // Log native video dimensions (display dimensions tracked via resize handler)
-          videoRef.current.onloadedmetadata = () => {
-            if (videoRef.current) {
-              // Update display dimensions to match container
-              if (containerRef.current) {
-                setVideoDimensions({
-                  width: containerRef.current.clientWidth,
-                  height: containerRef.current.clientHeight,
-                });
-              }
-            }
-          };
-        }
-        setCameraError('');
-      } catch (error) {
-        console.error('Camera error:', error);
-        setCameraError('ไม่สามารถเข้าถึงกล้องได้ - กรุณาอนุญาตการใช้กล้อง');
+        await videoRef.current.play();
+        setAutoplayBlocked(false);
+      } catch {
+        setAutoplayBlocked(true);
       }
+      setCameraReady(true);
+      videoRef.current.onloadedmetadata = () => {
+        if (videoRef.current && containerRef.current) {
+          setVideoDimensions({
+            width: containerRef.current.clientWidth,
+            height: containerRef.current.clientHeight,
+          });
+        }
+      };
     };
+    attachCamera();
 
-    startCamera();
-    
     // Update display dimensions on window resize (for SkeletonOverlay canvas sizing)
-    // Use the actual container/display size, not the native video resolution
     const handleResize = () => {
       if (containerRef.current) {
         setVideoDimensions({
@@ -386,19 +396,17 @@ export default function WorkoutUI() {
         });
       }
     };
-    
     window.addEventListener('resize', handleResize);
-    // Delay initial call to let container mount
     requestAnimationFrame(handleResize);
 
     return () => {
       window.removeEventListener('resize', handleResize);
       if (videoRef.current?.srcObject) {
         const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-        tracks.forEach((track) => track.stop());
+        tracks.forEach(t => t.stop());
       }
     };
-  }, [cameraEnabled, showLoader]);
+  }, [cameraEnabled, showLoader, cameraStream]);
 
   // Draw a small debug thumbnail from the video to a canvas for troubleshooting
   useEffect(() => {
