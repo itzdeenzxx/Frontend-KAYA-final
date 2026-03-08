@@ -1376,38 +1376,23 @@ export default function WorkoutUI() {
     // Skip if TTS disabled
     if (!ttsEnabledRef.current) {
       console.log('🔇 [TTS] Coach intro skipped: TTS disabled');
-      // Still speak the first exercise instruction (it will also check ttsEnabled)
-      const exercise = exercises[0];
-      if (exercise) setTimeout(() => speakExerciseInstruction(exercise), 500);
       return;
     }
 
-    // Helper function to speak first exercise after intro
-    const speakFirstExercise = () => {
-      const exercise = exercises[0];
-      if (exercise) {
-        setTimeout(() => speakExerciseInstruction(exercise), 500);
-      }
-    };
-
-    // Try local greeting audio first — play welcome → greeting → together → first exercise
+    // Play greeting only — exercise-start files (30-41) also open with a greeting
+    // phrase, so chaining them after greeting(42) causes "สวัสดีค่ะ" to be heard twice.
+    // Exercises 1+ get their start instruction via the exercise-change useEffect below.
     const coachId = ttsCoachRef.current?.id ?? 'coach-aiko'; // fallback if not loaded yet
     const localGreetingUrl = getGreetingAudioUrl(coachId);
     if (localGreetingUrl) {
-      console.log('🔊 [CoachIntro] Playing greeting → exercise instruction');
-      // Chain: greeting (42) → first exercise
-      // NOTE: 'together' (15/16) has been removed — its content overlaps with the
-      // greeting file, causing the intro to sound like the same phrase spoken twice.
-      playCoachAudioRef.current('greeting', () => {
-        speakFirstExercise();
-      });
+      console.log('🔊 [CoachIntro] Playing greeting only');
+      playCoachAudioRef.current('greeting');
       return;
     }
 
-    // No greeting audio found — skip intro and go straight to first exercise
+    // No greeting audio found — skip intro
     console.log('🔇 [CoachIntro] No local greeting audio, skipping intro');
-    speakFirstExercise();
-  }, [exercises, speakExerciseInstruction]);
+  }, []);
   // Keep ref updated so intro effect always calls the latest version
   useEffect(() => { speakCoachIntroductionRef.current = speakCoachIntroduction; }, [speakCoachIntroduction]);
 
