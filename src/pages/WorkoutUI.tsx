@@ -599,29 +599,21 @@ export default function WorkoutUI() {
   }, [showRestScreen, restTimeLeft]);
 
   // Time milestone audio for time-based exercises (plank, lunge)
+  // All coaches now have timer_15s/timer_30s entries in coachAudio.ts — no speakTTS fallback needed
   useEffect(() => {
     if (!currentExerciseIsTimeBased || exerciseCompleted) return;
     const exerciseDuration = exercises[currentExercise]?.duration ?? 0;
     if (!isTtsSpeakingRef.current) {
-      const coachId = ttsCoachRef.current?.id ?? 'coach-aiko';
       // Only play 30s milestone if total duration > 35s (avoid firing at start of 30s sets)
       if (timeLeft === 30 && !timeMilestone30Ref.current && exerciseDuration > 35) {
         timeMilestone30Ref.current = true;
-        if (getLocalAudioUrl(coachId, 'timer_30s')) {
-          playCoachAudioRef.current('timer_30s'); // "เหลืออีก 30 วินาที!"
-        } else {
-          speakTTS('เหลืออีก 30 วินาที');
-        }
+        playCoachAudioRef.current('timer_30s'); // "เหลืออีก 30 วินาที!" — all coaches have this
       } else if (timeLeft === 15 && !timeMilestone15Ref.current) {
         timeMilestone15Ref.current = true;
-        if (getLocalAudioUrl(coachId, 'timer_15s')) {
-          playCoachAudioRef.current('timer_15s'); // "เหลืออีก 15 วินาที!"
-        } else {
-          speakTTS('เหลืออีก 15 วินาที');
-        }
+        playCoachAudioRef.current('timer_15s'); // "เหลืออีก 15 วินาที!" — all coaches have this
       }
     }
-  }, [currentExerciseIsTimeBased, exerciseCompleted, timeLeft, currentExercise, exercises, speakTTS]);
+  }, [currentExerciseIsTimeBased, exerciseCompleted, timeLeft, currentExercise, exercises]);
 
   // Tempo feedback audio — play when tempo quality is problematic (throttled 10s, needs >=5 reps)
   useEffect(() => {
