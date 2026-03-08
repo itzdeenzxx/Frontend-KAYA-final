@@ -1668,7 +1668,9 @@ export default function WorkoutUI() {
               </div>
               <div>
                 <h3 className="text-xl font-bold text-white">{nextExercise.nameTh || nextExercise.name}</h3>
-                <p className="text-white/60">{nextExercise.reps} ครั้ง</p>
+                <p className="text-white/60">
+                  {nextExercise.reps ? `${nextExercise.reps} ครั้ง` : nextExercise.duration ? `${nextExercise.duration} วิ` : ''}
+                </p>
               </div>
             </div>
           </div>
