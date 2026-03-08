@@ -166,12 +166,19 @@ export default function WorkoutUI() {
   const playCoachAudioRef = useRef<(category: AudioCategory, onEnd?: () => void) => void>(() => {});
   // Stable ref to speakCoachIntroduction — avoids adding it to useEffect deps
   const speakCoachIntroductionRef = useRef<() => void>(() => {});
-  
+  // Stable ref to handleNext — used inside setTimeLeft updater (state updaters must be pure)
+  const handleNextRef = useRef<() => void>(() => {});
+  // TTS state refs — declared here (near other refs) to avoid temporal-dead-zone confusion;
+  // they are mutated by loadTTSSettings and the ref-sync effects below.
+  const ttsCoachRef = useRef<typeof ttsCoach>(null);
+  const ttsSpeakerRef = useRef<string>(DEFAULT_TTS_SETTINGS.speaker);
+  const ttsEnabledRef = useRef<boolean>(DEFAULT_TTS_SETTINGS.enabled);
+  const ttsSpeedRef = useRef<number>(DEFAULT_TTS_SETTINGS.speed);
+
   // Voice Coach state
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<BlobPart[]>([]);
   // Raw PCM recording refs
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioStreamRef = useRef<MediaStream | null>(null);
@@ -477,7 +484,9 @@ export default function WorkoutUI() {
         if (shouldCountDown) {
           setTimeLeft((prev) => {
             if (prev <= 1) {
-              handleNext();
+              // Call via ref so the updater stays pure (no captured-closure side-effects)
+              // and handleNext is always the latest version without adding it to deps.
+              handleNextRef.current();
               return 0;
             }
             return prev - 1;
@@ -785,8 +794,9 @@ export default function WorkoutUI() {
     audio.onerror = handleAudioEnd;
     audio.play().catch(handleAudioEnd);
   }, [stopAllTTS]);
-  // Keep ref updated so non-reactive code (setTimeout, useEffect) always has latest
+  // Keep refs updated so non-reactive code (setTimeout, useEffect) always has latest
   useEffect(() => { playCoachAudioRef.current = playCoachAudio; }, [playCoachAudio]);
+  useEffect(() => { handleNextRef.current = handleNext; }, [handleNext]);
 
   // Stop all audio when component unmounts (e.g. back button, navigate away)
   useEffect(() => {
@@ -799,11 +809,7 @@ export default function WorkoutUI() {
     };
   }, []);
 
-  // Use refs to avoid stale closures in speakTTS
-  const ttsCoachRef = useRef(ttsCoach);
-  const ttsSpeakerRef = useRef(ttsSpeaker);
-  const ttsEnabledRef = useRef(ttsEnabled);
-  const ttsSpeedRef = useRef(ttsSpeed);
+  // Keep TTS state refs in sync with state (also sync handleNextRef)
   useEffect(() => { ttsCoachRef.current = ttsCoach; }, [ttsCoach]);
   useEffect(() => { ttsSpeakerRef.current = ttsSpeaker; }, [ttsSpeaker]);
   useEffect(() => { ttsEnabledRef.current = ttsEnabled; }, [ttsEnabled]);
@@ -1406,7 +1412,12 @@ export default function WorkoutUI() {
     if (coachIntroSpokenRef.current) return;
     
     coachIntroSpokenRef.current = true;
-    
+    // Mark exercise 0 as spoken synchronously so the exercise-change effect
+    // (which also fires when showLoader→false) skips exercise 0 and doesn't
+    // double-play. When handlePrevious resets lastSpokenExerciseRef to -1,
+    // the exercise-change effect will correctly re-fire for exercise 0.
+    lastSpokenExerciseRef.current = 0;
+
     // Wait for TTS settings to load before speaking intro
     // This prevents race condition where coach speaker ref is still default
     const waitAndSpeak = async () => {
@@ -1429,15 +1440,15 @@ export default function WorkoutUI() {
     return () => clearTimeout(timeout);
   }, [showLoader]);
 
-  // Speak instruction when exercise changes (after first exercise)
+  // Speak instruction when exercise changes
   useEffect(() => {
     // Don't speak while loader is showing
     if (showLoader) return;
-    
-    // Skip first exercise (handled by coach intro)
-    if (currentExercise === 0) return;
-    
-    // Skip if already spoken for this exercise
+
+    // Skip if already spoken for this exercise (covers exercise 0 on mount — the
+    // intro useEffect sets lastSpokenExerciseRef.current = 0 synchronously, so
+    // this guard fires before the setTimeout below and prevents double-play).
+    // Going BACK to exercise 0 via handlePrevious resets it to -1, so audio replays.
     if (lastSpokenExerciseRef.current === currentExercise) return;
     
     const exercise = exercises[currentExercise];
