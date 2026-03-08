@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Play, Pause, SkipForward, SkipBack, X, Volume2, MessageCircle, Dumbbell, Flame, PersonStanding, Heart, Brain, Sparkles, Target, Zap, Camera, CameraOff, Activity, Bone, Eye, EyeOff, Music, Wind, Waves, Footprints, ArrowUp, RotateCcw, ArrowUpFromLine, Mic, MicOff, Send, Loader2 } from "lucide-react";
@@ -116,7 +116,10 @@ export default function WorkoutUI() {
   // Get selected workout style from localStorage
   const [selectedStyleId] = useState(() => localStorage.getItem('kaya_workout_style'));
   const selectedStyle = getWorkoutStyle(selectedStyleId);
-  const exercises = getExercisesForStyle(selectedStyleId);
+  // Memoize exercises so its reference is stable across re-renders.
+  // This prevents speakCoachIntroduction (which depends on exercises) from
+  // changing every render, which would cancel the intro timer via useEffect cleanup.
+  const exercises = useMemo(() => getExercisesForStyle(selectedStyleId), [selectedStyleId]);
   
   // Check if this is a KAYA workout (all KAYA levels)
   const isKayaWorkout = selectedStyleId === 'kaya-stretch' || selectedStyleId === 'kaya-intermediate' || selectedStyleId === 'kaya-advanced' || selectedStyleId === 'kaya-expert';
@@ -757,9 +760,19 @@ export default function WorkoutUI() {
     const audio = new Audio(url);
     ttsAudioRef.current = audio;
     audio.playbackRate = ttsSpeedRef.current || 1.0;
-    audio.onended = () => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; onEnd?.(); };
-    audio.onerror = () => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; onEnd?.(); };
-    audio.play().catch(() => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; onEnd?.(); });
+    // Guard: onended, onerror, and play().catch() can ALL fire for the same failed audio.
+    // Use a one-shot flag so onEnd is called at most once per playCoachAudio call.
+    let audioEnded = false;
+    const handleAudioEnd = () => {
+      if (audioEnded) return;
+      audioEnded = true;
+      ttsAudioRef.current = null;
+      isTtsSpeakingRef.current = false;
+      onEnd?.();
+    };
+    audio.onended = handleAudioEnd;
+    audio.onerror = handleAudioEnd;
+    audio.play().catch(handleAudioEnd);
   }, [stopAllTTS]);
   // Keep ref updated so non-reactive code (setTimeout, useEffect) always has latest
   useEffect(() => { playCoachAudioRef.current = playCoachAudio; }, [playCoachAudio]);
