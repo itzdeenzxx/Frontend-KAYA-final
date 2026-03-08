@@ -10,6 +10,7 @@ import { getCoachAvatar } from './CoachAvatars';
 import { getCustomAvatar } from './CustomAvatars';
 import { useTTS } from '@/hooks/useTTS';
 import { getCustomCoach } from '@/lib/firestore';
+import { getLocalAudioUrl } from '@/lib/coachAudio';
 
 interface CoachSelectorProps {
   userId?: string;
@@ -57,7 +58,11 @@ export const CoachSelector = ({
   }, [userId, selectedCoachId]);
 
   useEffect(() => {
-    return () => { stop(); };
+    return () => {
+      stop();
+      // Stop any local audio element on unmount to prevent memory leaks
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+    };
   }, [stop]);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -90,9 +95,26 @@ export const CoachSelector = ({
       return;
     }
 
+    // Stop any currently playing audio before starting a new one
+    stop();
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
     setPlayingCoachId(coach.id);
     try {
-      // Call Botnoi TTS directly with the coach's voiceId
+      // Try local pre-recorded greeting first (instant, no network needed)
+      const localUrl = getLocalAudioUrl(coach.id, 'greeting');
+      if (localUrl) {
+        const played = await new Promise<boolean>((resolve) => {
+          if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+          const audio = new Audio(localUrl);
+          audioRef.current = audio;
+          audio.onended = () => { audioRef.current = null; resolve(true); };
+          audio.onerror = () => { audioRef.current = null; resolve(false); };
+          audio.play().catch(() => { audioRef.current = null; resolve(false); });
+        });
+        if (played) return;
+        // Local file failed — fall through to TTS API below
+      }
+      // Fallback: Call Botnoi TTS API with the coach's voiceId
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 12000);
       const res = await fetch('/api/aift/tts', {
@@ -392,7 +414,13 @@ export const CoachSelector = ({
     <div className={cn('w-full', className)}>
       <Tabs
         value={currentTab}
-        onValueChange={(v) => setCurrentTab(v as 'female' | 'male' | 'custom')}
+        onValueChange={(v) => {
+          // Stop any playing audio when switching tabs
+          stop();
+          if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+          setPlayingCoachId(null);
+          setCurrentTab(v as 'female' | 'male' | 'custom');
+        }}
         className="w-full"
       >
         <TabsList className="grid w-full grid-cols-3 mb-4">

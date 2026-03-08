@@ -259,19 +259,21 @@ export const workoutExercises: Record<string, WorkoutExercise[]> = {
   'kaya-intermediate': [
     { name: 'Squat + Arm Raise', nameTh: 'สควอตพร้อมยกแขนเหนือศีรษะ', duration: null, reps: 10, icon: 'kaya-squat-arm', description: 'สควอตพร้อมยกแขนเหนือศีรษะ', kayaExercise: 'squat_arm_raise' },
     { name: 'Push-up', nameTh: 'วิดพื้น', duration: null, reps: 10, icon: 'kaya-pushup', description: 'วิดพื้นเต็มรูปแบบ เน้นกล้ามเนื้ออกและแขน', kayaExercise: 'push_up' },
-    { name: 'Static Lunge', nameTh: 'ลันจ์อยู่กับที่', duration: null, reps: 10, icon: 'kaya-lunge', description: 'ย่อขาหน้า 90 องศา ฝึกกล้ามเนื้อขา', kayaExercise: 'static_lunge' },
+    { name: 'Static Lunge Set 1', nameTh: 'ลันจ์ค้าง (ขาซ้าย 30 วิ)', duration: 30, reps: null, icon: 'kaya-lunge', description: 'ค้างท่าลันจ์ขาซ้ายนำ 30 วินาที — เซ็ต 1/2', kayaExercise: 'static_lunge' },
+    { name: 'Static Lunge Set 2', nameTh: 'ลันจ์ค้าง (ขาขวา 30 วิ)', duration: 30, reps: null, icon: 'kaya-lunge', description: 'ค้างท่าลันจ์ขาขวานำ 30 วินาที — เซ็ต 2/2', kayaExercise: 'static_lunge' },
   ],
 
   // Advanced KAYA set
   'kaya-advanced': [
-    { name: 'Jump Squat', nameTh: 'กระโดดสควอต', duration: null, reps: 15, icon: 'kaya-jump-squat', description: 'สควอตแล้วกระโดดขึ้น ฝึกพลังระเบิด', kayaExercise: 'jump_squat' },
-    { name: 'Plank Hold', nameTh: 'ท่าแพลงค์', duration: 30, reps: null, icon: 'kaya-plank', description: 'ค้างท่าแพลงค์ ลำตัวตรง เสริมแกนกลางลำตัว', kayaExercise: 'plank_hold' },
+    { name: 'Jump Squat', nameTh: 'กระโดดสควอต', duration: null, reps: 20, icon: 'kaya-jump-squat', description: 'สควอตแล้วกระโดดขึ้น ฝึกพลังระเบิด ไม่ต้องกระโดดก็นับ', kayaExercise: 'jump_squat' },
+    { name: 'Plank Hold Set 1', nameTh: 'ท่าแพลงค์ (เซ็ต 1/2)', duration: 30, reps: null, icon: 'kaya-plank', description: 'ค้างท่าแพลงค์ ลำตัวตรง เสริมแกนกลางลำตัว — เซ็ต 1 จาก 2', kayaExercise: 'plank_hold' },
+    { name: 'Plank Hold Set 2', nameTh: 'ท่าแพลงค์ (เซ็ต 2/2)', duration: 30, reps: null, icon: 'kaya-plank', description: 'ค้างท่าแพลงค์ ลำตัวตรง เสริมแกนกลางลำตัว — เซ็ต 2 จาก 2', kayaExercise: 'plank_hold' },
     { name: 'Mountain Climber', nameTh: 'ไต่เขา', duration: null, reps: 20, icon: 'kaya-mountain', description: 'ท่าแพลงค์สลับยกเข่า เหมาะสำหรับคาร์ดิโอ', kayaExercise: 'mountain_climber' },
   ],
 
   // Expert KAYA set
   'kaya-expert': [
-    { name: 'Pistol Squat', nameTh: 'สควอตขาเดียว', duration: null, reps: 8, icon: 'kaya-pistol', description: 'สควอตขาเดียว ท้าทายการทรงตัวและความแข็งแรง', kayaExercise: 'pistol_squat' },
+    { name: 'Pistol Squat', nameTh: 'สควอตขาเดียว', duration: null, reps: 5, icon: 'kaya-pistol', description: 'สควอตขาเดียวสลับข้าง มุมเข่า < 130° ท้าทายการทรงตัว', kayaExercise: 'pistol_squat' },
     { name: 'Push-up + Shoulder Tap', nameTh: 'วิดพื้นแตะไหล่', duration: null, reps: 12, icon: 'kaya-pushup-tap', description: 'วิดพื้นแล้วแตะไหล่สลับข้าง เสริมความมั่นคง', kayaExercise: 'pushup_shoulder_tap' },
     { name: 'Burpee', nameTh: 'เบอร์พี', duration: null, reps: 10, icon: 'kaya-burpee', description: 'สควอต-แพลงค์-กระโดด ท่าซับซ้อนที่สุด', kayaExercise: 'burpee' },
   ],
