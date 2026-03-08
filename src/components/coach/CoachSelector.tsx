@@ -96,15 +96,16 @@ export const CoachSelector = ({
       // Try local pre-recorded greeting first (instant, no network needed)
       const localUrl = getLocalAudioUrl(coach.id, 'greeting');
       if (localUrl) {
-        await new Promise<void>((resolve) => {
+        const played = await new Promise<boolean>((resolve) => {
           if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
           const audio = new Audio(localUrl);
           audioRef.current = audio;
-          audio.onended = () => { audioRef.current = null; resolve(); };
-          audio.onerror = () => { audioRef.current = null; resolve(); };
-          audio.play().catch(() => resolve());
+          audio.onended = () => { audioRef.current = null; resolve(true); };
+          audio.onerror = () => { audioRef.current = null; resolve(false); };
+          audio.play().catch(() => { audioRef.current = null; resolve(false); });
         });
-        return;
+        if (played) return;
+        // Local file failed — fall through to TTS API below
       }
       // Fallback: Call Botnoi TTS API with the coach's voiceId
       const controller = new AbortController();

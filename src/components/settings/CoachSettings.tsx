@@ -210,13 +210,14 @@ export function CoachSettings({ isDark }: CoachSettingsProps) {
       // Try local pre-recorded greeting first (instant, no network needed)
       const localUrl = getLocalAudioUrl(selectedCoachId, 'greeting');
       if (localUrl) {
-        await new Promise<void>((resolve) => {
+        const played = await new Promise<boolean>((resolve) => {
           const audio = new Audio(localUrl);
-          audio.onended = () => resolve();
-          audio.onerror = () => resolve();
-          audio.play().catch(() => resolve());
+          audio.onended = () => resolve(true);
+          audio.onerror = () => resolve(false);
+          audio.play().catch(() => resolve(false));
         });
-        return;
+        if (played) return;
+        // Local file failed — fall through to Botnoi TTS below
       }
       // Fallback: Botnoi TTS (for preset coaches or custom without voice refs)
       const controller = new AbortController();
@@ -403,7 +404,7 @@ export function CoachSettings({ isDark }: CoachSettingsProps) {
           <div className="p-4">
             <Button
               onClick={playPreview}
-              disabled={!settings.enabled || isPlaying}
+              disabled={isPlaying}
               className={cn(
                 "w-full gap-2",
                 isDark 
