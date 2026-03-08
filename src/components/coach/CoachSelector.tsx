@@ -201,7 +201,7 @@ export const CoachSelector = ({
       <Card
         key={coach.id}
         className={cn(
-          'cursor-pointer transition-all duration-200 hover:shadow-lg relative overflow-hidden',
+          'cursor-pointer transition-all duration-200 hover:shadow-lg relative overflow-hidden h-full flex flex-col',
           isSelected
             ? 'ring-2 ring-primary bg-primary/5'
             : 'hover:bg-muted/50'
@@ -217,8 +217,8 @@ export const CoachSelector = ({
           </div>
         )}
         
-        <CardContent className="p-4">
-          <div className="flex flex-col items-center text-center space-y-3">
+        <CardContent className="p-4 flex flex-col h-full">
+          <div className="flex flex-col items-center text-center space-y-3 flex-1">
             <div
               className={cn(
                 'rounded-full p-1 transition-transform duration-200',
@@ -255,31 +255,31 @@ export const CoachSelector = ({
                 </Badge>
               ))}
             </div>
-
-            {showPreview && (
-              <Button
-                size="sm"
-                variant={isPlaying ? 'default' : 'outline'}
-                className="w-full mt-2"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handlePreviewVoice(coach);
-                }}
-              >
-                {isPlaying ? (
-                  <>
-                    <Pause className="w-4 h-4 mr-2" />
-                    หยุด
-                  </>
-                ) : (
-                  <>
-                    <Volume2 className="w-4 h-4 mr-2" />
-                    ฟังเสียงตัวอย่าง
-                  </>
-                )}
-              </Button>
-            )}
           </div>
+
+          {showPreview && (
+            <Button
+              size="sm"
+              variant={isPlaying ? 'default' : 'outline'}
+              className="w-full mt-3"
+              onClick={(e) => {
+                e.stopPropagation();
+                handlePreviewVoice(coach);
+              }}
+            >
+              {isPlaying ? (
+                <>
+                  <Pause className="w-4 h-4 mr-2" />
+                  หยุด
+                </>
+              ) : (
+                <>
+                  <Volume2 className="w-4 h-4 mr-2" />
+                  ฟังเสียงตัวอย่าง
+                </>
+              )}
+            </Button>
+          )}
         </CardContent>
       </Card>
     );

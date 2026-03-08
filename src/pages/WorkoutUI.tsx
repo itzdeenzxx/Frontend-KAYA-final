@@ -595,16 +595,25 @@ export default function WorkoutUI() {
     if (!currentExerciseIsTimeBased || exerciseCompleted) return;
     const exerciseDuration = exercises[currentExercise]?.duration ?? 0;
     if (!isTtsSpeakingRef.current) {
+      const coachId = ttsCoachRef.current?.id ?? 'coach-aiko';
       // Only play 30s milestone if total duration > 35s (avoid firing at start of 30s sets)
       if (timeLeft === 30 && !timeMilestone30Ref.current && exerciseDuration > 35) {
         timeMilestone30Ref.current = true;
-        playCoachAudioRef.current('timer_30s'); // "เหลืออีก 30 วินาที!"
+        if (getLocalAudioUrl(coachId, 'timer_30s')) {
+          playCoachAudioRef.current('timer_30s'); // "เหลืออีก 30 วินาที!"
+        } else {
+          speakTTS('เหลืออีก 30 วินาที');
+        }
       } else if (timeLeft === 15 && !timeMilestone15Ref.current) {
         timeMilestone15Ref.current = true;
-        playCoachAudioRef.current('timer_15s'); // "เหลืออีก 15 วินาที!"
+        if (getLocalAudioUrl(coachId, 'timer_15s')) {
+          playCoachAudioRef.current('timer_15s'); // "เหลืออีก 15 วินาที!"
+        } else {
+          speakTTS('เหลืออีก 15 วินาที');
+        }
       }
     }
-  }, [currentExerciseIsTimeBased, exerciseCompleted, timeLeft, currentExercise, exercises]);
+  }, [currentExerciseIsTimeBased, exerciseCompleted, timeLeft, currentExercise, exercises, speakTTS]);
 
   // Tempo feedback audio — play when tempo quality is problematic (throttled 10s, needs >=5 reps)
   useEffect(() => {
@@ -628,8 +637,8 @@ export default function WorkoutUI() {
     playCoachAudioRef.current(category);
   }, [isKayaWorkout, exerciseCompleted, showRestScreen, kayaAnalysis.tempoQuality]);
 
-  // Body visibility audio — only after 4.5s of continuous invisibility (throttled 10s)
-  // Uses setTimeout so the delay works correctly without needing dep to change again
+  // Body visibility audio — only when body is NOT in detection box / camera can't detect
+  // Triggers after 3s of continuous invisibility (throttled 10s)
   useEffect(() => {
     if (!isKayaWorkout || exerciseCompleted || showRestScreen) return;
     if (kayaAnalysis.isBodyVisible) {
@@ -637,7 +646,7 @@ export default function WorkoutUI() {
       bodyInvisibleSinceRef.current = 0;
       return;
     }
-    // Body just became invisible — schedule audio after 4.5s
+    // Body just became invisible (not in box / not detected) — schedule audio after 3s
     bodyInvisibleSinceRef.current = Date.now();
     const timer = setTimeout(() => {
       if (bodyInvisibleSinceRef.current === 0) return; // body became visible again
@@ -646,7 +655,7 @@ export default function WorkoutUI() {
       if (isTtsSpeakingRef.current) return;
       lastVisibilityAudioTimeRef.current = now;
       playCoachAudioRef.current('move_closer'); // "ขยับตัวเข้า(กล้อง)"
-    }, 4500);
+    }, 3000);
     return () => clearTimeout(timer);
   }, [isKayaWorkout, exerciseCompleted, showRestScreen, kayaAnalysis.isBodyVisible]);
 
