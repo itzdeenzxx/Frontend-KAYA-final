@@ -411,9 +411,6 @@ const AUDIO_FILES: Record<string, Record<AudioCategory, string>> = {
     halfway: '58-ผ่านครึ่งทาง.wav',
     session_almost_done: '59-เกือบเสร็จแล้ว.wav',
     session_complete: '60-จบเซสชั่น.wav',
-    // ─── Timer (no own recording — use aiko fallback) ───────────────
-    timer_15s: '../ไอโกะ/61-15วินาทีแล.wav',
-    timer_30s: '../ไอโกะ/62-30วินาทีแล.wav',
   },
   'coach-alan': {
     start: '0-มาเริ่มต้น.wav',
@@ -479,9 +476,6 @@ const AUDIO_FILES: Record<string, Record<AudioCategory, string>> = {
     halfway: '58-ผ่านครึ่งทาง.wav',
     session_almost_done: '59-เกือบเสร็จแล้ว.wav',
     session_complete: '60-จบเซสชั่น.wav',
-    // ─── Timer (no own recording — use aiko fallback) ───────────────
-    timer_15s: '../ไอโกะ/61-15วินาทีแล.wav',
-    timer_30s: '../ไอโกะ/62-30วินาทีแล.wav',
   },
   'coach-homchan': {
     start: '0-มาเริ่มต้น.wav',
@@ -547,9 +541,6 @@ const AUDIO_FILES: Record<string, Record<AudioCategory, string>> = {
     halfway: '58-ผ่านครึ่งทาง.wav',
     session_almost_done: '59-เกือบเสร็จแล้ว.wav',
     session_complete: '60-จบเซสชั่น.wav',
-    // ─── Timer (no own recording — use aiko fallback) ───────────────
-    timer_15s: '../ไอโกะ/61-15วินาทีแล.wav',
-    timer_30s: '../ไอโกะ/62-30วินาทีแล.wav',
   },
   'coach-manee': {
     start: '0-มาเริ่มต้น.wav',
@@ -615,9 +606,6 @@ const AUDIO_FILES: Record<string, Record<AudioCategory, string>> = {
     halfway: '58-ผ่านครึ่งทาง.wav',
     session_almost_done: '59-เกือบเสร็จแล้ว.wav',
     session_complete: '60-จบเซสชั่น.wav',
-    // ─── Timer (no own recording — use aiko fallback) ───────────────
-    timer_15s: '../ไอโกะ/61-15วินาทีแล.wav',
-    timer_30s: '../ไอโกะ/62-30วินาทีแล.wav',
   },
 };
 

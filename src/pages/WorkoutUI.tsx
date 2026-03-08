@@ -920,8 +920,8 @@ export default function WorkoutUI() {
               ttsAudioRef.current = audio;
               audio.playbackRate = ttsSpeedRef.current || 1.0;
               audio.onended = () => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; resolve(); };
-              audio.onerror = () => { isTtsSpeakingRef.current = false; resolve(); };
-              audio.play().catch(() => { isTtsSpeakingRef.current = false; resolve(); });
+              audio.onerror = () => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; resolve(); };
+              audio.play().catch(() => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; resolve(); });
             });
           } catch {
             console.warn('🔊 [RepCount] Local audio failed, falling back to API');
@@ -1333,10 +1333,10 @@ export default function WorkoutUI() {
               isTtsSpeakingRef.current = false;
               resolve();
             };
-            audio.onerror = () => { isTtsSpeakingRef.current = false; resolve(); };
+            audio.onerror = () => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; resolve(); };
             audio.play().then(() => {
               console.log('🔊 [ExerciseInstruction] Local audio playing at speed:', audio.playbackRate);
-            }).catch(() => { isTtsSpeakingRef.current = false; resolve(); });
+            }).catch(() => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; resolve(); });
           });
         } catch {
           isTtsSpeakingRef.current = false;
@@ -1501,6 +1501,7 @@ export default function WorkoutUI() {
         kayaAnalysis.nextExercise();
       }
       lastSpokenExerciseRef.current = -1; // ensure next exercise TTS fires
+      setExerciseCompleted(false); // reset in case user skips while auto-advance audio chain is running
       setCurrentExercise((prev) => prev + 1);
       const nextExercise = exercises[currentExercise + 1];
       setTimeLeft(nextExercise.duration || 0);
@@ -1511,14 +1512,17 @@ export default function WorkoutUI() {
 
   const handlePrevious = useCallback(() => {
     if (currentExercise > 0) {
+      stopAllTTS();
       if (isKayaWorkout) {
         kayaAnalysis.previousExercise();
       }
+      lastSpokenExerciseRef.current = -1; // allow re-speaking instruction on previous exercise
+      setExerciseCompleted(false);
       setCurrentExercise((prev) => prev - 1);
       const prevExercise = exercises[currentExercise - 1];
       setTimeLeft(prevExercise.duration || 0);
     }
-  }, [currentExercise, exercises, isKayaWorkout, kayaAnalysis]);
+  }, [currentExercise, exercises, isKayaWorkout, kayaAnalysis, stopAllTTS]);
 
   const handleStop = () => {
     navigate("/dashboard");
