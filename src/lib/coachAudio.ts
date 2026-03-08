@@ -414,7 +414,8 @@ const AUDIO_FILES: Record<string, Partial<Record<AudioCategory, string>>> = {
     halfway: '58-ผ่านครึ่งทาง.wav',
     session_almost_done: '59-เกือบเสร็จแล้ว.wav',
     session_complete: '60-จบเซสชั่น.wav',
-    // timer_15s/timer_30s (files 61-62) not recorded for this coach — falls back to coach-aiko in playCoachAudio
+    timer_15s: '61-15วินาทีแล.wav',
+    timer_30s: '62-30วินาทีแล.wav',
   },
   'coach-alan': {
     start: '0-มาเริ่มต้น.wav',
@@ -480,7 +481,8 @@ const AUDIO_FILES: Record<string, Partial<Record<AudioCategory, string>>> = {
     halfway: '58-ผ่านครึ่งทาง.wav',
     session_almost_done: '59-เกือบเสร็จแล้ว.wav',
     session_complete: '60-จบเซสชั่น.wav',
-    // timer_15s/timer_30s (files 61-62) not recorded for this coach — falls back to coach-aiko in playCoachAudio
+    timer_15s: '61-15วินาทีแล.wav',
+    timer_30s: '62-30วินาทีแล.wav',
   },
   'coach-homchan': {
     start: '0-มาเริ่มต้น.wav',
@@ -546,7 +548,8 @@ const AUDIO_FILES: Record<string, Partial<Record<AudioCategory, string>>> = {
     halfway: '58-ผ่านครึ่งทาง.wav',
     session_almost_done: '59-เกือบเสร็จแล้ว.wav',
     session_complete: '60-จบเซสชั่น.wav',
-    // timer_15s/timer_30s (files 61-62) not recorded for this coach — falls back to coach-aiko in playCoachAudio
+    timer_15s: '61-15วินาทีแล.wav',
+    timer_30s: '62-30วินาทีแล.wav',
   },
   'coach-manee': {
     start: '0-มาเริ่มต้น.wav',
@@ -612,7 +615,8 @@ const AUDIO_FILES: Record<string, Partial<Record<AudioCategory, string>>> = {
     halfway: '58-ผ่านครึ่งทาง.wav',
     session_almost_done: '59-เกือบเสร็จแล้ว.wav',
     session_complete: '60-จบเซสชั่น.wav',
-    // timer_15s/timer_30s (files 61-62) not recorded for this coach — falls back to coach-aiko in playCoachAudio
+    timer_15s: '61-15วินาทีแล.wav',
+    timer_30s: '62-30วินาทีแล.wav',
   },
 };
 
