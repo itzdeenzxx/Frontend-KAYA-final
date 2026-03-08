@@ -1372,13 +1372,13 @@ export default function WorkoutUI() {
     const coachId = ttsCoachRef.current?.id ?? 'coach-aiko'; // fallback if not loaded yet
     const localGreetingUrl = getGreetingAudioUrl(coachId);
     if (localGreetingUrl) {
-      console.log('🔊 [CoachIntro] Playing welcome → greeting → together sequence');
-      // Chain: welcome (57) → greeting (42) → together (16) → first exercise
-      playCoachAudioRef.current('welcome', () => {
-        playCoachAudioRef.current('greeting', () => {
-          playCoachAudioRef.current('together', () => {
-            speakFirstExercise();
-          });
+      console.log('🔊 [CoachIntro] Playing greeting → together sequence');
+      // Chain: greeting (42) → together (16) → first exercise
+      // NOTE: welcome (57) is intentionally skipped — both welcome and greeting start
+      // with "สวัสดีค่ะ เรามาออกกำลังกาย..." causing the phrase to be heard twice.
+      playCoachAudioRef.current('greeting', () => {
+        playCoachAudioRef.current('together', () => {
+          speakFirstExercise();
         });
       });
       return;
