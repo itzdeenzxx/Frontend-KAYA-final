@@ -164,6 +164,8 @@ export default function WorkoutUI() {
   const navigatedRef = useRef(false);
   // Stable ref to playCoachAudio — filled in after stopAllTTS is defined below
   const playCoachAudioRef = useRef<(category: AudioCategory, onEnd?: () => void) => void>(() => {});
+  // Stable ref to speakCoachIntroduction — avoids adding it to useEffect deps
+  const speakCoachIntroductionRef = useRef<() => void>(() => {});
   
   // Voice Coach state
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
@@ -1406,6 +1408,8 @@ export default function WorkoutUI() {
     console.log('🔇 [CoachIntro] No local greeting audio, skipping intro');
     speakFirstExercise();
   }, [exercises, speakExerciseInstruction]);
+  // Keep ref updated so intro effect always calls the latest version
+  useEffect(() => { speakCoachIntroductionRef.current = speakCoachIntroduction; }, [speakCoachIntroduction]);
 
   // Speak coach introduction when workout starts
   useEffect(() => {
@@ -1424,7 +1428,9 @@ export default function WorkoutUI() {
         waited += 100;
       }
       console.log('🔊 [CoachIntro] Settings loaded after', waited, 'ms, speaker:', ttsCoachRef.current?.voiceId || ttsSpeakerRef.current);
-      speakCoachIntroduction();
+      // Use ref so we always call the latest speakCoachIntroduction without
+      // adding it to this effect's dependency array (which would cause re-fires)
+      speakCoachIntroductionRef.current();
     };
     
     const timeout = setTimeout(() => {
@@ -1432,7 +1438,7 @@ export default function WorkoutUI() {
     }, 500);
     
     return () => clearTimeout(timeout);
-  }, [showLoader, speakCoachIntroduction]);
+  }, [showLoader]);
 
   // Speak instruction when exercise changes (after first exercise)
   useEffect(() => {
