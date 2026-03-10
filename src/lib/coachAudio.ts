@@ -77,8 +77,11 @@ const COACH_FOLDERS: Record<string, string> = {
   'coach-manee': 'มานี',
 };
 
-/** Category → filename per coach */
-const AUDIO_FILES: Record<string, Record<AudioCategory, string>> = {
+/** Category → filename per coach.
+ * Using Partial because coaches with only 61 files (0-60) don't have timer_15s/timer_30s.
+ * getLocalAudioUrl returns null for undefined entries; playCoachAudio falls back to coach-aiko.
+ */
+const AUDIO_FILES: Record<string, Partial<Record<AudioCategory, string>>> = {
   'coach-aiko': {
     start: '0-มาเริ่มต้น.wav',
     excellent: '1-ยอดเยี่ยมม.wav',
@@ -235,7 +238,7 @@ const AUDIO_FILES: Record<string, Record<AudioCategory, string>> = {
     fight: '18-สู้ๆครับ.wav',
     almost_done: '19-ฮึบฮึบใกล้.wav',
     change_exercise: '20-มาเปลี่ยนท.wav',
-    form_correction: '16-ฟอร์มการออ.wav', // reuse form_check
+    form_correction: '16-ฟอร์มการออ.wav', // reuse form_check — nattakan has no dedicated form_correction file
     // ─── New categories (files 21-60) ───
     countdown: '21-นับถอยหลัง.wav',
     beat_1: '22-นับหนึ่ง.wav',
@@ -411,6 +414,8 @@ const AUDIO_FILES: Record<string, Record<AudioCategory, string>> = {
     halfway: '58-ผ่านครึ่งทาง.wav',
     session_almost_done: '59-เกือบเสร็จแล้ว.wav',
     session_complete: '60-จบเซสชั่น.wav',
+    timer_15s: '61-15วินาทีแล.wav',
+    timer_30s: '62-30วินาทีแล.wav',
   },
   'coach-alan': {
     start: '0-มาเริ่มต้น.wav',
@@ -476,6 +481,8 @@ const AUDIO_FILES: Record<string, Record<AudioCategory, string>> = {
     halfway: '58-ผ่านครึ่งทาง.wav',
     session_almost_done: '59-เกือบเสร็จแล้ว.wav',
     session_complete: '60-จบเซสชั่น.wav',
+    timer_15s: '61-15วินาทีแล.wav',
+    timer_30s: '62-30วินาทีแล.wav',
   },
   'coach-homchan': {
     start: '0-มาเริ่มต้น.wav',
@@ -541,6 +548,8 @@ const AUDIO_FILES: Record<string, Record<AudioCategory, string>> = {
     halfway: '58-ผ่านครึ่งทาง.wav',
     session_almost_done: '59-เกือบเสร็จแล้ว.wav',
     session_complete: '60-จบเซสชั่น.wav',
+    timer_15s: '61-15วินาทีแล.wav',
+    timer_30s: '62-30วินาทีแล.wav',
   },
   'coach-manee': {
     start: '0-มาเริ่มต้น.wav',
@@ -606,6 +615,8 @@ const AUDIO_FILES: Record<string, Record<AudioCategory, string>> = {
     halfway: '58-ผ่านครึ่งทาง.wav',
     session_almost_done: '59-เกือบเสร็จแล้ว.wav',
     session_complete: '60-จบเซสชั่น.wav',
+    timer_15s: '61-15วินาทีแล.wav',
+    timer_30s: '62-30วินาทีแล.wav',
   },
 };
 

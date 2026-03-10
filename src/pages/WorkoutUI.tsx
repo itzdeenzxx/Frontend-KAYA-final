@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Play, Pause, SkipForward, SkipBack, X, Volume2, MessageCircle, Dumbbell, Flame, PersonStanding, Heart, Brain, Sparkles, Target, Zap, Camera, CameraOff, Activity, Bone, Eye, EyeOff, Music, Wind, Waves, Footprints, ArrowUp, RotateCcw, ArrowUpFromLine, Mic, MicOff, Send, Loader2 } from "lucide-react";
@@ -116,7 +116,10 @@ export default function WorkoutUI() {
   // Get selected workout style from localStorage
   const [selectedStyleId] = useState(() => localStorage.getItem('kaya_workout_style'));
   const selectedStyle = getWorkoutStyle(selectedStyleId);
-  const exercises = getExercisesForStyle(selectedStyleId);
+  // Memoize exercises so its reference is stable across re-renders.
+  // This prevents speakCoachIntroduction (which depends on exercises) from
+  // changing every render, which would cancel the intro timer via useEffect cleanup.
+  const exercises = useMemo(() => getExercisesForStyle(selectedStyleId), [selectedStyleId]);
   
   // Check if this is a KAYA workout (all KAYA levels)
   const isKayaWorkout = selectedStyleId === 'kaya-stretch' || selectedStyleId === 'kaya-intermediate' || selectedStyleId === 'kaya-advanced' || selectedStyleId === 'kaya-expert';
@@ -161,12 +164,21 @@ export default function WorkoutUI() {
   const navigatedRef = useRef(false);
   // Stable ref to playCoachAudio — filled in after stopAllTTS is defined below
   const playCoachAudioRef = useRef<(category: AudioCategory, onEnd?: () => void) => void>(() => {});
-  
+  // Stable ref to speakCoachIntroduction — avoids adding it to useEffect deps
+  const speakCoachIntroductionRef = useRef<() => void>(() => {});
+  // Stable ref to handleNext — used inside setTimeLeft updater (state updaters must be pure)
+  const handleNextRef = useRef<() => void>(() => {});
+  // TTS state refs — declared here (near other refs) to avoid temporal-dead-zone confusion;
+  // they are mutated by loadTTSSettings and the ref-sync effects below.
+  const ttsCoachRef = useRef<typeof ttsCoach>(null);
+  const ttsSpeakerRef = useRef<string>(DEFAULT_TTS_SETTINGS.speaker);
+  const ttsEnabledRef = useRef<boolean>(DEFAULT_TTS_SETTINGS.enabled);
+  const ttsSpeedRef = useRef<number>(DEFAULT_TTS_SETTINGS.speed);
+
   // Voice Coach state
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<BlobPart[]>([]);
   // Raw PCM recording refs
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioStreamRef = useRef<MediaStream | null>(null);
@@ -187,6 +199,8 @@ export default function WorkoutUI() {
   // Simple loading state - auto skip after 3 seconds
   const [showLoader, setShowLoader] = useState(true);
   const [showScreenshotFlash, setShowScreenshotFlash] = useState(false);
+  // Pre-fetched camera stream (fetched during loader phase to eliminate black screen)
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   
   // Auto-skip loader after 3 seconds regardless of status
   useEffect(() => {
@@ -265,7 +279,16 @@ export default function WorkoutUI() {
               }
             } else {
               const coach = getCoachById(validCoachId);
-              if (coach) setTtsCoach(coach);
+              if (coach) {
+                // Update ref synchronously BEFORE setting the loaded flag.
+                // waitAndSpeak() polls ttsSettingsLoadedRef then immediately calls
+                // speakCoachIntroduction(), which reads ttsCoachRef at call-time.
+                // Without this, the ref is still updated via a useEffect which fires
+                // AFTER the next React render — after the intro already started with
+                // the wrong (default aiko) coach.
+                ttsCoachRef.current = coach;
+                setTtsCoach(coach);
+              }
             }
           }
           ttsSettingsLoadedRef.current = true;
@@ -310,69 +333,77 @@ export default function WorkoutUI() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Initialize webcam - wait until loader is hidden
+  // Phase 1: Pre-fetch camera stream DURING loader phase (so it's ready when loader dismisses)
   useEffect(() => {
-    // Don't start camera while loader is showing (videoRef won't be mounted)
-    if (showLoader) return;
-    
+    // If camera disabled — stop and clear any existing stream
+    if (!cameraEnabled) {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(t => t.stop());
+        setCameraStream(null);
+      }
+      return;
+    }
+    // Stream already acquired — nothing to do
+    if (cameraStream) return;
+
+    let cancelled = false;
+    navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+      audio: false,
+    }).then(stream => {
+      if (!cancelled) {
+        setCameraStream(stream);
+        setCameraError('');
+      } else {
+        stream.getTracks().forEach(t => t.stop());
+      }
+    }).catch(error => {
+      if (!cancelled) {
+        console.error('Camera error:', error);
+        setCameraError('ไม่สามารถเข้าถึงกล้องได้ - กรุณาอนุญาตการใช้กล้อง');
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [cameraEnabled, cameraStream]); // cameraStream needed to avoid re-fetching if already acquired
+
+  // Phase 2: Attach pre-fetched stream to video element when loader dismisses
+  useEffect(() => {
     if (!cameraEnabled) {
       if (videoRef.current?.srcObject) {
         const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-        tracks.forEach((track) => track.stop());
+        tracks.forEach(t => t.stop());
         videoRef.current.srcObject = null;
       }
       return;
     }
 
-    const startCamera = async () => {
+    if (showLoader || !cameraStream || !videoRef.current) return;
+    // Skip if stream is already attached
+    if (videoRef.current.srcObject === cameraStream) return;
+
+    const attachCamera = async () => {
+      if (!videoRef.current) return;
+      videoRef.current.srcObject = cameraStream;
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            facingMode: 'user',
-          },
-          audio: false,
-        });
-        
-          if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-
-          // Ensure video plays
-          try {
-            await videoRef.current.play();
-            setAutoplayBlocked(false);
-          } catch (playError) {
-            setAutoplayBlocked(true);
-          }
-
-          // Mark camera as ready
-          setCameraReady(true);
-          
-          // Log native video dimensions (display dimensions tracked via resize handler)
-          videoRef.current.onloadedmetadata = () => {
-            if (videoRef.current) {
-              // Update display dimensions to match container
-              if (containerRef.current) {
-                setVideoDimensions({
-                  width: containerRef.current.clientWidth,
-                  height: containerRef.current.clientHeight,
-                });
-              }
-            }
-          };
-        }
-        setCameraError('');
-      } catch (error) {
-        console.error('Camera error:', error);
-        setCameraError('ไม่สามารถเข้าถึงกล้องได้ - กรุณาอนุญาตการใช้กล้อง');
+        await videoRef.current.play();
+        setAutoplayBlocked(false);
+      } catch {
+        setAutoplayBlocked(true);
       }
+      setCameraReady(true);
+      videoRef.current.onloadedmetadata = () => {
+        if (videoRef.current && containerRef.current) {
+          setVideoDimensions({
+            width: containerRef.current.clientWidth,
+            height: containerRef.current.clientHeight,
+          });
+        }
+      };
     };
+    attachCamera();
 
-    startCamera();
-    
     // Update display dimensions on window resize (for SkeletonOverlay canvas sizing)
-    // Use the actual container/display size, not the native video resolution
     const handleResize = () => {
       if (containerRef.current) {
         setVideoDimensions({
@@ -386,19 +417,17 @@ export default function WorkoutUI() {
         });
       }
     };
-    
     window.addEventListener('resize', handleResize);
-    // Delay initial call to let container mount
     requestAnimationFrame(handleResize);
 
     return () => {
       window.removeEventListener('resize', handleResize);
       if (videoRef.current?.srcObject) {
         const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-        tracks.forEach((track) => track.stop());
+        tracks.forEach(t => t.stop());
       }
     };
-  }, [cameraEnabled, showLoader]);
+  }, [cameraEnabled, showLoader, cameraStream]);
 
   // Draw a small debug thumbnail from the video to a canvas for troubleshooting
   useEffect(() => {
@@ -455,7 +484,9 @@ export default function WorkoutUI() {
         if (shouldCountDown) {
           setTimeLeft((prev) => {
             if (prev <= 1) {
-              handleNext();
+              // Call via ref so the updater stays pure (no captured-closure side-effects)
+              // and handleNext is always the latest version without adding it to deps.
+              handleNextRef.current();
               return 0;
             }
             return prev - 1;
@@ -591,6 +622,7 @@ export default function WorkoutUI() {
   }, [showRestScreen, restTimeLeft]);
 
   // Time milestone audio for time-based exercises (plank, lunge)
+  // All coaches now have timer_15s/timer_30s entries in coachAudio.ts — no speakTTS fallback needed
   useEffect(() => {
     if (!currentExerciseIsTimeBased || exerciseCompleted) return;
     const exerciseDuration = exercises[currentExercise]?.duration ?? 0;
@@ -598,10 +630,10 @@ export default function WorkoutUI() {
       // Only play 30s milestone if total duration > 35s (avoid firing at start of 30s sets)
       if (timeLeft === 30 && !timeMilestone30Ref.current && exerciseDuration > 35) {
         timeMilestone30Ref.current = true;
-        playCoachAudioRef.current('timer_30s'); // "เหลืออีก 30 วินาที!"
+        playCoachAudioRef.current('timer_30s'); // "เหลืออีก 30 วินาที!" — all coaches have this
       } else if (timeLeft === 15 && !timeMilestone15Ref.current) {
         timeMilestone15Ref.current = true;
-        playCoachAudioRef.current('timer_15s'); // "เหลืออีก 15 วินาที!"
+        playCoachAudioRef.current('timer_15s'); // "เหลืออีก 15 วินาที!" — all coaches have this
       }
     }
   }, [currentExerciseIsTimeBased, exerciseCompleted, timeLeft, currentExercise, exercises]);
@@ -628,8 +660,8 @@ export default function WorkoutUI() {
     playCoachAudioRef.current(category);
   }, [isKayaWorkout, exerciseCompleted, showRestScreen, kayaAnalysis.tempoQuality]);
 
-  // Body visibility audio — only after 4.5s of continuous invisibility (throttled 10s)
-  // Uses setTimeout so the delay works correctly without needing dep to change again
+  // Body visibility audio — only when body is NOT in detection box / camera can't detect
+  // Triggers after 3s of continuous invisibility (throttled 10s)
   useEffect(() => {
     if (!isKayaWorkout || exerciseCompleted || showRestScreen) return;
     if (kayaAnalysis.isBodyVisible) {
@@ -637,7 +669,7 @@ export default function WorkoutUI() {
       bodyInvisibleSinceRef.current = 0;
       return;
     }
-    // Body just became invisible — schedule audio after 4.5s
+    // Body just became invisible (not in box / not detected) — schedule audio after 3s
     bodyInvisibleSinceRef.current = Date.now();
     const timer = setTimeout(() => {
       if (bodyInvisibleSinceRef.current === 0) return; // body became visible again
@@ -646,7 +678,7 @@ export default function WorkoutUI() {
       if (isTtsSpeakingRef.current) return;
       lastVisibilityAudioTimeRef.current = now;
       playCoachAudioRef.current('move_closer'); // "ขยับตัวเข้า(กล้อง)"
-    }, 4500);
+    }, 3000);
     return () => clearTimeout(timer);
   }, [isKayaWorkout, exerciseCompleted, showRestScreen, kayaAnalysis.isBodyVisible]);
 
@@ -748,18 +780,36 @@ export default function WorkoutUI() {
     const audio = new Audio(url);
     ttsAudioRef.current = audio;
     audio.playbackRate = ttsSpeedRef.current || 1.0;
-    audio.onended = () => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; onEnd?.(); };
-    audio.onerror = () => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; onEnd?.(); };
-    audio.play().catch(() => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; onEnd?.(); });
+    // Guard: onended, onerror, and play().catch() can ALL fire for the same failed audio.
+    // Use a one-shot flag so onEnd is called at most once per playCoachAudio call.
+    let audioEnded = false;
+    const handleAudioEnd = () => {
+      if (audioEnded) return;
+      audioEnded = true;
+      ttsAudioRef.current = null;
+      isTtsSpeakingRef.current = false;
+      onEnd?.();
+    };
+    audio.onended = handleAudioEnd;
+    audio.onerror = handleAudioEnd;
+    audio.play().catch(handleAudioEnd);
   }, [stopAllTTS]);
-  // Keep ref updated so non-reactive code (setTimeout, useEffect) always has latest
+  // Keep refs updated so non-reactive code (setTimeout, useEffect) always has latest
   useEffect(() => { playCoachAudioRef.current = playCoachAudio; }, [playCoachAudio]);
+  useEffect(() => { handleNextRef.current = handleNext; }, [handleNext]);
 
-  // Use refs to avoid stale closures in speakTTS
-  const ttsCoachRef = useRef(ttsCoach);
-  const ttsSpeakerRef = useRef(ttsSpeaker);
-  const ttsEnabledRef = useRef(ttsEnabled);
-  const ttsSpeedRef = useRef(ttsSpeed);
+  // Stop all audio when component unmounts (e.g. back button, navigate away)
+  useEffect(() => {
+    return () => {
+      if (ttsAudioRef.current) {
+        ttsAudioRef.current.pause();
+        ttsAudioRef.current = null;
+      }
+      stopCoachPopupAudio();
+    };
+  }, []);
+
+  // Keep TTS state refs in sync with state (also sync handleNextRef)
   useEffect(() => { ttsCoachRef.current = ttsCoach; }, [ttsCoach]);
   useEffect(() => { ttsSpeakerRef.current = ttsSpeaker; }, [ttsSpeaker]);
   useEffect(() => { ttsEnabledRef.current = ttsEnabled; }, [ttsEnabled]);
@@ -898,8 +948,8 @@ export default function WorkoutUI() {
               ttsAudioRef.current = audio;
               audio.playbackRate = ttsSpeedRef.current || 1.0;
               audio.onended = () => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; resolve(); };
-              audio.onerror = () => { isTtsSpeakingRef.current = false; resolve(); };
-              audio.play().catch(() => { isTtsSpeakingRef.current = false; resolve(); });
+              audio.onerror = () => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; resolve(); };
+              audio.play().catch(() => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; resolve(); });
             });
           } catch {
             console.warn('🔊 [RepCount] Local audio failed, falling back to API');
@@ -1311,10 +1361,10 @@ export default function WorkoutUI() {
               isTtsSpeakingRef.current = false;
               resolve();
             };
-            audio.onerror = () => { isTtsSpeakingRef.current = false; resolve(); };
+            audio.onerror = () => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; resolve(); };
             audio.play().then(() => {
               console.log('🔊 [ExerciseInstruction] Local audio playing at speed:', audio.playbackRate);
-            }).catch(() => { isTtsSpeakingRef.current = false; resolve(); });
+            }).catch(() => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; resolve(); });
           });
         } catch {
           isTtsSpeakingRef.current = false;
@@ -1332,40 +1382,29 @@ export default function WorkoutUI() {
     // Skip if TTS disabled
     if (!ttsEnabledRef.current) {
       console.log('🔇 [TTS] Coach intro skipped: TTS disabled');
-      // Still speak the first exercise instruction (it will also check ttsEnabled)
-      const exercise = exercises[0];
-      if (exercise) setTimeout(() => speakExerciseInstruction(exercise), 500);
       return;
     }
 
-    // Helper function to speak first exercise after intro
-    const speakFirstExercise = () => {
-      const exercise = exercises[0];
-      if (exercise) {
-        setTimeout(() => speakExerciseInstruction(exercise), 500);
+    const exercise = exercises[0];
+    if (exercise?.kayaExercise) {
+      // Exercise-start files (30-41) already open with a greeting phrase + exercise name.
+      // Play them directly for exercise 0 — this avoids the double "สวัสดีค่ะ" that
+      // occurred when chaining greeting(42) → exercise-start(30-41).
+      // Exercises 1+ get their start instruction via the exercise-change useEffect.
+      console.log('🔊 [CoachIntro] Playing exercise-start directly (contains greeting)');
+      setTimeout(() => speakExerciseInstruction(exercise), 500);
+    } else {
+      // Non-KAYA exercise: no start audio exists, fall back to greeting(42) only.
+      const coachId = ttsCoachRef.current?.id ?? 'coach-aiko';
+      const localGreetingUrl = getGreetingAudioUrl(coachId);
+      if (localGreetingUrl) {
+        console.log('🔊 [CoachIntro] Non-KAYA exercise — playing greeting only');
+        playCoachAudioRef.current('greeting');
       }
-    };
-
-    // Try local greeting audio first — play welcome → greeting → together → first exercise
-    const coachId = ttsCoachRef.current?.id ?? 'coach-aiko'; // fallback if not loaded yet
-    const localGreetingUrl = getGreetingAudioUrl(coachId);
-    if (localGreetingUrl) {
-      console.log('🔊 [CoachIntro] Playing welcome → greeting → together sequence');
-      // Chain: welcome (57) → greeting (42) → together (16) → first exercise
-      playCoachAudioRef.current('welcome', () => {
-        playCoachAudioRef.current('greeting', () => {
-          playCoachAudioRef.current('together', () => {
-            speakFirstExercise();
-          });
-        });
-      });
-      return;
     }
-
-    // No greeting audio found — skip intro and go straight to first exercise
-    console.log('🔇 [CoachIntro] No local greeting audio, skipping intro');
-    speakFirstExercise();
   }, [exercises, speakExerciseInstruction]);
+  // Keep ref updated so intro effect always calls the latest version
+  useEffect(() => { speakCoachIntroductionRef.current = speakCoachIntroduction; }, [speakCoachIntroduction]);
 
   // Speak coach introduction when workout starts
   useEffect(() => {
@@ -1373,7 +1412,12 @@ export default function WorkoutUI() {
     if (coachIntroSpokenRef.current) return;
     
     coachIntroSpokenRef.current = true;
-    
+    // Mark exercise 0 as spoken synchronously so the exercise-change effect
+    // (which also fires when showLoader→false) skips exercise 0 and doesn't
+    // double-play. When handlePrevious resets lastSpokenExerciseRef to -1,
+    // the exercise-change effect will correctly re-fire for exercise 0.
+    lastSpokenExerciseRef.current = 0;
+
     // Wait for TTS settings to load before speaking intro
     // This prevents race condition where coach speaker ref is still default
     const waitAndSpeak = async () => {
@@ -1384,7 +1428,9 @@ export default function WorkoutUI() {
         waited += 100;
       }
       console.log('🔊 [CoachIntro] Settings loaded after', waited, 'ms, speaker:', ttsCoachRef.current?.voiceId || ttsSpeakerRef.current);
-      speakCoachIntroduction();
+      // Use ref so we always call the latest speakCoachIntroduction without
+      // adding it to this effect's dependency array (which would cause re-fires)
+      speakCoachIntroductionRef.current();
     };
     
     const timeout = setTimeout(() => {
@@ -1392,17 +1438,17 @@ export default function WorkoutUI() {
     }, 500);
     
     return () => clearTimeout(timeout);
-  }, [showLoader, speakCoachIntroduction]);
+  }, [showLoader]);
 
-  // Speak instruction when exercise changes (after first exercise)
+  // Speak instruction when exercise changes
   useEffect(() => {
     // Don't speak while loader is showing
     if (showLoader) return;
-    
-    // Skip first exercise (handled by coach intro)
-    if (currentExercise === 0) return;
-    
-    // Skip if already spoken for this exercise
+
+    // Skip if already spoken for this exercise (covers exercise 0 on mount — the
+    // intro useEffect sets lastSpokenExerciseRef.current = 0 synchronously, so
+    // this guard fires before the setTimeout below and prevents double-play).
+    // Going BACK to exercise 0 via handlePrevious resets it to -1, so audio replays.
     if (lastSpokenExerciseRef.current === currentExercise) return;
     
     const exercise = exercises[currentExercise];
@@ -1479,6 +1525,7 @@ export default function WorkoutUI() {
         kayaAnalysis.nextExercise();
       }
       lastSpokenExerciseRef.current = -1; // ensure next exercise TTS fires
+      setExerciseCompleted(false); // reset in case user skips while auto-advance audio chain is running
       setCurrentExercise((prev) => prev + 1);
       const nextExercise = exercises[currentExercise + 1];
       setTimeLeft(nextExercise.duration || 0);
@@ -1489,16 +1536,20 @@ export default function WorkoutUI() {
 
   const handlePrevious = useCallback(() => {
     if (currentExercise > 0) {
+      stopAllTTS();
       if (isKayaWorkout) {
         kayaAnalysis.previousExercise();
       }
+      lastSpokenExerciseRef.current = -1; // allow re-speaking instruction on previous exercise
+      setExerciseCompleted(false);
       setCurrentExercise((prev) => prev - 1);
       const prevExercise = exercises[currentExercise - 1];
       setTimeLeft(prevExercise.duration || 0);
     }
-  }, [currentExercise, exercises, isKayaWorkout, kayaAnalysis]);
+  }, [currentExercise, exercises, isKayaWorkout, kayaAnalysis, stopAllTTS]);
 
   const handleStop = () => {
+    stopAllTTS();
     navigate("/dashboard");
   };
 
@@ -1642,7 +1693,9 @@ export default function WorkoutUI() {
               </div>
               <div>
                 <h3 className="text-xl font-bold text-white">{nextExercise.nameTh || nextExercise.name}</h3>
-                <p className="text-white/60">{nextExercise.reps} ครั้ง</p>
+                <p className="text-white/60">
+                  {nextExercise.reps ? `${nextExercise.reps} ครั้ง` : nextExercise.duration ? `${nextExercise.duration} วิ` : ''}
+                </p>
               </div>
             </div>
           </div>
