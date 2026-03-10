@@ -846,7 +846,9 @@ export default function WorkoutUI() {
     
     
     try {
-      isTtsSpeakingRef.current = true;
+      // NOTE: Do NOT set isTtsSpeakingRef=true here — the API call can take up to 12s
+      // and we don't want to block all feedback audio while waiting for the network.
+      // We set it true only once the audio blob is ready and we're about to play.
       
       // Read current coach/speaker from refs (avoids stale closure)
       const currentCoach = ttsCoachRef.current;
@@ -894,9 +896,10 @@ export default function WorkoutUI() {
       const audioBlob = new Blob([audioArray], { type: 'audio/wav' });
       const audioUrl = URL.createObjectURL(audioBlob);
       
-      
-      // Stop any existing audio
+      // Stop any existing audio and mark speaking — do this right before playback,
+      // NOT at the start of the function, so we don't block feedback audio during API call.
       stopAllTTS();
+      isTtsSpeakingRef.current = true;
       
       return new Promise((resolve) => {
         const audio = new Audio(audioUrl);
@@ -1613,7 +1616,7 @@ export default function WorkoutUI() {
     } catch (error) {
       console.error('Screenshot failed:', error);
     }
-  }, [exercises, currentExercise, isKayaWorkout, kayaAnalysis.reps]);
+  }, [exercises, currentExercise, isKayaWorkout, kayaAnalysis.reps, timeLeft]);
 
   const exercise = exercises[currentExercise];
   const progress = ((currentExercise + 1) / exercises.length) * 100;
