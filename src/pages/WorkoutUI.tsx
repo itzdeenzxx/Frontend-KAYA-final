@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Play, Pause, SkipForward, SkipBack, X, Volume2, MessageCircle, Dumbbell, Flame, PersonStanding, Heart, Brain, Sparkles, Target, Zap, Camera, CameraOff, Activity, Bone, Eye, EyeOff, Music, Wind, Waves, Footprints, ArrowUp, RotateCcw, ArrowUpFromLine, Mic, MicOff, Send, Loader2 } from "lucide-react";
+import { Play, Pause, SkipForward, SkipBack, X, Volume2, VolumeX, MessageCircle, Dumbbell, Flame, PersonStanding, Heart, Brain, Sparkles, Target, Zap, Camera, CameraOff, Activity, Bone, Eye, EyeOff, Music, Wind, Waves, Footprints, ArrowUp, RotateCcw, ArrowUpFromLine, Mic, MicOff, Send, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMediaPipePose } from "@/hooks/useMediaPipePose";
 import { SkeletonOverlay } from "@/components/shared/SkeletonOverlay";
@@ -1947,8 +1947,36 @@ export default function WorkoutUI() {
             <button
               onClick={captureScreenshot}
               className="w-10 h-10 rounded-full bg-black/30 text-white/70 hover:bg-black/50 backdrop-blur-sm flex items-center justify-center transition-colors"
+              title="ถ่ายรูป"
             >
               <Camera className="w-4 h-4" />
+            </button>
+            {/* Camera Toggle - Desktop */}
+            <button
+              onClick={toggleCamera}
+              className={cn(
+                "w-10 h-10 rounded-full backdrop-blur-sm flex items-center justify-center transition-colors",
+                cameraEnabled ? "bg-black/30 text-white/70 hover:bg-black/50" : "bg-red-500/30 text-red-400"
+              )}
+              title={cameraEnabled ? "ปิดกล้อง" : "เปิดกล้อง"}
+            >
+              {cameraEnabled ? <Eye className="w-4 h-4" /> : <CameraOff className="w-4 h-4" />}
+            </button>
+            {/* Mute/Unmute Toggle - Desktop */}
+            <button
+              onClick={() => {
+                const next = !ttsEnabled;
+                setTtsEnabled(next);
+                ttsEnabledRef.current = next;
+                if (!next) stopAllTTS();
+              }}
+              className={cn(
+                "w-10 h-10 rounded-full backdrop-blur-sm flex items-center justify-center transition-colors",
+                ttsEnabled ? "bg-black/30 text-white/70 hover:bg-black/50" : "bg-red-500/30 text-red-400"
+              )}
+              title={ttsEnabled ? "ปิดเสียงโค้ช" : "เปิดเสียงโค้ช"}
+            >
+              {ttsEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
             </button>
           </div>
         </div>
@@ -2102,7 +2130,10 @@ export default function WorkoutUI() {
                 <SkipBack className="w-5 h-5" />
               </button>
               <button
-                onClick={() => setIsPaused(!isPaused)}
+                onClick={() => {
+                  if (!isPaused) stopAllTTS(); // stop coach audio when pausing
+                  setIsPaused(!isPaused);
+                }}
                 className="w-14 h-14 rounded-full bg-primary flex items-center justify-center text-white hover:bg-primary/90 transition-colors"
               >
                 {isPaused ? <Play className="w-6 h-6 ml-1" /> : <Pause className="w-6 h-6" />}
@@ -2250,6 +2281,22 @@ export default function WorkoutUI() {
                 title={cameraEnabled ? "ปิดกล้อง" : "เปิดกล้อง"}
               >
                 {cameraEnabled ? <Eye className="w-4 h-4" /> : <CameraOff className="w-4 h-4" />}
+              </button>
+              {/* Mute/Unmute Toggle - Mobile */}
+              <button
+                onClick={() => {
+                  const next = !ttsEnabled;
+                  setTtsEnabled(next);
+                  ttsEnabledRef.current = next;
+                  if (!next) stopAllTTS();
+                }}
+                className={cn(
+                  "w-9 h-9 rounded-xl backdrop-blur-sm flex items-center justify-center transition-colors",
+                  ttsEnabled ? "bg-white/10 text-white" : "bg-red-500/20 text-red-400"
+                )}
+                title={ttsEnabled ? "ปิดเสียงโค้ช" : "เปิดเสียงโค้ช"}
+              >
+                {ttsEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
               </button>
               <div className="bg-white/10 backdrop-blur-sm rounded-xl px-2 py-1.5">
                 <p className="text-white font-bold text-sm tabular-nums">{formatTime(totalTime)}</p>
@@ -2419,7 +2466,10 @@ export default function WorkoutUI() {
             <Button
               size="icon"
               className="w-20 h-20 rounded-full bg-gradient-to-r from-primary to-orange-400 shadow-lg shadow-primary/30"
-              onClick={() => setIsPaused(!isPaused)}
+              onClick={() => {
+                if (!isPaused) stopAllTTS(); // stop coach audio when pausing
+                setIsPaused(!isPaused);
+              }}
             >
               {isPaused ? <Play className="w-8 h-8 ml-1" /> : <Pause className="w-8 h-8" />}
             </Button>
