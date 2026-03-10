@@ -171,15 +171,13 @@ export function GameBoard({
     if (!isPlaying || activeMole === null) return;
 
     const checkHands = () => {
-      // ต้องตรวจจับได้ + กำมือ + กำลังทุบ (เคลื่อนที่ลงเร็ว) ถึงจะนับว่าตี
-      // if (leftHand?.isDetected && leftHand.isFist && leftHand.isSmashing) {
-      if (leftHand?.isDetected && leftHand.isFist) {
+      // ต้องตรวจจับได้ + กำมือ + กำลังทุบ (Optical Flow detect การเคลื่อนที่เร็ว) ถึงจะนับว่าตี
+      if (leftHand?.isDetected && leftHand.isFist && leftHand.isSmashing) {
         if (checkHit(activeMole, leftHand.x, leftHand.y)) {
           handleMoleHit(activeMole);
         }
       }
-      // if (rightHand?.isDetected && rightHand.isFist && rightHand.isSmashing) {
-      if (rightHand?.isDetected && rightHand.isFist) {
+      if (rightHand?.isDetected && rightHand.isFist && rightHand.isSmashing) {
         if (checkHit(activeMole, rightHand.x, rightHand.y)) {
           handleMoleHit(activeMole);
         }

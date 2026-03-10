@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWhackAMoleMediaPipe } from '@/hooks/useWhackAMoleMediaPipe';
 import { useGameScores } from '@/hooks/useGameScores';
@@ -21,7 +21,7 @@ import {
   Zap
 } from 'lucide-react';
 
-type GameScreen = 'MENU' | 'DIFFICULTY_SELECT' | 'PLAYING' | 'GAME_OVER';
+type GameScreen = 'MENU' | 'DIFFICULTY_SELECT' | 'READY' | 'PLAYING' | 'GAME_OVER';
 type Difficulty = 'easy' | 'medium' | 'hard';
 
 const GAME_DURATION = 60; // seconds
@@ -54,15 +54,62 @@ const DIFFICULTY_SETTINGS = {
   }
 };
 
+// ===================================================================
+// 📐 ปรับขนาด / ตำแหน่งเฟรมรูปคน
+// viewBox = "0 0 640 360" (16:9)
+// cx, cy = จุดกึ่งกลางเฟรม, scale = ขนาด (1.0=ปกติ)
+// ===================================================================
+const FRAME_CONFIG = { cx: 320, cy: 160, scale: 0.55 };
+
+const buildPersonPath = (cx: number, cy: number, s: number) => {
+  const p = (x: number, y: number) =>
+    `${(cx + x * s).toFixed(1)},${(cy + y * s).toFixed(1)}`;
+  // หัวกลม → คอ → ไหล่โค้ง → ลำตัว
+  return [
+    // --- หัว (head) ---
+    `M ${p(0, -145)}`,
+    `C ${p(44, -145)} ${p(72, -115)} ${p(72, -82)}`,
+    `C ${p(72, -50)} ${p(52, -22)} ${p(28, -12)}`,
+    // --- คอ → ไหล่ขวา ---
+    `L ${p(22, 10)}`,
+    `C ${p(60, 18)} ${p(100, 42)} ${p(125, 65)}`,
+    `C ${p(142, 80)} ${p(148, 98)} ${p(148, 112)}`,
+    `L ${p(148, 160)}`,
+    // --- ก้นล่าง ---
+    `L ${p(-148, 160)}`,
+    `L ${p(-148, 112)}`,
+    // --- ไหล่ซ้าย ---
+    `C ${p(-148, 98)} ${p(-142, 80)} ${p(-125, 65)}`,
+    `C ${p(-100, 42)} ${p(-60, 18)} ${p(-22, 10)}`,
+    `L ${p(-28, -12)}`,
+    // --- หัวซ้าย ---
+    `C ${p(-52, -22)} ${p(-72, -50)} ${p(-72, -82)}`,
+    `C ${p(-72, -115)} ${p(-44, -145)} ${p(0, -145)}`,
+    `Z`,
+  ].join(' ');
+};
+
 export function WhackAMoleGame() {
   const navigate = useNavigate();
-  const { videoRef, canvasRef, leftHand, rightHand, isLoading, error } = useWhackAMoleMediaPipe();
+  const { videoRef, canvasRef, leftHand, rightHand, isLoading, error, isBodyInFrame } = useWhackAMoleMediaPipe();
   const { submitScore, personalBest, loadPersonalBest } = useGameScores();
   const { lineProfile } = useAuth();
   
   const [screen, setScreen] = useState<GameScreen>('MENU');
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [score, setScore] = useState(0);
+
+  // ตรวจจับแนวจอ — บังคับเล่นแนวนอนเท่านั้น
+  const [isPortrait, setIsPortrait] = useState(() => window.innerHeight > window.innerWidth);
+  useEffect(() => {
+    const check = () => setIsPortrait(window.innerHeight > window.innerWidth);
+    window.addEventListener('resize', check);
+    window.addEventListener('orientationchange', check);
+    return () => {
+      window.removeEventListener('resize', check);
+      window.removeEventListener('orientationchange', check);
+    };
+  }, []);
   const [timeLeft, setTimeLeft] = useState(GAME_DURATION);
   const [highScore, setHighScore] = useState(() => {
     const saved = localStorage.getItem('whackamole_highscore');
@@ -71,6 +118,7 @@ export function WhackAMoleGame() {
   const [customMoleImage, setCustomMoleImage] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isNewRecord, setIsNewRecord] = useState(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
   
   const statsSavedRef = useRef(false); // Prevent double saving stats
   
@@ -115,7 +163,8 @@ export function WhackAMoleGame() {
     setDifficulty(diff);
     setScore(0);
     setTimeLeft(GAME_DURATION);
-    setScreen('PLAYING');
+    setScreen('READY');
+    setCountdown(null);
     setIsNewRecord(false);
     statsSavedRef.current = false; // Reset stats saved flag
     gameStatsRef.current = {
@@ -127,6 +176,32 @@ export function WhackAMoleGame() {
     };
     loadPersonalBest('whackAMole', diff);
   }, [loadPersonalBest]);
+
+  // READY screen: ตรวจจับว่าผู้ใช้อยู่ในเฟรม → countdown 3s → start
+  useEffect(() => {
+    if (screen !== 'READY') {
+      setCountdown(null);
+      return;
+    }
+    if (!isBodyInFrame) {
+      setCountdown(null);
+      return;
+    }
+    // Body detected — start 3-second countdown
+    setCountdown(5);
+    let current = 5;
+    const interval = setInterval(() => {
+      current -= 1;
+      if (current <= 0) {
+        clearInterval(interval);
+        setScreen('PLAYING');
+        setCountdown(null);
+      } else {
+        setCountdown(current);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [screen, isBodyInFrame]);
 
   // Handle game end
   const handleGameEnd = useCallback(async () => {
@@ -199,7 +274,8 @@ export function WhackAMoleGame() {
   const restartGame = useCallback(() => {
     setScore(0);
     setTimeLeft(GAME_DURATION);
-    setScreen('PLAYING');
+    setScreen('READY');
+    setCountdown(null);
     setIsNewRecord(false);
     gameStatsRef.current = {
       molesHit: 0,
@@ -235,6 +311,44 @@ export function WhackAMoleGame() {
 
   return (
     <div className="fixed inset-0 bg-gradient-to-b from-sky-400 via-sky-300 to-green-400 overflow-hidden">
+      {/* Portrait blocker — บังคับเล่นแนวนอน */}
+      {isPortrait && (
+        <div className="absolute inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-6">
+          <div className="text-center max-w-sm">
+            {/* Rotate icon */}
+            <div className="text-7xl mb-6 animate-pulse">📱↪️</div>
+            <div className="relative w-24 h-16 mx-auto mb-6">
+              <div className="absolute inset-0 border-3 border-white/60 rounded-lg animate-[spin_3s_ease-in-out_infinite]" 
+                   style={{ transformOrigin: 'center', animation: 'none' }}>
+                <svg viewBox="0 0 96 64" className="w-full h-full">
+                  <rect x="4" y="4" width="56" height="88" rx="8" fill="none" stroke="white" strokeWidth="3"
+                    transform="rotate(-90 48 48)" />
+                </svg>
+              </div>
+            </div>
+            <h2 className="text-2xl font-black text-white mb-3">
+              กรุณาหมุนจอเป็นแนวนอน
+            </h2>
+            <p className="text-white/70 text-sm mb-6">
+              เกมตีตัวตุ่นต้องเล่นในแนวนอน (Landscape) เท่านั้น<br />
+              เพื่อประสบการณ์การเล่นที่ดีที่สุด
+            </p>
+            <div className="flex items-center justify-center gap-2 text-white/50 text-xs">
+              <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 12a9 9 0 11-6.219-8.56" />
+              </svg>
+              <span>รอการหมุนจอ...</span>
+            </div>
+            <button
+              onClick={() => navigate('/game-mode')}
+              className="mt-6 px-5 py-2.5 bg-white/10 hover:bg-white/20 rounded-xl text-white/80 text-sm font-medium transition-colors"
+            >
+              ← กลับหน้าเกม
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Hidden video element */}
       <video
         ref={videoRef}
@@ -431,7 +545,155 @@ export function WhackAMoleGame() {
           </button>
         </div>
       )}
-      
+
+      {/* ============ READY Screen — เฟรมรูปคนก่อนเริ่มเกม ============ */}
+      {screen === 'READY' && (() => {
+        const { cx, cy, scale: s } = FRAME_CONFIG;
+        const personPath = buildPersonPath(cx, cy, s);
+
+        // Corner bracket positions
+        const pad = 14;
+        const bLen = 28 * s;
+        const frameLeft = cx - 155 * s - pad;
+        const frameRight = cx + 155 * s + pad;
+        const frameTop = cy - 150 * s - pad;
+        const frameBottom = cy + 168 * s + pad;
+        const corners = [
+          `M ${frameLeft + bLen},${frameTop} L ${frameLeft},${frameTop} L ${frameLeft},${frameTop + bLen}`,
+          `M ${frameRight - bLen},${frameTop} L ${frameRight},${frameTop} L ${frameRight},${frameTop + bLen}`,
+          `M ${frameLeft},${frameBottom - bLen} L ${frameLeft},${frameBottom} L ${frameLeft + bLen},${frameBottom}`,
+          `M ${frameRight},${frameBottom - bLen} L ${frameRight},${frameBottom} L ${frameRight - bLen},${frameBottom}`,
+        ];
+        const scanLeft = cx - 148 * s;
+        const scanW = 296 * s;
+        const scanTop = cy - 145 * s;
+        const scanBottom = cy + 160 * s;
+
+        const strokeColor = isBodyInFrame ? '#4ade80' : 'rgba(255,255,255,0.6)';
+        const strokeW = isBodyInFrame ? 3 : 2;
+
+        return (
+          <div className="absolute inset-0 z-20">
+            {/* SVG overlay */}
+            <svg
+              viewBox="0 0 640 360"
+              preserveAspectRatio="xMidYMid slice"
+              className="absolute inset-0 w-full h-full pointer-events-none"
+              style={{ zIndex: 1 }}
+            >
+              {/* Dark mask with person cutout */}
+              <path
+                fillRule="evenodd"
+                clipRule="evenodd"
+                d={`M -10,-10 L 650,-10 L 650,370 L -10,370 Z ${personPath}`}
+                fill="rgba(0,0,0,0.65)"
+              />
+
+              {/* Person outline */}
+              <path
+                d={personPath}
+                fill="none"
+                stroke={strokeColor}
+                strokeWidth={strokeW}
+                strokeLinejoin="round"
+              >
+                {!isBodyInFrame && (
+                  <animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite" />
+                )}
+              </path>
+
+              {/* Corner brackets */}
+              {corners.map((d, i) => (
+                <path
+                  key={i}
+                  d={d}
+                  fill="none"
+                  stroke={isBodyInFrame ? '#4ade80' : '#5eead4'}
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              ))}
+
+              {/* Glow when detected */}
+              {isBodyInFrame && (
+                <path
+                  d={personPath}
+                  fill="none"
+                  stroke="#4ade80"
+                  strokeWidth="10"
+                  strokeLinejoin="round"
+                  opacity="0.15"
+                />
+              )}
+
+              {/* Scanning line when not detected */}
+              {!isBodyInFrame && (
+                <rect
+                  x={scanLeft} y={scanTop}
+                  width={scanW} height="2"
+                  fill="#5eead4" opacity="0.6" rx="1"
+                >
+                  <animate
+                    attributeName="y"
+                    values={`${scanTop};${scanBottom};${scanTop}`}
+                    dur="3s" repeatCount="indefinite"
+                  />
+                  <animate
+                    attributeName="opacity"
+                    values="0.6;0.2;0.6"
+                    dur="3s" repeatCount="indefinite"
+                  />
+                </rect>
+              )}
+            </svg>
+
+            {/* Top instruction text */}
+            <div className="absolute top-0 left-0 right-0 pt-14 pb-3 flex items-center justify-center" style={{ zIndex: 2 }}>
+              <div className="bg-black/40 backdrop-blur-sm rounded-full px-6 py-2">
+                <p className="text-base font-bold text-white">
+                  📷 กรุณายืนให้ตัวอยู่ในกรอบ
+                </p>
+              </div>
+            </div>
+
+            {/* Status / Countdown at bottom */}
+            <div className="absolute left-0 right-0 flex flex-col items-center" style={{ bottom: '10%', zIndex: 2 }}>
+              {countdown !== null ? (
+                <div className="text-center">
+                  <div className="text-8xl font-black text-green-400 drop-shadow-[0_0_30px_rgba(74,222,128,0.5)] animate-bounce">
+                    {countdown}
+                  </div>
+                  <p className="text-xl font-bold text-white mt-3 drop-shadow-lg">เตรียมตัว...</p>
+                </div>
+              ) : (
+                <div className="text-center px-4">
+                  {isBodyInFrame ? (
+                    <div className="bg-green-500/20 backdrop-blur-sm rounded-2xl px-6 py-3 border border-green-400/30">
+                      <p className="text-xl font-bold text-green-400">
+                        ✅ ตรวจพบแล้ว! เริ่มนับถอยหลัง...
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="bg-black/40 backdrop-blur-sm rounded-2xl px-6 py-4 border border-white/10">
+                      <div className="flex items-center justify-center gap-2 mb-2">
+                        <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+                        <p className="text-xl font-bold text-white/90">
+                          ไม่พบผู้ใช้ในกรอบ
+                        </p>
+                      </div>
+                      <p className="text-sm text-white/60">
+                        กรุณาขยับตัวให้อยู่กึ่งกลางหน้าจอ
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {screen === 'PLAYING' && (
         <GameBoard
           isPlaying={true}

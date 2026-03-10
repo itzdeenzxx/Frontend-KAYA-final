@@ -933,6 +933,9 @@ export default function WorkoutUI() {
     const message = REP_MESSAGES[rep];
     if (message && rep > lastSpokenRepRef.current) {
       lastSpokenRepRef.current = rep;
+      // Don't interrupt higher-priority audio (exercise instruction, voice LLM response, etc.)
+      // Exercise intro sets isTtsSpeaking=true — rep 1 often fires while intro is still playing.
+      if (isTtsSpeakingRef.current) return;
 
       // Try local pre-recorded audio first (avoids API call)
       const coachId = ttsCoachRef.current?.id ?? 'coach-aiko'; // fallback if not loaded yet
@@ -1001,7 +1004,7 @@ export default function WorkoutUI() {
       const halfwayThreshold = Math.floor(targetReps / 2) + 1; // first rep > 50%
       if (REP_MESSAGES[kayaAnalysis.reps]) {
         speakRepCount(kayaAnalysis.reps);
-      } else if (kayaAnalysis.reps === halfwayThreshold && !halfwayPlayedRef.current) {
+      } else if (kayaAnalysis.reps === halfwayThreshold && !halfwayPlayedRef.current && !isTtsSpeakingRef.current) {
         halfwayPlayedRef.current = true;
         playCoachAudioRef.current('halfway');
       } else if (
@@ -1486,7 +1489,7 @@ export default function WorkoutUI() {
       setExerciseCompleted(true);
       saveCurrentExerciseResult();
 
-      // ✅ Short pause then speak set_complete → amazing → change_exercise → advance
+      // ✅ Wait for rep-10 audio to finish (rep count audio plays ~1s), then speak set_complete
       const timeout = setTimeout(() => {
         playCoachAudioRef.current('set_complete', () => {
           playCoachAudioRef.current('amazing', () => {
@@ -1512,7 +1515,7 @@ export default function WorkoutUI() {
             }
           });
         });
-      }, 300); // Short delay so MediaPipe settles before audio plays
+      }, 1500); // Allow rep-10 audio (~1s) to finish before set_complete fires
       return () => clearTimeout(timeout);
     }
   }, [isKayaWorkout, kayaAnalysis.reps, currentExercise, exercises, exerciseCompleted, showRestScreen, saveCurrentExerciseResult, kayaAnalysis, finishWorkout]);

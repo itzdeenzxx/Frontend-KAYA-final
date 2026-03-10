@@ -497,7 +497,7 @@ export default function WorkoutMode() {
 
         {/* Continue Button */}
         {desktopMode === 'computer' && (
-          <div className="flex justify-center">
+           <div className="flex justify-center">
             <Button
               className="max-w-xl w-full h-14 text-lg bg-gradient-to-r from-primary to-orange-500 hover:opacity-90"
               onClick={handleDesktopContinue}
