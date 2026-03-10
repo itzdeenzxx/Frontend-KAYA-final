@@ -601,11 +601,21 @@ export default function WorkoutUI() {
     setShowRestScreen(false);
     setIsPaused(false);
     if (currentExercise < exercises.length - 1) {
-      kayaAnalysis.nextExercise();
-      lastSpokenExerciseRef.current = -1; // ensure exercise TTS fires
-      lastRepRef.current = 0;
-      setCurrentExercise((prev) => prev + 1);
-      setExerciseCompleted(false);
+      // Announce "almost done" if transitioning to the last exercise
+      const isLastExercise = currentExercise === exercises.length - 2;
+      const doAdvance = () => {
+        kayaAnalysis.nextExercise();
+        lastSpokenExerciseRef.current = -1; // ensure exercise TTS fires
+        lastRepRef.current = 0;
+        setCurrentExercise((prev) => prev + 1);
+        setExerciseCompleted(false);
+      };
+      const doChangeExercise = () => playCoachAudioRef.current('change_exercise', doAdvance);
+      if (isLastExercise) {
+        playCoachAudioRef.current('session_almost_done', doChangeExercise);
+      } else {
+        doChangeExercise();
+      }
     } else {
       finishWorkout();
     }
@@ -1497,22 +1507,8 @@ export default function WorkoutUI() {
         playCoachAudioRef.current('set_complete', () => {
           playCoachAudioRef.current('amazing', () => {
             if (currentExercise < exercises.length - 1) {
-              // If transitioning to the LAST exercise, announce "almost done" first
-              const isLastExercise = currentExercise === exercises.length - 2;
-              const doChangeExercise = () => {
-                playCoachAudioRef.current('change_exercise', () => {
-                  kayaAnalysis.nextExercise();
-                  setCurrentExercise((prev) => prev + 1);
-                  setExerciseCompleted(false);
-                  lastRepRef.current = 0;
-                  lastSpokenExerciseRef.current = -1;
-                });
-              };
-              if (isLastExercise) {
-                playCoachAudioRef.current('session_almost_done', doChangeExercise);
-              } else {
-                doChangeExercise();
-              }
+              // Show 30s rest period — skipRest() handles the actual exercise transition
+              showRestPeriod();
             } else {
               finishWorkout();
             }
@@ -1521,7 +1517,7 @@ export default function WorkoutUI() {
       }, 1500); // Allow rep-10 audio (~1s) to finish before set_complete fires
       return () => clearTimeout(timeout);
     }
-  }, [isKayaWorkout, kayaAnalysis.reps, currentExercise, exercises, exerciseCompleted, showRestScreen, saveCurrentExerciseResult, kayaAnalysis, finishWorkout]);
+  }, [isKayaWorkout, kayaAnalysis.reps, currentExercise, exercises, exerciseCompleted, showRestScreen, saveCurrentExerciseResult, kayaAnalysis, finishWorkout, showRestPeriod]);
 
   const handleNext = useCallback(() => {
     stopAllTTS(); // ✂️ Cut all current audio immediately before speaking next exercise
