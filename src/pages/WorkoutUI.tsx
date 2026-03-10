@@ -160,6 +160,8 @@ export default function WorkoutUI() {
   const lastSpokenExerciseRef = useRef(-1);
   const coachIntroSpokenRef = useRef(false);
   const isTtsSpeakingRef = useRef(false);
+  // Prevent concurrent speakTTS (LLM voice) calls from overlapping each other
+  const speakTTSInProgressRef = useRef(false);
   // Prevent double-navigation when speaking session_complete before navigate
   const navigatedRef = useRef(false);
   // Stable ref to playCoachAudio — filled in after stopAllTTS is defined below
@@ -711,7 +713,7 @@ export default function WorkoutUI() {
 
   // Arm raise hold countdown — play "stretch up" then 3-2-1 beat countdown via timeouts
   useEffect(() => {
-    if (!isKayaWorkout || currentKayaExercise !== 'arm_raise') return;
+    if (!isKayaWorkout || currentKayaExercise !== 'arm_raise' || exerciseCompleted) return;
 
     if (kayaAnalysis.stage !== 'up') {
       // Left 'up' stage — reset hold tracking (cleanup will cancel any pending timeouts)
@@ -746,7 +748,7 @@ export default function WorkoutUI() {
         clearTimeout(t1);
       };
     }
-  }, [isKayaWorkout, currentKayaExercise, kayaAnalysis.stage]);
+  }, [isKayaWorkout, currentKayaExercise, exerciseCompleted, kayaAnalysis.stage]);
 
   // Rest timer countdown
   useEffect(() => {
@@ -773,6 +775,8 @@ export default function WorkoutUI() {
       ttsAudioRef.current = null;
     }
     isTtsSpeakingRef.current = false;
+    // Release speakTTS concurrent guard whenever audio is externally stopped
+    speakTTSInProgressRef.current = false;
     // Stop AICoachPopup audio (separate audio element)
     stopCoachPopupAudio();
   }, []);
@@ -838,7 +842,15 @@ export default function WorkoutUI() {
     if (isRecording && !forcePlay) {
       return;
     }
-    
+
+    // Guard: prevent concurrent speakTTS calls from overlapping each other
+    // (LLM response may arrive while a previous one is still playing)
+    if (speakTTSInProgressRef.current) {
+      console.log('🔇 [TTS] Skipped: speakTTS already in progress');
+      return;
+    }
+    speakTTSInProgressRef.current = true;
+
     // If forced, stop recording first (for raw PCM capture)
     if (forcePlay && isRecording) {
       // Stop audio stream
@@ -880,6 +892,7 @@ export default function WorkoutUI() {
       if (!response?.ok) {
         console.error('🔊 [TTS] Botnoi API error:', response.status);
         isTtsSpeakingRef.current = false;
+        speakTTSInProgressRef.current = false;
         return;
       }
       
@@ -889,12 +902,14 @@ export default function WorkoutUI() {
       if (!result.audio_base64) {
         console.error('🔊 [TTS] Botnoi returned no audio');
         isTtsSpeakingRef.current = false;
+        speakTTSInProgressRef.current = false;
         return;
       }
       
       // Check again if user started recording (skip this check if forcePlay)
       if (isRecording && !forcePlay) {
         isTtsSpeakingRef.current = false;
+        speakTTSInProgressRef.current = false;
         return;
       }
       
@@ -908,8 +923,10 @@ export default function WorkoutUI() {
       
       // Stop any existing audio and mark speaking — do this right before playback,
       // NOT at the start of the function, so we don't block feedback audio during API call.
+      // Note: stopAllTTS() also resets speakTTSInProgressRef — re-arm it after.
       stopAllTTS();
       isTtsSpeakingRef.current = true;
+      speakTTSInProgressRef.current = true;
       
       return new Promise((resolve) => {
         const audio = new Audio(audioUrl);
@@ -922,21 +939,25 @@ export default function WorkoutUI() {
           URL.revokeObjectURL(audioUrl);
           ttsAudioRef.current = null;
           isTtsSpeakingRef.current = false;
+          speakTTSInProgressRef.current = false;
           resolve();
         };
         
         audio.onerror = () => {
           isTtsSpeakingRef.current = false;
+          speakTTSInProgressRef.current = false;
           resolve();
         };
         
         audio.play().catch(() => {
           isTtsSpeakingRef.current = false;
+          speakTTSInProgressRef.current = false;
           resolve();
         });
       });
     } catch (error) {
       isTtsSpeakingRef.current = false;
+      speakTTSInProgressRef.current = false;
       console.error('TTS error:', error);
     }
   }, [isRecording, stopAllTTS]);
