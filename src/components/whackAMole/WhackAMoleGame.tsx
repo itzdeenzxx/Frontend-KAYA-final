@@ -343,7 +343,7 @@ export function WhackAMoleGame() {
   }
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-b from-sky-400 via-sky-300 to-green-400 overflow-hidden">
+    <div className="fixed inset-0 bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 overflow-hidden">
       {/* Portrait blocker — บังคับเล่นแนวนอน */}
       {isPortrait && (
         <div className="absolute inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-6">
@@ -414,7 +414,7 @@ export function WhackAMoleGame() {
       <div className="absolute top-0 left-0 right-0 p-4 flex items-center justify-between z-30">
         <button
           onClick={() => navigate('/game-mode')}
-          className="p-3 bg-black/30 hover:bg-black/50 rounded-full transition-colors backdrop-blur-sm"
+          className="p-3 bg-purple-900/50 hover:bg-purple-800/60 rounded-2xl transition-all backdrop-blur-md border border-purple-400/30 hover:scale-110 hover:shadow-lg hover:shadow-purple-500/30"
         >
           <ArrowLeft className="w-6 h-6 text-white" />
         </button>
@@ -422,7 +422,7 @@ export function WhackAMoleGame() {
         {screen === 'PLAYING' && (
           <div className="flex items-center gap-4">
             {/* Timer */}
-            <div className="flex items-center gap-2 px-4 py-2 bg-black/30 rounded-full backdrop-blur-sm">
+            <div className="flex items-center gap-2 px-5 py-3 bg-purple-900/50 rounded-2xl backdrop-blur-md border border-purple-400/30">
               <Timer className="w-5 h-5 text-yellow-400" />
               <span className={cn(
                 "text-xl font-bold text-white",
@@ -433,7 +433,7 @@ export function WhackAMoleGame() {
             </div>
             
             {/* Score */}
-            <div className="flex items-center gap-2 px-4 py-2 bg-black/30 rounded-full backdrop-blur-sm">
+            <div className="flex items-center gap-2 px-5 py-3 bg-purple-900/50 rounded-2xl backdrop-blur-md border border-purple-400/30">
               <Trophy className="w-5 h-5 text-yellow-400" />
               <span className="text-xl font-bold text-white">{score}</span>
             </div>
@@ -442,7 +442,7 @@ export function WhackAMoleGame() {
         
         <button
           onClick={() => setIsMuted(!isMuted)}
-          className="p-3 bg-black/30 hover:bg-black/50 rounded-full transition-colors backdrop-blur-sm"
+          className="p-3 bg-purple-900/50 hover:bg-purple-800/60 rounded-2xl transition-all backdrop-blur-md border border-purple-400/30 hover:scale-110 hover:shadow-lg hover:shadow-purple-500/30"
         >
           {isMuted ? (
             <VolumeX className="w-6 h-6 text-white" />
@@ -456,26 +456,29 @@ export function WhackAMoleGame() {
       {screen === 'MENU' && (
         <div className="absolute inset-0 flex flex-col items-center justify-center z-20 p-4">
           {/* Title */}
-          <div className="text-center mb-8">
-            <h1 className="text-5xl sm:text-6xl font-black text-white drop-shadow-lg mb-2">
-              🔨 ตีตัวตุ่น
+          <div className="text-center mb-10">
+            <div className="inline-flex items-center justify-center mb-4">
+              <div className="text-6xl animate-bounce">🔨</div>
+            </div>
+            <h1 className="text-6xl sm:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-yellow-400 to-orange-400 drop-shadow-2xl mb-3">
+              ตีตัวตุ่น
             </h1>
-            <p className="text-xl text-white/80">Whack-a-Mole</p>
+            <p className="text-2xl text-white/70 font-semibold tracking-wide">Whack-a-Mole Pro</p>
           </div>
           
           {/* High score */}
-          <div className="flex items-center gap-2 px-6 py-3 bg-yellow-500/30 rounded-full backdrop-blur-sm mb-8">
-            <Trophy className="w-6 h-6 text-yellow-400" />
-            <span className="text-lg text-white">คะแนนสูงสุด: {highScore}</span>
+          <div className="flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-yellow-500/30 to-orange-500/30 rounded-2xl backdrop-blur-md mb-10 border-2 border-yellow-400/30 shadow-xl">
+            <Trophy className="w-7 h-7 text-yellow-400" />
+            <span className="text-xl text-white font-bold">คะแนนสูงสุด: {highScore}</span>
           </div>
           
           {/* Custom mole image section */}
           <div className="mb-8 flex flex-col items-center">
-            <p className="text-white/80 mb-3 text-sm">กำหนดรูปตัวตุ่นเอง (ไม่บังคับ)</p>
+            <p className="text-white/70 mb-4 text-base font-medium">🎨 กำหนดรูปตัวตุ่นเอง (ไม่บังคับ)</p>
             
             {customMoleImage ? (
-              <div className="relative">
-                <div className="w-24 h-24 rounded-xl overflow-hidden border-4 border-white/30 shadow-lg">
+              <div className="relative group">
+                <div className="w-28 h-28 rounded-2xl overflow-hidden border-4 border-purple-400/50 shadow-2xl group-hover:border-purple-300 transition-all">
                   <img
                     src={customMoleImage}
                     alt="Custom mole"
@@ -484,18 +487,18 @@ export function WhackAMoleGame() {
                 </div>
                 <button
                   onClick={removeCustomImage}
-                  className="absolute -top-2 -right-2 p-1 bg-red-500 rounded-full hover:bg-red-600 transition-colors"
+                  className="absolute -top-2 -right-2 p-2 bg-red-500 rounded-full hover:bg-red-600 transition-all shadow-lg hover:scale-110"
                 >
-                  <X className="w-4 h-4 text-white" />
+                  <X className="w-5 h-5 text-white" />
                 </button>
               </div>
             ) : (
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-2 px-4 py-3 bg-white/20 hover:bg-white/30 rounded-xl transition-colors backdrop-blur-sm border-2 border-dashed border-white/40"
+                className="flex items-center gap-3 px-6 py-4 bg-white/10 hover:bg-white/20 rounded-2xl transition-all backdrop-blur-md border-2 border-dashed border-white/30 hover:border-white/50 hover:scale-105"
               >
-                <ImageIcon className="w-5 h-5 text-white" />
-                <span className="text-white">อัพโหลดรูปตัวตุ่น</span>
+                <ImageIcon className="w-6 h-6 text-white" />
+                <span className="text-white font-semibold">อัพโหลดรูปตัวตุ่น</span>
               </button>
             )}
             
@@ -513,38 +516,47 @@ export function WhackAMoleGame() {
             onClick={startGame}
             disabled={isLoading}
             className={cn(
-              "flex items-center gap-3 px-8 py-4 rounded-2xl text-xl font-bold transition-all",
-              "bg-gradient-to-r from-green-500 to-emerald-600 text-white",
-              "hover:scale-105 hover:shadow-xl hover:shadow-green-500/30",
-              "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              "flex items-center gap-3 px-12 py-5 rounded-2xl text-2xl font-black transition-all relative overflow-hidden group",
+              "bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 text-white shadow-2xl",
+              "hover:scale-110 hover:shadow-emerald-500/50",
+              "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100",
+              "border-2 border-emerald-300/50"
             )}
           >
-            <Play className="w-7 h-7" />
-            เริ่มเกม
+            <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+            <Play className="w-8 h-8 relative z-10" />
+            <span className="relative z-10">เริ่มเกม</span>
           </button>
           
           {/* Instructions */}
-          <div className="mt-8 text-center text-white/70 max-w-md">
-            <p className="text-sm">
-              ใช้มือตีตัวตุ่นที่โผล่ขึ้นมาจากหลุม <br />
-              คุณมีเวลา {GAME_DURATION} วินาที ทำคะแนนให้ได้มากที่สุด!<br />
-              <span className="text-red-300">⚠️ ระวัง! อย่าตีระเบิด 💣 จะถูกหักคะแนน!</span>
-            </p>
+          <div className="mt-10 text-center max-w-2xl px-6">
+            <div className="bg-black/30 backdrop-blur-md rounded-2xl p-6 border border-white/10">
+              <p className="text-white/90 text-base leading-relaxed">
+                <span className="font-semibold text-yellow-400">📋 วิธีเล่น:</span><br />
+                ใช้มือตีตัวตุ่นที่โผล่ขึ้นมาจากหลุม<br />
+                คุณมีเวลา <span className="font-bold text-white">{GAME_DURATION} วินาที</span> ทำคะแนนให้ได้มากที่สุด!<br />
+                <span className="text-red-400 font-semibold mt-2 inline-block">⚠️ ระวัง! อย่าตีระเบิด 💣 จะถูกหักคะแนน!</span>
+              </p>
+            </div>
           </div>
         </div>
       )}
 
       {/* Difficulty Select Screen */}
       {screen === 'DIFFICULTY_SELECT' && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center z-20 bg-black/30 backdrop-blur-sm p-4">
-          <div className="text-center mb-8">
-            <h2 className="text-4xl font-black text-white drop-shadow-lg mb-2">
-              เลือกระดับความยาก
-            </h2>
-            <p className="text-white/80">Select Difficulty</p>
+        <div className="absolute inset-0 flex flex-col items-center justify-center z-20 bg-black/40 backdrop-blur-md p-8">
+          <div className="text-center mb-12">
+            <div className="inline-flex items-center gap-3 mb-4">
+              <Zap className="w-10 h-10 text-yellow-400 animate-pulse" />
+              <h2 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-yellow-400 to-orange-400 drop-shadow-lg">
+                เลือกระดับความยาก
+              </h2>
+              <Zap className="w-10 h-10 text-yellow-400 animate-pulse" />
+            </div>
+            <p className="text-white/70 text-lg font-medium">Select Your Challenge Level</p>
           </div>
 
-          <div className="flex flex-col gap-4 w-full max-w-sm">
+          <div className="flex flex-row gap-6 w-full max-w-6xl px-4">
             {(Object.keys(DIFFICULTY_SETTINGS) as Difficulty[]).map((diff) => {
               const settings = DIFFICULTY_SETTINGS[diff];
               return (
@@ -552,18 +564,65 @@ export function WhackAMoleGame() {
                   key={diff}
                   onClick={() => startGameWithDifficulty(diff)}
                   className={cn(
-                    "flex items-center justify-between px-6 py-5 rounded-2xl text-xl font-bold transition-all",
-                    "bg-gradient-to-r text-white",
-                    settings.color,
-                    "hover:scale-105 hover:shadow-xl"
+                    "group relative flex-1 flex flex-col items-center p-8 rounded-3xl transition-all duration-300",
+                    "bg-gradient-to-br backdrop-blur-xl border-2",
+                    "hover:scale-105 hover:shadow-2xl transform",
+                    diff === 'easy' && "from-emerald-500/20 to-green-600/20 border-emerald-400/50 hover:border-emerald-300 hover:shadow-emerald-500/50",
+                    diff === 'medium' && "from-amber-500/20 to-orange-600/20 border-amber-400/50 hover:border-amber-300 hover:shadow-amber-500/50",
+                    diff === 'hard' && "from-red-500/20 to-pink-600/20 border-red-400/50 hover:border-red-300 hover:shadow-red-500/50"
                   )}
                 >
-                  <div className="flex items-center gap-3">
-                    <span className="text-3xl">{settings.emoji}</span>
-                    <span>{settings.label}</span>
-                  </div>
-                  <div className="text-sm opacity-80">
-                    💣 {Math.round(settings.bombChance * 100)}%
+                  {/* Animated glow effect */}
+                  <div className={cn(
+                    "absolute inset-0 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-xl",
+                    diff === 'easy' && "bg-emerald-500/20",
+                    diff === 'medium' && "bg-amber-500/20",
+                    diff === 'hard' && "bg-red-500/20"
+                  )} />
+                  
+                  {/* Content */}
+                  <div className="relative z-10 flex flex-col items-center gap-4 w-full">
+                    {/* Emoji Icon */}
+                    <div className="text-7xl mb-2 group-hover:scale-110 transition-transform duration-300">
+                      {settings.emoji}
+                    </div>
+                    
+                    {/* Title */}
+                    <h3 className="text-3xl font-black text-white mb-2">
+                      {settings.label}
+                    </h3>
+                    
+                    {/* Stats */}
+                    <div className="flex flex-col gap-2 w-full text-white/90">
+                      <div className="flex items-center justify-between px-4 py-2 bg-black/30 rounded-lg">
+                        <span className="text-sm font-medium">⚡ ความเร็ว</span>
+                        <span className="text-sm font-bold">{(settings.moleShowDuration / 1000).toFixed(1)}s</span>
+                      </div>
+                      <div className="flex items-center justify-between px-4 py-2 bg-black/30 rounded-lg">
+                        <span className="text-sm font-medium">💣 ระเบิด</span>
+                        <span className="text-sm font-bold">{Math.round(settings.bombChance * 100)}%</span>
+                      </div>
+                    </div>
+                    
+                    {/* Description */}
+                    <div className="mt-2 text-center">
+                      <p className="text-white/70 text-sm">
+                        {diff === 'easy' && 'เหมาะสำหรับผู้เริ่มต้น'}
+                        {diff === 'medium' && 'ท้าทายพอดี'}
+                        {diff === 'hard' && 'สำหรับมืออาชีพ'}
+                      </p>
+                    </div>
+                    
+                    {/* Play button */}
+                    <div className={cn(
+                      "mt-4 px-6 py-2 rounded-full font-bold text-white transition-all duration-300",
+                      "group-hover:px-8 group-hover:shadow-lg",
+                      diff === 'easy' && "bg-gradient-to-r from-emerald-500 to-green-600",
+                      diff === 'medium' && "bg-gradient-to-r from-amber-500 to-orange-600",
+                      diff === 'hard' && "bg-gradient-to-r from-red-500 to-pink-600"
+                    )}>
+                      เลือก
+                    </div>
                   </div>
                 </button>
               );
@@ -572,9 +631,9 @@ export function WhackAMoleGame() {
 
           <button
             onClick={goToMenu}
-            className="mt-6 px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl text-white font-bold transition-colors"
+            className="mt-10 px-8 py-3 bg-white/10 hover:bg-white/20 rounded-2xl text-white font-bold transition-all hover:scale-105 border border-white/20"
           >
-            ← กลับ
+            ← กลับเมนู
           </button>
         </div>
       )}
@@ -745,58 +804,61 @@ export function WhackAMoleGame() {
       )}
       
       {screen === 'GAME_OVER' && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center z-20 bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white/10 backdrop-blur-md rounded-3xl p-8 max-w-md w-full text-center border border-white/20">
+        <div className="absolute inset-0 flex flex-col items-center justify-center z-20 bg-black/60 backdrop-blur-lg p-4">
+          <div className="bg-gradient-to-br from-slate-800/90 to-purple-900/90 backdrop-blur-xl rounded-3xl p-10 max-w-lg w-full text-center border-2 border-purple-400/30 shadow-2xl">
             {/* Game over title */}
-            <h2 className="text-4xl font-black text-white mb-2">หมดเวลา!</h2>
-            <p className="text-white/70 mb-6">Game Over</p>
+            <div className="mb-6">
+              <div className="text-6xl mb-3">⏰</div>
+              <h2 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 to-orange-400 mb-2">หมดเวลา!</h2>
+              <p className="text-white/70 text-xl">Game Over</p>
+            </div>
             
             {/* Score display */}
-            <div className="bg-white/10 rounded-2xl p-6 mb-6">
-              <div className="flex items-center justify-center gap-3 mb-4">
-                <Trophy className="w-10 h-10 text-yellow-400" />
-                <span className="text-5xl font-black text-white">{score}</span>
+            <div className="bg-black/40 rounded-3xl p-8 mb-8 border border-white/10 shadow-inner">
+              <div className="flex items-center justify-center gap-4 mb-6">
+                <Trophy className="w-12 h-12 text-yellow-400 animate-pulse" />
+                <span className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-yellow-500">{score}</span>
               </div>
               
               {isNewRecord && (
-                <div className="flex items-center justify-center gap-2 text-yellow-400 animate-pulse mb-2">
-                  <span className="text-lg">🏆 สถิติใหม่ของคุณ! 🏆</span>
+                <div className="flex items-center justify-center gap-2 text-yellow-400 animate-bounce mb-3 bg-yellow-500/20 rounded-full px-4 py-2">
+                  <span className="text-lg font-bold">🏆 สถิติใหม่ของคุณ! 🏆</span>
                 </div>
               )}
               
               {score > highScore - 1 && score === highScore && (
-                <div className="flex items-center justify-center gap-2 text-yellow-400 animate-pulse">
-                  <span className="text-lg">🎉 คะแนนสูงสุดใหม่! 🎉</span>
+                <div className="flex items-center justify-center gap-2 text-yellow-400 animate-bounce bg-yellow-500/20 rounded-full px-4 py-2">
+                  <span className="text-lg font-bold">🎉 คะแนนสูงสุดใหม่! 🎉</span>
                 </div>
               )}
               
-              <div className="mt-4 pt-4 border-t border-white/20 space-y-2">
-                <div>
-                  <p className="text-white/60 text-sm">คะแนนสูงสุด (เครื่องนี้)</p>
-                  <p className="text-white text-xl font-bold">{Math.max(score, highScore)}</p>
+              <div className="mt-6 pt-6 border-t border-white/20 space-y-3">
+                <div className="bg-white/5 rounded-xl p-3">
+                  <p className="text-white/60 text-sm mb-1">คะแนนสูงสุด (เครื่องนี้)</p>
+                  <p className="text-white text-2xl font-bold">{Math.max(score, highScore)}</p>
                 </div>
                 {personalBest > 0 && (
-                  <div>
-                    <p className="text-white/60 text-sm">สถิติส่วนตัว (ออนไลน์)</p>
-                    <p className="text-amber-400 text-xl font-bold">{personalBest}</p>
+                  <div className="bg-amber-500/10 rounded-xl p-3 border border-amber-500/30">
+                    <p className="text-amber-300 text-sm mb-1">สถิติส่วนตัว (ออนไลน์)</p>
+                    <p className="text-amber-400 text-2xl font-bold">{personalBest}</p>
                   </div>
                 )}
               </div>
             </div>
             
             {/* Action buttons */}
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-4">
               <button
                 onClick={restartGame}
-                className="flex items-center justify-center gap-2 w-full py-4 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl text-white font-bold hover:scale-[1.02] transition-transform"
+                className="flex items-center justify-center gap-3 w-full py-4 bg-gradient-to-r from-emerald-500 to-green-600 rounded-2xl text-white text-lg font-black hover:scale-105 transition-all shadow-lg hover:shadow-emerald-500/50 border border-emerald-300/50"
               >
-                <RotateCcw className="w-5 h-5" />
+                <RotateCcw className="w-6 h-6" />
                 เล่นอีกครั้ง
               </button>
               
               <button
                 onClick={goToMenu}
-                className="flex items-center justify-center gap-2 w-full py-4 bg-white/10 hover:bg-white/20 rounded-xl text-white font-bold transition-colors"
+                className="flex items-center justify-center gap-2 w-full py-4 bg-white/10 hover:bg-white/20 rounded-2xl text-white font-bold transition-all hover:scale-105 border border-white/20"
               >
                 กลับเมนู
               </button>
