@@ -44,7 +44,7 @@ export const LEVELS: Level[] = [
     id: 'easy',
     name: 'Sunny Meadow',
     description: 'Relaxed pace, gentle timing',
-    icon: '🌈',
+    icon: 'easy',
     theme: {
       background: 'from-green-900/50 to-background',
       primaryColor: 'hsl(142 76% 50%)',
@@ -67,7 +67,7 @@ export const LEVELS: Level[] = [
     id: 'medium',
     name: 'Urban Sprint',
     description: 'Balanced challenge',
-    icon: '🏙️',
+    icon: 'medium',
     theme: {
       background: 'from-orange-900/50 to-background',
       primaryColor: 'hsl(35 95% 55%)',
@@ -90,7 +90,7 @@ export const LEVELS: Level[] = [
     id: 'hard',
     name: 'Nightmare Alley',
     description: 'Razor-sharp reflexes needed',
-    icon: '💀',
+    icon: 'hard',
     theme: {
       background: 'from-red-900/50 to-background',
       primaryColor: 'hsl(0 85% 55%)',
@@ -113,7 +113,7 @@ export const LEVELS: Level[] = [
     id: 'party',
     name: 'Disco Dash',
     description: 'Wild and unpredictable!',
-    icon: '🪩',
+    icon: 'party',
     theme: {
       background: 'from-purple-900/50 to-background',
       primaryColor: 'hsl(280 80% 60%)',

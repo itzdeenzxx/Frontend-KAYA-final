@@ -32,45 +32,45 @@ interface ChatRequest {
 
 // Coach configurations - must match frontend coachConfig.ts
 const COACH_CONFIGS: Record<string, { name: string; nameTh: string; systemPrompt: string }> = {
-  'coach-nana': {
-    name: 'Nana',
-    nameTh: 'นานา',
-    systemPrompt: `คุณชื่อ "นานา" เป็นโค้ชออกกำลังกายสาวร่าเริง พูดเป็นกันเอง ใช้ภาษาน่ารักสดใส ชอบให้กำลังใจด้วยคำพูดบวกๆ และมีอารมณ์ขัน`
+  'coach-aiko': {
+    name: 'Aiko',
+    nameTh: 'ไอโกะ',
+    systemPrompt: `คุณชื่อ"ไอโกะ" โค้ชสาวร่าเริงน่ารัก พูดสั้นกระชับ ให้กำลังใจด้วยคำพูดบวกๆ ตอบไม่เกิน 2 ประโยค`
   },
-  'coach-farsai': {
-    name: 'Farsai',
-    nameTh: 'ฟ้าใส',
-    systemPrompt: `คุณชื่อ "ฟ้าใส" เป็นโค้ชสาวอ่อนโยน ใจเย็น พูดนุ่มนวล คอยให้กำลังใจอย่างอบอุ่น เหมือนพี่สาวที่คอยดูแล`
+  'coach-nadia': {
+    name: 'Nadia',
+    nameTh: 'นาเดียร์',
+    systemPrompt: `คุณชื่อ"นาเดียร์" โค้ชสาวจริงจังเข้มงวด พูดตรงประเด็น กระตุ้นให้ทำได้มากขึ้น ตอบไม่เกิน 2 ประโยค`
   },
-  'coach-prim': {
-    name: 'Prim',
-    nameTh: 'พริม',
-    systemPrompt: `คุณชื่อ "พริม" เป็นโค้ชสาวมืออาชีพ ให้ความรู้เรื่องการออกกำลังกายอย่างถูกต้อง พูดตรงประเด็น มีข้อมูลเชิงวิทยาศาสตร์`
+  'coach-nattakan': {
+    name: 'Nattakan',
+    nameTh: 'ณัฐกานต์',
+    systemPrompt: `คุณชื่อ"ณัฐกานต์" โค้ชหนุ่มขี้เล่นสนุกสนาน พูดเป็นกันเอง ให้กำลังใจแบบเพื่อน ตอบไม่เกิน 2 ประโยค`
   },
-  'coach-mint': {
-    name: 'Mint',
-    nameTh: 'มิ้นท์',
-    systemPrompt: `คุณชื่อ "มิ้นท์" เป็นโค้ชสาวเข้มงวด จริงจังกับการออกกำลังกาย พูดตรงไปตรงมา กระตุ้นให้ทำได้มากขึ้น ไม่ยอมให้แพ้ง่ายๆ`
+  'coach-bread': {
+    name: 'Mr.Bread',
+    nameTh: 'นายเบรด',
+    systemPrompt: `คุณชื่อ"นายเบรด" โค้ชหนุ่มห้าวหาญแข็งแกร่ง พูดปลุกพลังตรงๆ ไม่ยอมให้ท้อ ตอบไม่เกิน 2 ประโยค`
   },
-  'coach-poom': {
-    name: 'Poom',
-    nameTh: 'ภูมิ',
-    systemPrompt: `คุณชื่อ "ภูมิ" เป็นโค้ชหนุ่มเป็นกันเอง พูดสนุก เข้าถึงง่าย ให้กำลังใจแบบเพื่อน คอยเชียร์อยู่ข้างๆ`
+  'coach-phuyailee': {
+    name: 'PhuyaiLee',
+    nameTh: 'ผู้ใหญ่ลี',
+    systemPrompt: `คุณชื่อ"ผู้ใหญ่ลี" เป็นคนสุพรรณบุรี จิตใจดี น่ารัก เฟรนลี่กับทุกคน สนุกเฮฮา ติดเล่น พูดสำเนียงท้องถิ่นสุพรรณ ใช้คำว่า "จ้า" "น้า" "เอ้า" "ครับผม" "โอ้โห" ให้กำลังใจแบบอบอุ่นเป็นกันเอง ตอบไม่เกิน 2 ประโยค`
   },
-  'coach-ton': {
-    name: 'Ton',
-    nameTh: 'ต้น',
-    systemPrompt: `คุณชื่อ "ต้น" เป็นโค้ชหนุ่มสายฮาร์ดคอร์ กระตุ้นให้ออกกำลังกายอย่างเต็มที่ พูดปลุกพลัง ไม่ยอมให้ท้อ เหมือนทหาร`
+  'coach-alan': {
+    name: 'Alan',
+    nameTh: 'อลัน',
+    systemPrompt: `คุณชื่อ"อลัน" โค้ชฟิตเนสชาย จิตใจดี เสียงชัดเจน เฟรนลี่กับทุกคน จริงจังมาก พูดตรงประเด็น ให้กำลังใจอย่างจริงใจ ใช้คำลงท้าย "ครับ" "นะครับ" ตอบไม่เกิน 2 ประโยค`
   },
-  'coach-bank': {
-    name: 'Bank',
-    nameTh: 'แบงค์',
-    systemPrompt: `คุณชื่อ "แบงค์" เป็นโค้ชหนุ่มชิลล์ๆ ไม่เร่งรีบ ค่อยๆ ทำไป ให้กำลังใจแบบสบายๆ เน้นความสุขในการออกกำลังกาย`
+  'coach-homchan': {
+    name: 'Homchan',
+    nameTh: 'หอมจันทน์',
+    systemPrompt: `คุณชื่อ"หอมจันทน์" โค้ชฟิตเนสหญิง เป็นคนใต้ น่ารัก จิตใจดี เฟรนลี่กับทุกคน จริงจังมาก พูดสำเนียงใต้บ้าง ใช้คำลงท้าย "ค่ะ" "นะคะ" "จ้า" ตอบไม่เกิน 2 ประโยค`
   },
-  'coach-kai': {
-    name: 'Kai',
-    nameTh: 'ไก่',
-    systemPrompt: `คุณชื่อ "ไก่" เป็นโค้ชหนุ่มตลก ชอบพูดมุกให้หัวเราะ ทำให้การออกกำลังกายสนุก ไม่น่าเบื่อ แต่ยังคงให้คำแนะนำที่ดี`
+  'coach-manee': {
+    name: 'Manee',
+    nameTh: 'มานี',
+    systemPrompt: `คุณชื่อ"มานี" โค้ชฟิตเนสหญิง แนวอนิเมะ น่ารักมาก ขี้เล่นสุดๆ ขี้จีบคนออกกำลังกาย ชมจนคนเขิน ชอบเล่นมุกความรัก ใช้คำลงท้าย "ค่ะ~" "นะคะ~" "น้า~" ตอบไม่เกิน 2 ประโยค`
   }
 };
 
@@ -83,9 +83,9 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   // Get API key from environment
-  const apiKey = process.env.GOOGLE_API_KEY;
+  const apiKey = process.env.TOGETHER_API_KEY;
   if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'Server misconfigured: missing GOOGLE_API_KEY' }), {
+    return new Response(JSON.stringify({ error: 'Server misconfigured: missing TOGETHER_API_KEY' }), {
       status: 500,
       headers: { 'content-type': 'application/json' },
     });
@@ -128,7 +128,7 @@ export default async function handler(req: Request): Promise<Response> {
 - ให้กำลังใจและคำแนะนำตามบุคลิกของตัวเอง`,
     };
   } else {
-    coach = COACH_CONFIGS[coachId || 'coach-nana'] || COACH_CONFIGS['coach-nana'];
+    coach = COACH_CONFIGS[coachId || 'coach-aiko'] || COACH_CONFIGS['coach-aiko'];
   }
 
   // Build system context
@@ -224,54 +224,53 @@ ${bmiTip ? `- ${bmiTip}` : ''}
   const fullPrompt = `${systemPrompt}${contextStr}\n\nคำถามจากผู้ใช้: ${message}`;
 
   try {
-    // Build request body for Gemma-3 via Google GenAI API
-    const requestBody: Record<string, unknown> = {
-      contents: [
-        {
-          parts: [] as Array<Record<string, unknown>>,
-        },
-      ],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 200,
-        topP: 0.8,
-        topK: 40,
-      },
-    };
-
-    const parts = (requestBody.contents as Array<{ parts: Array<Record<string, unknown>> }>)[0].parts;
+    // Build request body for Together AI API (OpenAI-compatible)
+    const contentParts: Array<Record<string, unknown>> = [];
 
     // Add image if provided
     if (imageBase64) {
       // Remove data URL prefix if present
       const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-      parts.push({
-        inlineData: {
-          mimeType: 'image/jpeg',
-          data: base64Data,
+      contentParts.push({
+        type: 'image_url',
+        image_url: {
+          url: `data:image/jpeg;base64,${base64Data}`,
         },
       });
     }
 
     // Add text prompt
-    parts.push({ text: fullPrompt });
+    contentParts.push({ type: 'text', text: fullPrompt });
 
-    // Use gemma-3-27b-it model
-    const gemmaUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemma-3-27b-it:generateContent?key=${apiKey}`;
+    const requestBody = {
+      model: 'google/gemma-3n-E4B-it',
+      messages: [
+        {
+          role: 'user',
+          content: contentParts,
+        },
+      ],
+      temperature: 0.7,
+      max_tokens: 150,
+      top_p: 0.8,
+    };
 
-    const response = await fetch(gemmaUrl, {
+    const togetherUrl = 'https://api.together.xyz/v1/chat/completions';
+
+    const response = await fetch(togetherUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Gemma API error:', response.status, errorText);
+      console.error('Together AI API error:', response.status, errorText);
       return new Response(JSON.stringify({ 
-        error: 'Gemma API error', 
+        error: 'Together AI API error', 
         status: response.status,
         details: errorText 
       }), {
@@ -281,15 +280,15 @@ ${bmiTip ? `- ${bmiTip}` : ''}
     }
 
     const result = await response.json() as {
-      candidates?: Array<{
-        content?: {
-          parts?: Array<{ text?: string }>;
+      choices?: Array<{
+        message?: {
+          content?: string;
         };
       }>;
     };
     
     // Extract text from response
-    const responseText = result?.candidates?.[0]?.content?.parts?.[0]?.text || 
+    const responseText = result?.choices?.[0]?.message?.content || 
                          'ขอโทษครับ ผมไม่เข้าใจคำถาม ลองถามใหม่อีกครั้งนะครับ';
 
     return new Response(JSON.stringify({ 
@@ -305,7 +304,7 @@ ${bmiTip ? `- ${bmiTip}` : ''}
 
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-    console.error('Gemma request error:', err);
+    console.error('Together AI request error:', err);
     return new Response(JSON.stringify({ 
       error: 'Request failed', 
       details: errorMessage 

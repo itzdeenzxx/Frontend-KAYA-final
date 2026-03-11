@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Play, Pause, SkipForward, SkipBack, X, Volume2, MessageCircle, Dumbbell, Flame, PersonStanding, Heart, Brain, Sparkles, Target, Zap, Camera, CameraOff, Activity, Bone, Eye, EyeOff, Music, Wind, Waves, Footprints, ArrowUp, RotateCcw, ArrowUpFromLine, Mic, MicOff, Send, Loader2 } from "lucide-react";
+import { Play, Pause, SkipForward, SkipBack, X, Volume2, VolumeX, MessageCircle, Dumbbell, Flame, PersonStanding, Heart, Brain, Sparkles, Target, Zap, Camera, CameraOff, Activity, Bone, Eye, EyeOff, Music, Wind, Waves, Footprints, ArrowUp, RotateCcw, ArrowUpFromLine, Mic, MicOff, Send, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMediaPipePose } from "@/hooks/useMediaPipePose";
 import { SkeletonOverlay } from "@/components/shared/SkeletonOverlay";
@@ -9,12 +9,14 @@ import { getWorkoutStyle, getExercisesForStyle, WorkoutExercise } from "@/lib/wo
 import MusicPlayer from "@/components/music/MusicPlayer";
 import { useExerciseAnalysis } from "@/hooks/useExerciseAnalysis";
 import { VisualPoseGuide, StageIndicator, BeatCounter } from "@/components/workout/VisualPoseGuide";
-import { AICoachPopup } from "@/components/workout/AICoachPopup";
-import { ExerciseType } from "@/lib/exerciseConfig";
+import { AICoachPopup, stopCoachPopupAudio, setWorkoutUIAudioPlaying } from "@/components/workout/AICoachPopup";
+import { ExerciseType, EXERCISES } from "@/lib/exerciseConfig";
+import { getExerciseStartAudioUrl, getRepAudioUrl, getGreetingAudioUrl, getLocalAudioUrl } from "@/lib/coachAudio";
+import type { AudioCategory } from "@/lib/coachAudio";
 import { WorkoutLoader } from "@/components/shared/WorkoutLoader";
 import { useAuth } from "@/contexts/AuthContext";
 import { getUserSettings, DEFAULT_TTS_SETTINGS } from "@/lib/firestore";
-import { getCoachById, Coach } from "@/lib/coachConfig";
+import { getCoachById, Coach, migrateSpeakerId, migrateCoachId } from "@/lib/coachConfig";
 
 // Rep count messages - only speak at 1, 5, 9, 10
 const REP_MESSAGES: Record<number, string> = {
@@ -35,21 +37,22 @@ const exerciseIcons: Record<string, React.ReactNode> = {
   weight: <Dumbbell className="w-16 h-16" />,
   fire: <Flame className="w-16 h-16" />,
   yoga: <Heart className="w-16 h-16" />,
+  // Beginner KAYA icons
   'kaya-arm': <ArrowUp className="w-16 h-16" />,
   'kaya-torso': <RotateCcw className="w-16 h-16" />,
   'kaya-knee': <ArrowUpFromLine className="w-16 h-16" />,
   // Intermediate KAYA icons
   'kaya-squat-arm': <Dumbbell className="w-16 h-16" />,
-  'kaya-squat-twist': <RotateCcw className="w-16 h-16" />,
-  'kaya-high-knee': <Zap className="w-16 h-16" />,
+  'kaya-pushup': <Dumbbell className="w-16 h-16" />,
+  'kaya-lunge': <PersonStanding className="w-16 h-16" />,
   // Advanced KAYA icons
   'kaya-jump-squat': <Zap className="w-16 h-16" />,
-  'kaya-standing-twist': <RotateCcw className="w-16 h-16" />,
-  'kaya-running': <PersonStanding className="w-16 h-16" />,
+  'kaya-plank': <Activity className="w-16 h-16" />,
+  'kaya-mountain': <Flame className="w-16 h-16" />,
   // Expert KAYA icons
+  'kaya-pistol': <Target className="w-16 h-16" />,
+  'kaya-pushup-tap': <Dumbbell className="w-16 h-16" />,
   'kaya-burpee': <Flame className="w-16 h-16" />,
-  'kaya-jump-twist': <RotateCcw className="w-16 h-16" />,
-  'kaya-sprint': <Zap className="w-16 h-16" />,
 };
 
 // Larger icons for big screen
@@ -60,21 +63,22 @@ const exerciseIconsLarge: Record<string, React.ReactNode> = {
   weight: <Dumbbell className="w-20 h-20" />,
   fire: <Flame className="w-20 h-20" />,
   yoga: <Heart className="w-20 h-20" />,
+  // Beginner KAYA icons
   'kaya-arm': <ArrowUp className="w-20 h-20" />,
   'kaya-torso': <RotateCcw className="w-20 h-20" />,
   'kaya-knee': <ArrowUpFromLine className="w-20 h-20" />,
   // Intermediate KAYA icons
   'kaya-squat-arm': <Dumbbell className="w-20 h-20" />,
-  'kaya-squat-twist': <RotateCcw className="w-20 h-20" />,
-  'kaya-high-knee': <Zap className="w-20 h-20" />,
+  'kaya-pushup': <Dumbbell className="w-20 h-20" />,
+  'kaya-lunge': <PersonStanding className="w-20 h-20" />,
   // Advanced KAYA icons
   'kaya-jump-squat': <Zap className="w-20 h-20" />,
-  'kaya-standing-twist': <RotateCcw className="w-20 h-20" />,
-  'kaya-running': <PersonStanding className="w-20 h-20" />,
+  'kaya-plank': <Activity className="w-20 h-20" />,
+  'kaya-mountain': <Flame className="w-20 h-20" />,
   // Expert KAYA icons
+  'kaya-pistol': <Target className="w-20 h-20" />,
+  'kaya-pushup-tap': <Dumbbell className="w-20 h-20" />,
   'kaya-burpee': <Flame className="w-20 h-20" />,
-  'kaya-jump-twist': <RotateCcw className="w-20 h-20" />,
-  'kaya-sprint': <Zap className="w-20 h-20" />,
 };
 
 // Style icons for header
@@ -112,7 +116,10 @@ export default function WorkoutUI() {
   // Get selected workout style from localStorage
   const [selectedStyleId] = useState(() => localStorage.getItem('kaya_workout_style'));
   const selectedStyle = getWorkoutStyle(selectedStyleId);
-  const exercises = getExercisesForStyle(selectedStyleId);
+  // Memoize exercises so its reference is stable across re-renders.
+  // This prevents speakCoachIntroduction (which depends on exercises) from
+  // changing every render, which would cancel the intro timer via useEffect cleanup.
+  const exercises = useMemo(() => getExercisesForStyle(selectedStyleId), [selectedStyleId]);
   
   // Check if this is a KAYA workout (all KAYA levels)
   const isKayaWorkout = selectedStyleId === 'kaya-stretch' || selectedStyleId === 'kaya-intermediate' || selectedStyleId === 'kaya-advanced' || selectedStyleId === 'kaya-expert';
@@ -134,18 +141,54 @@ export default function WorkoutUI() {
   const [displayRep, setDisplayRep] = useState(0);
   const lastRepRef = useRef(0);
   const lastSpokenRepRef = useRef(0);
+  const lastFormAudioTimeRef = useRef<number>(Date.now()); // throttle form feedback audio
+  const halfwayPlayedRef = useRef(false); // play 'halfway' audio only once per exercise
+  const timeMilestone30Ref = useRef(false); // play audio when timeLeft hits 30
+  const timeMilestone15Ref = useRef(false); // play audio when timeLeft hits 15
+  const lastTempoAudioTimeRef = useRef<number>(Date.now()); // throttle tempo feedback audio
+  const lastTempoQualityRef = useRef<string>(''); // last tempo quality that triggered audio
+  const lastMotionAudioTimeRef = useRef<number>(Date.now()); // throttle motion quality audio
+  const lastVisibilityAudioTimeRef = useRef<number>(Date.now()); // throttle move_closer audio
+  const bodyInvisibleSinceRef = useRef<number>(0); // tracks when body first became continuously invisible
+  // Hold countdown refs for arm_raise (3-second hold)
+  const stageUpEnteredTimeRef = useRef<number>(0);
+  const holdCountdownRef = useRef<number>(4); // counts 4→3→2→1 so beats 3,2,1 all fire
+  const holdAnnouncedRef = useRef<boolean>(false);
   
   // TTS audio ref
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
   const lastSpokenExerciseRef = useRef(-1);
   const coachIntroSpokenRef = useRef(false);
   const isTtsSpeakingRef = useRef(false);
-  
+  // Prevent concurrent speakTTS (LLM voice) calls from overlapping each other
+  const speakTTSInProgressRef = useRef(false);
+  // AbortController for the currently in-flight speakTTS fetch — aborted by stopAllTTS
+  const speakTTSAbortRef = useRef<AbortController | null>(null);
+  // Prevent double-navigation when speaking session_complete before navigate
+  const navigatedRef = useRef(false);
+  // Global "stopped" flag — set by handleStop to prevent any new audio from playing
+  const stoppedRef = useRef(false);
+  // True while rep-count audio is playing — blocks ALL other audio except danger warnings
+  const isCountingRepRef = useRef(false);
+  // Pending timeout IDs that must be cancelled on stop/unmount
+  const pendingTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // Stable ref to playCoachAudio — filled in after stopAllTTS is defined below
+  const playCoachAudioRef = useRef<(category: AudioCategory, onEnd?: () => void) => void>(() => {});
+  // Stable ref to speakCoachIntroduction — avoids adding it to useEffect deps
+  const speakCoachIntroductionRef = useRef<() => void>(() => {});
+  // Stable ref to handleNext — used inside setTimeLeft updater (state updaters must be pure)
+  const handleNextRef = useRef<() => void>(() => {});
+  // TTS state refs — declared here (near other refs) to avoid temporal-dead-zone confusion;
+  // they are mutated by loadTTSSettings and the ref-sync effects below.
+  const ttsCoachRef = useRef<typeof ttsCoach>(null);
+  const ttsSpeakerRef = useRef<string>(DEFAULT_TTS_SETTINGS.speaker);
+  const ttsEnabledRef = useRef<boolean>(DEFAULT_TTS_SETTINGS.enabled);
+  const ttsSpeedRef = useRef<number>(DEFAULT_TTS_SETTINGS.speed);
+
   // Voice Coach state
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<BlobPart[]>([]);
   // Raw PCM recording refs
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioStreamRef = useRef<MediaStream | null>(null);
@@ -166,6 +209,8 @@ export default function WorkoutUI() {
   // Simple loading state - auto skip after 3 seconds
   const [showLoader, setShowLoader] = useState(true);
   const [showScreenshotFlash, setShowScreenshotFlash] = useState(false);
+  // Pre-fetched camera stream (fetched during loader phase to eliminate black screen)
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   
   // Auto-skip loader after 3 seconds regardless of status
   useEffect(() => {
@@ -199,11 +244,14 @@ export default function WorkoutUI() {
   // Visual guide state for KAYA - hidden by default for clean UI
   const [showVisualGuide, setShowVisualGuide] = useState(false);
   
-  // TTS speaker setting
+  // TTS settings
+  const [ttsEnabled, setTtsEnabled] = useState(DEFAULT_TTS_SETTINGS.enabled);
+  const [ttsSpeed, setTtsSpeed] = useState(DEFAULT_TTS_SETTINGS.speed);
   const [ttsSpeaker, setTtsSpeaker] = useState(DEFAULT_TTS_SETTINGS.speaker);
   const [ttsCoach, setTtsCoach] = useState<Coach | null>(null);
-  const [ttsCoachId, setTtsCoachId] = useState<string>('coach-nana');
+  const [ttsCoachId, setTtsCoachId] = useState<string>('coach-aiko');
   const [customCoachForLLM, setCustomCoachForLLM] = useState<{ name: string; personality: string; gender: 'male' | 'female' } | null>(null);
+  const ttsSettingsLoadedRef = useRef(false);
   
   // Load TTS speaker setting from user preferences
   useEffect(() => {
@@ -211,13 +259,22 @@ export default function WorkoutUI() {
       if (userProfile?.lineUserId) {
         try {
           const settings = await getUserSettings(userProfile.lineUserId);
-          if (settings?.tts?.speaker) {
-            setTtsSpeaker(settings.tts.speaker);
+          if (settings?.tts) {
+            const loadedEnabled = settings.tts.enabled ?? DEFAULT_TTS_SETTINGS.enabled;
+            const loadedSpeed = settings.tts.speed ?? DEFAULT_TTS_SETTINGS.speed;
+            const loadedSpeaker = migrateSpeakerId(settings.tts.speaker);
+            
+            setTtsEnabled(loadedEnabled);
+            setTtsSpeed(loadedSpeed);
+            setTtsSpeaker(loadedSpeaker);
+            
+            console.log('🔊 [TTS] Loaded settings (Botnoi):', { enabled: loadedEnabled, speed: loadedSpeed, speaker: loadedSpeaker });
           }
           if (settings?.selectedCoachId) {
-            setTtsCoachId(settings.selectedCoachId);
+            const validCoachId = migrateCoachId(settings.selectedCoachId);
+            setTtsCoachId(validCoachId);
             
-            if (settings.selectedCoachId === 'coach-custom') {
+            if (validCoachId === 'coach-custom') {
               // Load custom coach data
               const { getCustomCoach, } = await import('@/lib/firestore');
               const { buildCoachFromCustom } = await import('@/lib/coachConfig');
@@ -231,13 +288,27 @@ export default function WorkoutUI() {
                 });
               }
             } else {
-              const coach = getCoachById(settings.selectedCoachId);
-              if (coach) setTtsCoach(coach);
+              const coach = getCoachById(validCoachId);
+              if (coach) {
+                // Update ref synchronously BEFORE setting the loaded flag.
+                // waitAndSpeak() polls ttsSettingsLoadedRef then immediately calls
+                // speakCoachIntroduction(), which reads ttsCoachRef at call-time.
+                // Without this, the ref is still updated via a useEffect which fires
+                // AFTER the next React render — after the intro already started with
+                // the wrong (default aiko) coach.
+                ttsCoachRef.current = coach;
+                setTtsCoach(coach);
+              }
             }
           }
+          ttsSettingsLoadedRef.current = true;
+          console.log('🔊 [TTS] Settings fully loaded, ttsSettingsLoaded = true');
         } catch (err) {
           console.warn('Failed to load TTS settings:', err);
+          ttsSettingsLoadedRef.current = true; // mark as loaded even on error so we don't wait forever
         }
+      } else {
+        ttsSettingsLoadedRef.current = true; // no user profile, use defaults
       }
     };
     loadTTSSettings();
@@ -272,88 +343,101 @@ export default function WorkoutUI() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Initialize webcam - wait until loader is hidden
+  // Phase 1: Pre-fetch camera stream DURING loader phase (so it's ready when loader dismisses)
   useEffect(() => {
-    // Don't start camera while loader is showing (videoRef won't be mounted)
-    if (showLoader) return;
-    
+    // If camera disabled — stop and clear any existing stream
+    if (!cameraEnabled) {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(t => t.stop());
+        setCameraStream(null);
+      }
+      return;
+    }
+    // Stream already acquired — nothing to do
+    if (cameraStream) return;
+
+    let cancelled = false;
+    navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+      audio: false,
+    }).then(stream => {
+      if (!cancelled) {
+        setCameraStream(stream);
+        setCameraError('');
+      } else {
+        stream.getTracks().forEach(t => t.stop());
+      }
+    }).catch(error => {
+      if (!cancelled) {
+        console.error('Camera error:', error);
+        setCameraError('ไม่สามารถเข้าถึงกล้องได้ - กรุณาอนุญาตการใช้กล้อง');
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [cameraEnabled, cameraStream]); // cameraStream needed to avoid re-fetching if already acquired
+
+  // Phase 2: Attach pre-fetched stream to video element when loader dismisses
+  useEffect(() => {
     if (!cameraEnabled) {
       if (videoRef.current?.srcObject) {
         const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-        tracks.forEach((track) => track.stop());
+        tracks.forEach(t => t.stop());
         videoRef.current.srcObject = null;
       }
       return;
     }
 
-    const startCamera = async () => {
+    if (showLoader || !cameraStream || !videoRef.current) return;
+    // Skip if stream is already attached
+    if (videoRef.current.srcObject === cameraStream) return;
+
+    const attachCamera = async () => {
+      if (!videoRef.current) return;
+      videoRef.current.srcObject = cameraStream;
       try {
-        console.log('Requesting camera access...');
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            facingMode: 'user',
-          },
-          audio: false,
-        });
-        console.log('Camera stream obtained:', stream);
-        
-          if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-
-          // Ensure video plays
-          try {
-            await videoRef.current.play();
-            console.log('Video playing');
-            setAutoplayBlocked(false);
-          } catch (playError) {
-            console.log('Auto-play blocked, user interaction needed');
-            setAutoplayBlocked(true);
-          }
-
-          // Mark camera as ready
-          setCameraReady(true);
-          
-          // Track video dimensions when metadata loads
-          videoRef.current.onloadedmetadata = () => {
-            if (videoRef.current) {
-              setVideoDimensions({
-                width: videoRef.current.videoWidth || 1280,
-                height: videoRef.current.videoHeight || 720,
-              });
-              console.log('Video dimensions:', videoRef.current.videoWidth, videoRef.current.videoHeight);
-            }
-          };
+        await videoRef.current.play();
+        setAutoplayBlocked(false);
+      } catch {
+        setAutoplayBlocked(true);
+      }
+      setCameraReady(true);
+      videoRef.current.onloadedmetadata = () => {
+        if (videoRef.current && containerRef.current) {
+          setVideoDimensions({
+            width: containerRef.current.clientWidth,
+            height: containerRef.current.clientHeight,
+          });
         }
-        setCameraError('');
-      } catch (error) {
-        console.error('Camera error:', error);
-        setCameraError('ไม่สามารถเข้าถึงกล้องได้ - กรุณาอนุญาตการใช้กล้อง');
+      };
+    };
+    attachCamera();
+
+    // Update display dimensions on window resize (for SkeletonOverlay canvas sizing)
+    const handleResize = () => {
+      if (containerRef.current) {
+        setVideoDimensions({
+          width: containerRef.current.clientWidth,
+          height: containerRef.current.clientHeight,
+        });
+      } else {
+        setVideoDimensions({
+          width: window.innerWidth,
+          height: window.innerHeight,
+        });
       }
     };
-
-    startCamera();
-    
-    // Update dimensions on window resize
-    const handleResize = () => {
-      setVideoDimensions({
-        width: window.innerWidth,
-        height: window.innerHeight,
-      });
-    };
-    
     window.addEventListener('resize', handleResize);
-    handleResize();
+    requestAnimationFrame(handleResize);
 
     return () => {
       window.removeEventListener('resize', handleResize);
       if (videoRef.current?.srcObject) {
         const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-        tracks.forEach((track) => track.stop());
+        tracks.forEach(t => t.stop());
       }
     };
-  }, [cameraEnabled, showLoader]);
+  }, [cameraEnabled, showLoader, cameraStream]);
 
   // Draw a small debug thumbnail from the video to a canvas for troubleshooting
   useEffect(() => {
@@ -380,6 +464,13 @@ export default function WorkoutUI() {
     };
   }, [isKayaWorkout, cameraEnabled]);
 
+  // Determine if exercise is time-based (plank_hold, static_lunge)
+  const currentExerciseIsTimeBased = (() => {
+    const kayaEx = exercises[currentExercise]?.kayaExercise as ExerciseType | undefined;
+    if (!kayaEx) return false;
+    return EXERCISES[kayaEx]?.isTimeBased === true;
+  })();
+
   useEffect(() => {
     if (isPaused) return;
 
@@ -387,18 +478,35 @@ export default function WorkoutUI() {
       setTotalTime((prev) => prev + 1);
 
       if (exercises[currentExercise].duration) {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            handleNext();
-            return 0;
-          }
-          return prev - 1;
-        });
+        // For non-KAYA workouts: always count down
+        // For KAYA time-based exercises (plank, lunge): only count down when user is actively in 'hold' position
+        // For KAYA rep-based exercises: count down when body is visible
+        let shouldCountDown: boolean;
+        if (!isKayaWorkout) {
+          shouldCountDown = true;
+        } else if (currentExerciseIsTimeBased) {
+          // Only count down when user is actively holding the correct position
+          shouldCountDown = kayaAnalysis.stage === 'hold';
+        } else {
+          shouldCountDown = kayaAnalysis.isBodyVisible;
+        }
+        
+        if (shouldCountDown) {
+          setTimeLeft((prev) => {
+            if (prev <= 1) {
+              // Call via ref so the updater stays pure (no captured-closure side-effects)
+              // and handleNext is always the latest version without adding it to deps.
+              handleNextRef.current();
+              return 0;
+            }
+            return prev - 1;
+          });
+        }
       }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isPaused, currentExercise]);
+  }, [isPaused, currentExercise, isKayaWorkout, kayaAnalysis.isBodyVisible, kayaAnalysis.stage, currentExerciseIsTimeBased]);
 
   useEffect(() => {
     const messageInterval = setInterval(() => {
@@ -414,15 +522,25 @@ export default function WorkoutUI() {
     if (!exerciseData) return;
 
     const duration = Math.floor((Date.now() - exerciseStartTimeRef.current) / 1000);
+    const reps = isKayaWorkout ? kayaAnalysis.reps : (exerciseData.reps || 0);
+    const targetReps = exerciseData.reps || 10;
+    const formScore = isKayaWorkout ? kayaAnalysis.formScore : 80;
     
     exerciseResultsRef.current[currentExercise] = {
       name: exerciseData.name,
       nameTh: exerciseData.nameTh,
-      reps: isKayaWorkout ? kayaAnalysis.reps : (exerciseData.reps || 0),
-      targetReps: exerciseData.reps || 10,
-      formScore: isKayaWorkout ? kayaAnalysis.formScore : 80,
+      reps,
+      targetReps,
+      formScore,
       duration,
     };
+    
+    // Log exercise completion
+    console.log('\n✅ ======== EXERCISE SAVED ========');
+    console.log(`🏋️ ท่า: ${exerciseData.nameTh || exerciseData.name}`);
+    console.log(`🔢 Rep: ${reps}/${targetReps}`);
+    console.log(`⭐ คะแนนฟอร์ม: ${formScore}%`);
+    console.log(`⏱️ เวลา: ${duration} วินาที`);
     
     // Reset timer for next exercise
     exerciseStartTimeRef.current = Date.now();
@@ -444,21 +562,37 @@ export default function WorkoutUI() {
        results.reduce((sum, e) => sum + (e?.targetReps || 10), 0)) * 100
     );
 
-    navigate('/workout-complete', {
-      state: {
-        results: {
-          styleName: selectedStyle?.name || 'Workout',
-          styleNameTh: selectedStyle?.nameTh || 'ออกกำลังกาย',
-          exercises: results.filter(Boolean),
-          totalTime,
-          totalReps,
-          averageFormScore: avgFormScore,
-          caloriesBurned: 0, // Will be calculated in WorkoutComplete
-          completionPercentage: completionPct,
-          screenshots: screenshotsRef.current,
-        }
-      }
-    });
+    // Log workout summary
+    console.log('\n🏆 ======== WORKOUT COMPLETE ========');
+    console.log('📊 สรุปผลการออกกำลังกาย:');
+    console.log(`   💪 จำนวนท่าทั้งหมด: ${results.length} ท่า`);
+    console.log(`   🔢 จำนวน Rep ทั้งหมด: ${totalReps}`);
+    console.log(`   ⭐ คะแนนฟอร์มเฉลี่ย: ${avgFormScore}%`);
+    console.log(`   ✅ เปอร์เซ็นต์ความสำเร็จ: ${completionPct}%`);
+    console.log(`   ⏱️ เวลาทั้งหมด: ${Math.floor(totalTime / 60)}:${String(totalTime % 60).padStart(2, '0')}`);
+
+    const navState = {
+      styleName: selectedStyle?.name || 'Workout',
+      styleNameTh: selectedStyle?.nameTh || 'ออกกำลังกาย',
+      exercises: results.filter(Boolean),
+      totalTime,
+      totalReps,
+      averageFormScore: avgFormScore,
+      caloriesBurned: 0,
+      completionPercentage: completionPct,
+      screenshots: screenshotsRef.current,
+    };
+
+    const doNavigate = () => {
+      if (navigatedRef.current) return;
+      navigatedRef.current = true;
+      navigate('/workout-complete', { state: { results: navState } });
+    };
+
+    // 🏆 Speak session_complete → navigate (fallback after 6s)
+    playCoachAudioRef.current('session_complete', doNavigate);
+    const fallback = setTimeout(doNavigate, 6000);
+    pendingTimeoutsRef.current.push(fallback);
   }, [navigate, saveCurrentExerciseResult, selectedStyle, totalTime]);
 
   // Show rest screen between exercises
@@ -466,6 +600,10 @@ export default function WorkoutUI() {
     setShowRestScreen(true);
     setRestTimeLeft(REST_DURATION);
     setIsPaused(true);
+    // 💤 Announce rest — randomly alternate between 'rest' and 'dont_forget_rest'
+    const restCategory = Math.random() < 0.5 ? 'rest' : 'dont_forget_rest';
+    const t = setTimeout(() => playCoachAudioRef.current(restCategory), 200);
+    pendingTimeoutsRef.current.push(t);
   }, []);
 
   // Skip rest and go to next exercise
@@ -473,13 +611,152 @@ export default function WorkoutUI() {
     setShowRestScreen(false);
     setIsPaused(false);
     if (currentExercise < exercises.length - 1) {
-      kayaAnalysis.nextExercise();
-      setCurrentExercise((prev) => prev + 1);
-      setExerciseCompleted(false);
+      // Announce "almost done" if transitioning to the last exercise
+      const isLastExercise = currentExercise === exercises.length - 2;
+      const doAdvance = () => {
+        kayaAnalysis.nextExercise();
+        lastSpokenExerciseRef.current = -1; // ensure exercise TTS fires
+        lastRepRef.current = 0;
+        setCurrentExercise((prev) => prev + 1);
+        setExerciseCompleted(false);
+      };
+      const doChangeExercise = () => playCoachAudioRef.current('change_exercise', doAdvance);
+      if (isLastExercise) {
+        playCoachAudioRef.current('session_almost_done', doChangeExercise);
+      } else {
+        doChangeExercise();
+      }
     } else {
       finishWorkout();
     }
   }, [currentExercise, exercises.length, kayaAnalysis, finishWorkout]);
+
+  // Beat countdown 4-3-2-1 during last 4 seconds of rest
+  useEffect(() => {
+    if (!showRestScreen || restTimeLeft <= 0 || restTimeLeft > 4) return;
+    const beatMap: Record<number, 'beat_4' | 'beat_3' | 'beat_2' | 'beat_1'> = {
+      4: 'beat_4', 3: 'beat_3', 2: 'beat_2', 1: 'beat_1',
+    };
+    const category = beatMap[restTimeLeft];
+    if (category) playCoachAudioRef.current(category);
+  }, [showRestScreen, restTimeLeft]);
+
+  // Time milestone audio for time-based exercises (plank, lunge)
+  // All coaches now have timer_15s/timer_30s entries in coachAudio.ts — no speakTTS fallback needed
+  useEffect(() => {
+    if (!currentExerciseIsTimeBased || exerciseCompleted) return;
+    const exerciseDuration = exercises[currentExercise]?.duration ?? 0;
+    if (!isTtsSpeakingRef.current && !isCountingRepRef.current) {
+      // Only play 30s milestone if total duration > 35s (avoid firing at start of 30s sets)
+      if (timeLeft === 30 && !timeMilestone30Ref.current && exerciseDuration > 35) {
+        timeMilestone30Ref.current = true;
+        playCoachAudioRef.current('timer_30s'); // "เหลืออีก 30 วินาที!" — all coaches have this
+      } else if (timeLeft === 15 && !timeMilestone15Ref.current) {
+        timeMilestone15Ref.current = true;
+        playCoachAudioRef.current('timer_15s'); // "เหลืออีก 15 วินาที!" — all coaches have this
+      }
+    }
+  }, [currentExerciseIsTimeBased, exerciseCompleted, timeLeft, currentExercise, exercises]);
+
+  // Tempo feedback audio — play when tempo quality is problematic (throttled 10s, needs >=5 reps)
+  useEffect(() => {
+    if (!isKayaWorkout || exerciseCompleted || showRestScreen) return;
+    if (kayaAnalysis.reps < 5) return; // need at least 5 reps for reliable tempo data
+    const quality = kayaAnalysis.tempoQuality;
+    if (quality !== 'too_fast' && quality !== 'too_slow' && quality !== 'inconsistent') return;
+    const now = Date.now();
+    if (now - lastTempoAudioTimeRef.current < 10000) return; // throttle 10s (was 8s)
+    if (quality === lastTempoQualityRef.current && now - lastTempoAudioTimeRef.current < 20000) return; // same quality: 20s extra cooldown
+    if (isTtsSpeakingRef.current || isCountingRepRef.current) return;
+    const TEMPO_MAP: Partial<Record<string, AudioCategory>> = {
+      too_fast: 'tempo_too_fast',
+      too_slow: 'tempo_too_slow',
+      inconsistent: 'tempo_inconsistent',
+    };
+    const category = TEMPO_MAP[quality];
+    if (!category) return;
+    lastTempoAudioTimeRef.current = now;
+    lastTempoQualityRef.current = quality;
+    playCoachAudioRef.current(category);
+  }, [isKayaWorkout, exerciseCompleted, showRestScreen, kayaAnalysis.tempoQuality]);
+
+  // Body visibility audio — only when body is NOT in detection box / camera can't detect
+  // Triggers after 3s of continuous invisibility (throttled 10s)
+  useEffect(() => {
+    if (!isKayaWorkout || exerciseCompleted || showRestScreen) return;
+    if (kayaAnalysis.isBodyVisible) {
+      // Body just became visible — reset the invisible-since timer
+      bodyInvisibleSinceRef.current = 0;
+      return;
+    }
+    // Body just became invisible (not in box / not detected) — schedule audio after 3s
+    bodyInvisibleSinceRef.current = Date.now();
+    const timer = setTimeout(() => {
+      if (bodyInvisibleSinceRef.current === 0) return; // body became visible again
+      const now = Date.now();
+      if (now - lastVisibilityAudioTimeRef.current < 10000) return; // throttle 10s
+      if (isTtsSpeakingRef.current || isCountingRepRef.current) return;
+      lastVisibilityAudioTimeRef.current = now;
+      playCoachAudioRef.current('move_closer'); // "ขยับตัวเข้า(กล้อง)"
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [isKayaWorkout, exerciseCompleted, showRestScreen, kayaAnalysis.isBodyVisible]);
+
+  // Motion quality audio — no motion → move_more, jerky movement → movement_jerky (throttled 8s)
+  useEffect(() => {
+    if (!isKayaWorkout || exerciseCompleted || showRestScreen || !kayaAnalysis.isBodyVisible) return;
+    const { isMoving, smoothness } = kayaAnalysis.motionQuality;
+    const now = Date.now();
+    if (now - lastMotionAudioTimeRef.current < 8000) return;
+    if (isTtsSpeakingRef.current || isCountingRepRef.current) return;
+    // Only fire move_more when user has had reps (body visible and clearly not moving after doing some reps)
+    if (!isMoving && kayaAnalysis.reps > 0) {
+      lastMotionAudioTimeRef.current = now;
+      playCoachAudioRef.current('move_more'); // "ขยับตัวอีก / ขยับมากกว่า"
+    } else if (isMoving && smoothness === 'jerky') {
+      lastMotionAudioTimeRef.current = now;
+      playCoachAudioRef.current('movement_jerky'); // "เคลื่อนไหวกระตุก"
+    }
+  }, [isKayaWorkout, exerciseCompleted, showRestScreen, kayaAnalysis.isBodyVisible, kayaAnalysis.motionQuality, kayaAnalysis.reps]);
+
+  // Arm raise hold countdown — play "stretch up" then 3-2-1 beat countdown via timeouts
+  useEffect(() => {
+    if (!isKayaWorkout || currentKayaExercise !== 'arm_raise' || exerciseCompleted) return;
+
+    if (kayaAnalysis.stage !== 'up') {
+      // Left 'up' stage — reset hold tracking (cleanup will cancel any pending timeouts)
+      stageUpEnteredTimeRef.current = 0;
+      holdCountdownRef.current = 4;
+      holdAnnouncedRef.current = false;
+      return;
+    }
+
+    // Just entered 'up' stage — schedule 3-2-1 beat countdown
+    if (stageUpEnteredTimeRef.current === 0) {
+      stageUpEnteredTimeRef.current = Date.now();
+      holdCountdownRef.current = 4;
+      holdAnnouncedRef.current = true;
+
+      // Schedule 3-2-1 countdown starting immediately (no stretch_up here —
+      // stretch_up is reserved for form correction when user's back is bent)
+      const t3 = setTimeout(() => {
+        if (stageUpEnteredTimeRef.current !== 0) playCoachAudioRef.current('beat_3');
+      }, 100);
+      const t2 = setTimeout(() => {
+        if (stageUpEnteredTimeRef.current !== 0) playCoachAudioRef.current('beat_2');
+      }, 1000);
+      const t1 = setTimeout(() => {
+        if (stageUpEnteredTimeRef.current !== 0) playCoachAudioRef.current('beat_1');
+      }, 1900);
+
+      // Cleanup cancels all pending beats if user lowers arms early
+      return () => {
+        clearTimeout(t3);
+        clearTimeout(t2);
+        clearTimeout(t1);
+      };
+    }
+  }, [isKayaWorkout, currentKayaExercise, exerciseCompleted, kayaAnalysis.stage]);
 
   // Rest timer countdown
   useEffect(() => {
@@ -497,28 +774,133 @@ export default function WorkoutUI() {
     return () => clearInterval(timer);
   }, [showRestScreen, restTimeLeft, skipRest]);
 
-  // Stop all TTS immediately
+  // Stop ALL audio immediately (WorkoutUI + AICoachPopup)
   const stopAllTTS = useCallback(() => {
+    // Abort any in-flight speakTTS API fetch so it doesn't play after stop
+    if (speakTTSAbortRef.current) {
+      speakTTSAbortRef.current.abort();
+      speakTTSAbortRef.current = null;
+    }
+    // Stop WorkoutUI audio
     if (ttsAudioRef.current) {
       ttsAudioRef.current.pause();
       ttsAudioRef.current.currentTime = 0;
       ttsAudioRef.current = null;
     }
     isTtsSpeakingRef.current = false;
+    // Release speakTTS concurrent guard whenever audio is externally stopped
+    speakTTSInProgressRef.current = false;
+    // Notify AICoachPopup that WorkoutUI audio has stopped
+    setWorkoutUIAudioPlaying(false);
+    // Stop AICoachPopup audio (separate audio element)
+    stopCoachPopupAudio();
   }, []);
+
+  // Play a pre-recorded coach audio clip by category (reads from refs — no stale closure)
+  // Categories that represent danger / injury risk — allowed to interrupt rep counting
+  const DANGER_CATEGORIES = new Set<AudioCategory>(['form_correction']);
+  const playCoachAudio = useCallback((category: AudioCategory, onEnd?: () => void): void => {
+    if (stoppedRef.current) return; // don't play anything after handleStop
+    if (!ttsEnabledRef.current) { onEnd?.(); return; }
+    // While counting reps, block everything except danger warnings
+    if (isCountingRepRef.current && !DANGER_CATEGORIES.has(category)) { onEnd?.(); return; }
+    // Fallback to 'coach-aiko' when ttsCoach hasn't loaded yet (async Firestore load)
+    const coachId = ttsCoachRef.current?.id ?? 'coach-aiko';
+    // If coach lacks this audio category (e.g. new coaches missing timer_15s/timer_30s), fall back to aiko
+    const url = getLocalAudioUrl(coachId, category) ?? getLocalAudioUrl('coach-aiko', category);
+    if (!url) { onEnd?.(); return; }
+    stopAllTTS();
+    isTtsSpeakingRef.current = true;
+    setWorkoutUIAudioPlaying(true); // block AICoachPopup queue while WorkoutUI is playing
+    const audio = new Audio(url);
+    ttsAudioRef.current = audio;
+    audio.playbackRate = ttsSpeedRef.current || 1.0;
+    // Guard: onended, onerror, and play().catch() can ALL fire for the same failed audio.
+    // Use a one-shot flag so onEnd is called at most once per playCoachAudio call.
+    let audioEnded = false;
+    const handleAudioEnd = () => {
+      if (audioEnded) return;
+      audioEnded = true;
+      ttsAudioRef.current = null;
+      isTtsSpeakingRef.current = false;
+      // Call chain callback BEFORE releasing popup gate.
+      // If onEnd starts new audio (e.g. amazing after set_complete),
+      // playCoachAudio sets the flag back to true — so we don't release prematurely.
+      if (onEnd) {
+        onEnd();
+        // Only release if onEnd didn't start new audio
+        if (!isTtsSpeakingRef.current) {
+          setWorkoutUIAudioPlaying(false);
+        }
+      } else {
+        setWorkoutUIAudioPlaying(false);
+      }
+    };
+    audio.onended = handleAudioEnd;
+    audio.onerror = handleAudioEnd;
+    audio.play().catch(handleAudioEnd);
+  }, [stopAllTTS]);
+  // Keep refs updated so non-reactive code (setTimeout, useEffect) always has latest
+  useEffect(() => { playCoachAudioRef.current = playCoachAudio; }, [playCoachAudio]);
+
+  // Stop all audio when component unmounts (e.g. back button, navigate away)
+  useEffect(() => {
+    return () => {
+      stoppedRef.current = true; // prevent any new audio from starting
+      // Clear all pending timeouts
+      for (const t of pendingTimeoutsRef.current) clearTimeout(t);
+      pendingTimeoutsRef.current = [];
+      // Abort any in-flight speakTTS API fetch
+      if (speakTTSAbortRef.current) {
+        speakTTSAbortRef.current.abort();
+        speakTTSAbortRef.current = null;
+      }
+      // Stop any playing WorkoutUI audio
+      if (ttsAudioRef.current) {
+        ttsAudioRef.current.pause();
+        ttsAudioRef.current = null;
+      }
+      isTtsSpeakingRef.current = false;
+      speakTTSInProgressRef.current = false;
+      isCountingRepRef.current = false;
+      // Release the AICoachPopup gate and stop its audio
+      setWorkoutUIAudioPlaying(false);
+      stopCoachPopupAudio();
+    };
+  }, []);
+
+  // Keep TTS state refs in sync with state (also sync handleNextRef)
+  useEffect(() => { ttsCoachRef.current = ttsCoach; }, [ttsCoach]);
+  useEffect(() => { ttsSpeakerRef.current = ttsSpeaker; }, [ttsSpeaker]);
+  useEffect(() => { ttsEnabledRef.current = ttsEnabled; }, [ttsEnabled]);
+  useEffect(() => { ttsSpeedRef.current = ttsSpeed; }, [ttsSpeed]);
 
   // Speak text using TTS (returns Promise)
   // forcePlay = true will play even if user is recording (used for LLM response)
   const speakTTS = useCallback(async (text: string, forcePlay: boolean = false): Promise<void> => {
-    // Don't speak if user is recording (unless forced)
-    if (isRecording && !forcePlay) {
-      console.log('TTS skipped: user is recording');
+    // Don't speak after workout has been stopped
+    if (stoppedRef.current) return;
+    // Don't speak if TTS is disabled in settings
+    if (!ttsEnabledRef.current) {
+      console.log('🔇 [TTS] Skipped: TTS is disabled in settings');
       return;
     }
-    
+
+    // Don't speak if user is recording (unless forced)
+    if (isRecording && !forcePlay) {
+      return;
+    }
+
+    // Guard: prevent concurrent speakTTS calls from overlapping each other
+    // (LLM response may arrive while a previous one is still playing)
+    if (speakTTSInProgressRef.current) {
+      console.log('🔇 [TTS] Skipped: speakTTS already in progress');
+      return;
+    }
+    speakTTSInProgressRef.current = true;
+
     // If forced, stop recording first (for raw PCM capture)
     if (forcePlay && isRecording) {
-      console.log('TTS force play: stopping recording first');
       // Stop audio stream
       if (audioStreamRef.current) {
         audioStreamRef.current.getTracks().forEach(t => t.stop());
@@ -532,63 +914,52 @@ export default function WorkoutUI() {
       setIsRecording(false);
     }
     
-    console.log('TTS speaking:', text.substring(0, 50) + '...');
     
     try {
-      isTtsSpeakingRef.current = true;
+      // NOTE: Do NOT set isTtsSpeakingRef=true here — the API call can take up to 12s
+      // and we don't want to block all feedback audio while waiting for the network.
+      // We set it true only once the audio blob is ready and we're about to play.
       
-      // Priority 1: Gemini TTS with coach voice + instruction
-      let response: Response | null = null;
-      try {
-        const geminiController = new AbortController();
-        const geminiTimeout = setTimeout(() => geminiController.abort(), 30000);
-        response = await fetch('/api/gemini/tts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text,
-            voiceName: ttsCoach?.geminiVoice || ttsSpeaker || 'Kore',
-            instruction: ttsCoach?.ttsInstruction || '',
-          }),
-          signal: geminiController.signal,
-        });
-        clearTimeout(geminiTimeout);
-        if (!response?.ok) response = null;
-      } catch (e: any) {
-        console.warn('Gemini TTS failed:', e.name === 'AbortError' ? 'timeout' : e.message);
-        response = null;
-      }
+      // Read current coach/speaker from refs (avoids stale closure)
+      const currentCoach = ttsCoachRef.current;
+      const currentSpeaker = currentCoach?.voiceId || ttsSpeakerRef.current || '26';
+      
+      console.log('🔊 [TTS] Botnoi speaking with speaker:', currentSpeaker, '| coach:', currentCoach?.name || 'none', '| speed:', ttsSpeedRef.current);
 
-      // Priority 2: VAJA TTS fallback
-      if (!response) {
-        try {
-          response = await fetch('/api/aift/tts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text, speaker: ttsSpeaker }),
-          });
-        } catch { response = null; }
-      }
+      // Call Botnoi TTS API (12s timeout — fallback to Web Speech if slow)
+      const controller = new AbortController();
+      speakTTSAbortRef.current = controller;
+      const timeout = setTimeout(() => controller.abort(), 12000);
+      const response = await fetch('/api/aift/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, speaker: currentSpeaker }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      speakTTSAbortRef.current = null;
       
       if (!response?.ok) {
-        console.error('TTS API error');
+        console.error('🔊 [TTS] Botnoi API error:', response.status);
         isTtsSpeakingRef.current = false;
+        speakTTSInProgressRef.current = false;
         return;
       }
       
       const result = await response.json();
-      console.log('TTS API response:', result.audio_base64 ? 'has audio' : 'no audio', result);
+      console.log('🔊 [TTS] Botnoi response:', result.audio_base64 ? 'has audio' : 'no audio');
       
       if (!result.audio_base64) {
-        console.error('TTS API returned no audio');
+        console.error('🔊 [TTS] Botnoi returned no audio');
         isTtsSpeakingRef.current = false;
+        speakTTSInProgressRef.current = false;
         return;
       }
       
       // Check again if user started recording (skip this check if forcePlay)
       if (isRecording && !forcePlay) {
-        console.log('TTS cancelled: user started recording');
         isTtsSpeakingRef.current = false;
+        speakTTSInProgressRef.current = false;
         return;
       }
       
@@ -600,59 +971,145 @@ export default function WorkoutUI() {
       const audioBlob = new Blob([audioArray], { type: 'audio/wav' });
       const audioUrl = URL.createObjectURL(audioBlob);
       
-      console.log('TTS playing audio...');
-      
-      // Stop any existing audio
+      // Stop any existing audio and mark speaking — do this right before playback,
+      // NOT at the start of the function, so we don't block feedback audio during API call.
+      // Note: stopAllTTS() also resets speakTTSInProgressRef — re-arm it after.
+      // If stopAllTTS() was called while we awaited the fetch, bail out now.
+      if (!speakTTSInProgressRef.current) {
+        isTtsSpeakingRef.current = false;
+        return;
+      }
       stopAllTTS();
+      isTtsSpeakingRef.current = true;
+      speakTTSInProgressRef.current = true;
+      setWorkoutUIAudioPlaying(true);
       
       return new Promise((resolve) => {
         const audio = new Audio(audioUrl);
         ttsAudioRef.current = audio;
         
+        // Apply speed setting from user preferences
+        audio.playbackRate = ttsSpeedRef.current || 1.0;
+        
         audio.onended = () => {
           URL.revokeObjectURL(audioUrl);
           ttsAudioRef.current = null;
           isTtsSpeakingRef.current = false;
+          speakTTSInProgressRef.current = false;
+          setWorkoutUIAudioPlaying(false);
           resolve();
         };
         
         audio.onerror = () => {
           isTtsSpeakingRef.current = false;
+          speakTTSInProgressRef.current = false;
+          setWorkoutUIAudioPlaying(false);
           resolve();
         };
         
         audio.play().catch(() => {
           isTtsSpeakingRef.current = false;
+          speakTTSInProgressRef.current = false;
+          setWorkoutUIAudioPlaying(false);
           resolve();
         });
       });
     } catch (error) {
       isTtsSpeakingRef.current = false;
+      speakTTSInProgressRef.current = false;
       console.error('TTS error:', error);
     }
   }, [isRecording, stopAllTTS]);
 
   // Speak rep count (only 1,3,5,7,9,10)
   const speakRepCount = useCallback(async (rep: number) => {
+    if (stoppedRef.current) return; // don't play after stop
     const message = REP_MESSAGES[rep];
     if (message && rep > lastSpokenRepRef.current) {
       lastSpokenRepRef.current = rep;
-      await speakTTS(message);
+      // Don't interrupt higher-priority audio (exercise instruction, voice LLM response, etc.)
+      // Exercise intro sets isTtsSpeaking=true — rep 1 often fires while intro is still playing.
+      if (isTtsSpeakingRef.current) return;
+
+      // Try local pre-recorded audio first (avoids API call)
+      const coachId = ttsCoachRef.current?.id ?? 'coach-aiko'; // fallback if not loaded yet
+      {
+        const localUrl = getRepAudioUrl(coachId, rep);
+        if (localUrl) {
+          console.log(`🔊 [RepCount] Playing local audio for rep ${rep}:`, localUrl);
+          try {
+            stopAllTTS();
+            isCountingRepRef.current = true; // lock — block all non-danger audio
+            isTtsSpeakingRef.current = true;
+            setWorkoutUIAudioPlaying(true);
+            return new Promise<void>((resolve) => {
+              const audio = new Audio(localUrl);
+              ttsAudioRef.current = audio;
+              audio.playbackRate = ttsSpeedRef.current || 1.0;
+              const releaseCount = () => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; isCountingRepRef.current = false; setWorkoutUIAudioPlaying(false); resolve(); };
+              audio.onended = releaseCount;
+              audio.onerror = releaseCount;
+              audio.play().catch(releaseCount);
+            });
+          } catch {
+            console.warn('🔊 [RepCount] Local audio failed, falling back to API');
+          }
+        }
+      }
+
+      // No local audio for this rep — skip silently
     }
-  }, [speakTTS]);
+  }, [stopAllTTS]);
+
+  // Form feedback audio — throttled to avoid playing every frame
+  useEffect(() => {
+    if (!isKayaWorkout || exerciseCompleted || !kayaAnalysis.isBodyVisible) return;
+    const quality = kayaAnalysis.formQuality;
+    const score = kayaAnalysis.formScore;
+    const now = Date.now();
+    // Don't interrupt rep count or other audio in progress
+    if (isTtsSpeakingRef.current || isCountingRepRef.current) return;
+    // Throttle: play form audio at most once every 8 seconds (was 5s — too frequent)
+    if (now - lastFormAudioTimeRef.current < 8000) return;
+    if (quality === 'bad' && score < 50) {
+      lastFormAudioTimeRef.current = now;
+      // Play stretch_up when the issue is body leaning/bending (e.g. เอนตัว, ลำตัวเอียง)
+      const hasBodyLean = kayaAnalysis.formFeedback?.issues?.some(
+        (i) => i.includes('เอนตัว') || i.includes('ลำตัวเอียง')
+      );
+      playCoachAudioRef.current(hasBodyLean ? 'stretch_up' : 'form_correction');
+    } else if (quality === 'warn' && score < 70) {
+      // Raise warn threshold: 75 → 70 to reduce false positives
+      lastFormAudioTimeRef.current = now;
+      const hasBodyLean = kayaAnalysis.formFeedback?.issues?.some(
+        (i) => i.includes('เอนตัว') || i.includes('ลำตัวเอียง')
+      );
+      playCoachAudioRef.current(hasBodyLean ? 'stretch_up' : 'form_check');
+    }
+  }, [isKayaWorkout, exerciseCompleted, kayaAnalysis.isBodyVisible, kayaAnalysis.formQuality, kayaAnalysis.formScore]);
 
   // Show rep counter animation when rep increases (only up to target)
   useEffect(() => {
     const targetReps = exercises[currentExercise]?.reps || 10;
-    
+
     // Only show animation if we haven't reached target yet
     if (isKayaWorkout && kayaAnalysis.reps > lastRepRef.current && kayaAnalysis.reps > 0 && kayaAnalysis.reps <= targetReps) {
       setDisplayRep(kayaAnalysis.reps);
       setShowRepCounter(true);
       
-      // Speak rep count (only 1,3,5,7,9,10)
+      // Speak rep count for milestones (1,5,9,10); halfway once (deferred retry if busy)
+      const halfwayThreshold = Math.floor(targetReps / 2) + 1; // first rep > 50%
       if (REP_MESSAGES[kayaAnalysis.reps]) {
         speakRepCount(kayaAnalysis.reps);
+        // If this milestone IS the halfway rep, mark it so we don't also try halfway
+        if (kayaAnalysis.reps === halfwayThreshold) halfwayPlayedRef.current = true;
+      } else if (kayaAnalysis.reps >= halfwayThreshold && !halfwayPlayedRef.current) {
+        // Try to play halfway — deferred: retry on next rep if audio is busy now
+        if (!isTtsSpeakingRef.current && !isCountingRepRef.current) {
+          halfwayPlayedRef.current = true;
+          playCoachAudioRef.current('halfway');
+        }
+        // If busy, don't set halfwayPlayedRef — next rep will retry
       }
       
       // Hide after animation
@@ -663,12 +1120,25 @@ export default function WorkoutUI() {
       lastRepRef.current = kayaAnalysis.reps;
       return () => clearTimeout(timeout);
     }
-  }, [isKayaWorkout, kayaAnalysis.reps, currentExercise, exercises, speakRepCount]);
+  }, [isKayaWorkout, kayaAnalysis.reps, kayaAnalysis.formScore, currentExercise, exercises, speakRepCount]);
 
-  // Reset lastRepRef and lastSpokenRepRef when exercise changes
+  // Reset rep refs and halfway flag when exercise changes
   useEffect(() => {
     lastRepRef.current = 0;
     lastSpokenRepRef.current = 0;
+    halfwayPlayedRef.current = false;
+    timeMilestone30Ref.current = false;
+    timeMilestone15Ref.current = false;
+    // Use Date.now() so throttles give a proper grace period at exercise start
+    lastTempoAudioTimeRef.current = Date.now();
+    lastTempoQualityRef.current = '';
+    lastMotionAudioTimeRef.current = Date.now();
+    lastVisibilityAudioTimeRef.current = Date.now();
+    lastFormAudioTimeRef.current = Date.now();
+    // Reset arm_raise hold countdown
+    stageUpEnteredTimeRef.current = 0;
+    holdCountdownRef.current = 4;
+    holdAnnouncedRef.current = false;
   }, [currentExercise]);
 
   // Capture screenshot for voice interaction
@@ -702,7 +1172,6 @@ export default function WorkoutUI() {
       offset += chunk.length;
     }
     
-    console.log('PCM to WAV: samples=', combined.length, 'sampleRate=', sampleRate);
     
     // Create WAV file
     const numChannels = 1;
@@ -750,7 +1219,6 @@ export default function WorkoutUI() {
   const startVoiceRecording = useCallback(async () => {
     // Prevent starting if already recording
     if (isRecording) {
-      console.log('Already recording, ignoring start');
       return;
     }
     
@@ -795,7 +1263,6 @@ export default function WorkoutUI() {
         // Copy and store the data
         pcmChunks.push(new Float32Array(inputData));
         if (pcmChunks.length === 1) {
-          console.log('First audio chunk captured');
         }
       };
       
@@ -808,7 +1275,6 @@ export default function WorkoutUI() {
       
       setIsRecording(true);
       setVoiceStatus("recording");
-      console.log('Voice recording started with raw PCM capture, sampleRate:', audioCtx.sampleRate, 'state:', audioCtx.state);
     } catch (error) {
       console.error('Failed to start recording:', error);
     }
@@ -852,18 +1318,15 @@ export default function WorkoutUI() {
       pcmDataRef.current = [];
       
       if (pcmData.length === 0) {
-        console.log('No audio data captured');
         setVoiceStatus("idle");
         setIsRecording(false);
         return;
       }
       
       const totalSamples = pcmData.reduce((acc, chunk) => acc + chunk.length, 0);
-      console.log('Voice recording stopped, total samples:', totalSamples, 'chunks:', pcmData.length);
       
       // Check if audio is too short (less than 0.5 seconds = 8000 samples at 16kHz)
       if (totalSamples < 8000) {
-        console.log('Audio too short (need 0.5s minimum), ignoring');
         setVoiceStatus("idle");
         setIsRecording(false);
         return;
@@ -871,7 +1334,6 @@ export default function WorkoutUI() {
         
         // Convert to WAV
         const audioFile = pcmToWav(pcmData, sampleRate);
-        console.log('Created WAV file, size:', audioFile.size);
         
         // Send to STT
         const formData = new FormData();
@@ -899,10 +1361,8 @@ export default function WorkoutUI() {
         } else if (sttResult?.text) {
           transcript = typeof sttResult.text === 'string' ? sttResult.text : String(sttResult.text || '');
         }
-        console.log('STT transcript:', transcript);
         
         if (!transcript || !transcript.trim()) {
-          console.log('Empty transcript, ignoring');
           setVoiceStatus("idle");
           setIsRecording(false);
           return;
@@ -955,7 +1415,6 @@ export default function WorkoutUI() {
         
         const llmResult = await llmRes.json();
         const response = llmResult?.response || 'ขอโทษครับ ผมไม่เข้าใจคำถาม';
-        console.log('LLM response:', response);
         
         // Speak response (force play)
         setVoiceStatus("speaking");
@@ -974,212 +1433,83 @@ export default function WorkoutUI() {
   // Speak exercise instruction when exercise changes
   const speakExerciseInstruction = useCallback(async (exercise: WorkoutExercise) => {
     if (!exercise) return;
-    
-    // Build instruction text
-    const instruction = `ท่า${exercise.nameTh || exercise.name}. ${exercise.description || 'ทำตามท่าที่แสดง'}`;
-    
-    console.log('TTS: Calling API with text:', instruction);
-    
-    try {
-      // Use Gemini TTS with coach voice
-      let response: Response | null = null;
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 30000);
-        response = await fetch('/api/gemini/tts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text: instruction,
-            voiceName: ttsCoach?.geminiVoice || ttsSpeaker || 'Kore',
-            instruction: ttsCoach?.ttsInstruction || '',
-          }),
-          signal: controller.signal,
-        });
-        clearTimeout(timeout);
-        if (!response?.ok) response = null;
-      } catch {
-        response = null;
-      }
 
-      // Fallback to VAJA
-      if (!response) {
-        response = await fetch('/api/aift/tts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: instruction, speaker: ttsSpeaker }),
-        });
-      }
-      
-      console.log('TTS: Response status:', response.status);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('TTS API error:', response.status, errorText);
-        return;
-      }
-      
-      // API returns JSON with base64 audio
-      const result = await response.json();
-      console.log('TTS: Got response, has audio_base64:', !!result.audio_base64);
-      
-      if (!result.audio_base64) {
-        console.error('TTS: No audio_base64 in response');
-        return;
-      }
-      
-      // Convert base64 to audio blob
-      const audioData = atob(result.audio_base64);
-      const audioArray = new Uint8Array(audioData.length);
-      for (let i = 0; i < audioData.length; i++) {
-        audioArray[i] = audioData.charCodeAt(i);
-      }
-      const audioBlob = new Blob([audioArray], { type: 'audio/wav' });
-      const audioUrl = URL.createObjectURL(audioBlob);
-      
-      console.log('TTS: Created audio blob, size:', audioBlob.size);
-      
-      // Stop previous audio if playing
-      if (ttsAudioRef.current) {
-        ttsAudioRef.current.pause();
-        ttsAudioRef.current = null;
-      }
-      
-      const audio = new Audio(audioUrl);
-      ttsAudioRef.current = audio;
-      
-      audio.oncanplaythrough = () => {
-        console.log('TTS: Audio ready to play');
-      };
-      
-      audio.onerror = (e) => {
-        console.error('TTS: Audio error:', e);
-      };
-      
-      audio.play().then(() => {
-        console.log('TTS: Audio playing');
-      }).catch((err) => {
-        console.error('TTS: Play error:', err);
-      });
-      
-      // Cleanup URL after audio ends
-      audio.onended = () => {
-        console.log('TTS: Audio ended');
-        URL.revokeObjectURL(audioUrl);
-        ttsAudioRef.current = null;
-      };
-    } catch (error) {
-      console.error('TTS error:', error);
+    // Don't speak after workout has been stopped
+    if (stoppedRef.current) return;
+
+    // Skip if TTS disabled
+    if (!ttsEnabledRef.current) {
+      console.log('🔇 [TTS] Exercise instruction skipped: TTS disabled');
+      return;
     }
-  }, []);
 
-  // Fallback: Use Web Speech API when TTS API fails
-  const speakWithWebSpeechFallback = useCallback((text: string): Promise<void> => {
-    return new Promise((resolve) => {
-      if (typeof window === 'undefined' || !window.speechSynthesis) {
-        resolve();
-        return;
+    // Stop any currently playing audio (WorkoutUI + AICoachPopup) before speaking
+    stopAllTTS();
+
+    // Try local pre-recorded exercise-start audio first (avoids API call)
+    const coachId = ttsCoachRef.current?.id ?? 'coach-aiko'; // fallback if not loaded yet
+    if (exercise.kayaExercise) {
+      const localUrl = getExerciseStartAudioUrl(coachId, exercise.kayaExercise);
+      if (localUrl) {
+        console.log(`🔊 [ExerciseInstruction] Playing local audio for ${exercise.kayaExercise}:`, localUrl);
+        try {
+          isTtsSpeakingRef.current = true;
+          setWorkoutUIAudioPlaying(true);
+          return new Promise<void>((resolve) => {
+            const audio = new Audio(localUrl);
+            ttsAudioRef.current = audio;
+            audio.playbackRate = ttsSpeedRef.current || 1.0;
+            audio.onended = () => {
+              ttsAudioRef.current = null;
+              isTtsSpeakingRef.current = false;
+              setWorkoutUIAudioPlaying(false);
+              resolve();
+            };
+            audio.onerror = () => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; setWorkoutUIAudioPlaying(false); resolve(); };
+            audio.play().then(() => {
+              console.log('🔊 [ExerciseInstruction] Local audio playing at speed:', audio.playbackRate);
+            }).catch(() => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; setWorkoutUIAudioPlaying(false); resolve(); });
+          });
+        } catch {
+          isTtsSpeakingRef.current = false;
+          setWorkoutUIAudioPlaying(false);
+          console.warn('🔊 [ExerciseInstruction] Local audio failed, falling back to API');
+        }
       }
-      
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'th-TH';
-      utterance.rate = 1.0;
-      
-      utterance.onend = () => resolve();
-      utterance.onerror = () => resolve();
-      
-      window.speechSynthesis.speak(utterance);
-    });
-  }, []);
+    }
+    
+    // No local audio found (non-KAYA exercise or missing file) — skip silently
+    console.log('🔇 [ExerciseInstruction] No local audio for exercise:', exercise.kayaExercise || exercise.name);
+  }, [stopAllTTS]);
 
   // Speak coach introduction
   const speakCoachIntroduction = useCallback(async () => {
-    const userName = userProfile?.nickname || userProfile?.displayName || 'คุณ';
-    const introText = `สวัสดีครับ ผมชื่อน้องกาย วันนี้จะมาเป็นโค้ชให้คุณ${userName}นะครับ พร้อมออกกำลังกายไปด้วยกันไหมครับ เริ่มกันเลย!`;
-    
-    console.log('TTS Coach Intro: Calling API with text:', introText);
-    
-    // Helper function to speak first exercise after intro
-    const speakFirstExercise = () => {
-      const exercise = exercises[0];
-      if (exercise) {
-        setTimeout(() => {
-          speakExerciseInstruction(exercise);
-        }, 500);
-      }
-    };
-    
-    try {
-      // Add timeout for fetch to prevent hanging
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 35000); // 35s timeout
-      
-      const response = await fetch('/api/gemini/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: introText,
-          voiceName: ttsCoach?.geminiVoice || ttsSpeaker || 'Kore',
-          instruction: ttsCoach?.ttsInstruction || '',
-        }),
-        signal: controller.signal,
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (!response.ok) {
-        console.warn('TTS Coach Intro API error:', response.status, '- using fallback');
-        await speakWithWebSpeechFallback(introText);
-        speakFirstExercise();
-        return;
-      }
-      
-      const result = await response.json();
-      if (!result.audio_base64) {
-        console.warn('TTS Coach Intro: No audio_base64 - using fallback');
-        await speakWithWebSpeechFallback(introText);
-        speakFirstExercise();
-        return;
-      }
-      
-      const audioData = atob(result.audio_base64);
-      const audioArray = new Uint8Array(audioData.length);
-      for (let i = 0; i < audioData.length; i++) {
-        audioArray[i] = audioData.charCodeAt(i);
-      }
-      const audioBlob = new Blob([audioArray], { type: 'audio/wav' });
-      const audioUrl = URL.createObjectURL(audioBlob);
-      
-      if (ttsAudioRef.current) {
-        ttsAudioRef.current.pause();
-        ttsAudioRef.current = null;
-      }
-      
-      const audio = new Audio(audioUrl);
-      ttsAudioRef.current = audio;
-      
-      audio.play().then(() => {
-        console.log('TTS Coach Intro: Playing');
-      }).catch(console.error);
-      
-      audio.onended = () => {
-        console.log('TTS Coach Intro: Ended');
-        URL.revokeObjectURL(audioUrl);
-        ttsAudioRef.current = null;
-        speakFirstExercise();
-      };
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        console.warn('TTS Coach Intro timeout - using fallback');
-      } else {
-        console.error('TTS Coach Intro error:', error);
-      }
-      // Use Web Speech API as fallback
-      await speakWithWebSpeechFallback(introText);
-      speakFirstExercise();
+    // Skip if TTS disabled
+    if (!ttsEnabledRef.current) {
+      console.log('🔇 [TTS] Coach intro skipped: TTS disabled');
+      return;
     }
-  }, [userProfile, exercises, speakExerciseInstruction, speakWithWebSpeechFallback]);
+
+    const exercise = exercises[0];
+    if (exercise?.kayaExercise) {
+      // Exercise-start files (30-41) already open with a greeting phrase + exercise name.
+      // Play them directly for exercise 0 — this avoids the double "สวัสดีค่ะ" that
+      // occurred when chaining greeting(42) → exercise-start(30-41).
+      // Exercises 1+ get their start instruction via the exercise-change useEffect.
+      console.log('🔊 [CoachIntro] Playing exercise-start directly (contains greeting)');
+      setTimeout(() => speakExerciseInstruction(exercise), 500);
+    } else {
+      // Non-KAYA exercise: no start audio exists, fall back to greeting(42) only.
+      const coachId = ttsCoachRef.current?.id ?? 'coach-aiko';
+      const localGreetingUrl = getGreetingAudioUrl(coachId);
+      if (localGreetingUrl) {
+        console.log('🔊 [CoachIntro] Non-KAYA exercise — playing greeting only');
+        playCoachAudioRef.current('greeting');
+      }
+    }
+  }, [exercises, speakExerciseInstruction]);
+  // Keep ref updated so intro effect always calls the latest version
+  useEffect(() => { speakCoachIntroductionRef.current = speakCoachIntroduction; }, [speakCoachIntroduction]);
 
   // Speak coach introduction when workout starts
   useEffect(() => {
@@ -1187,29 +1517,50 @@ export default function WorkoutUI() {
     if (coachIntroSpokenRef.current) return;
     
     coachIntroSpokenRef.current = true;
+    // Mark exercise 0 as spoken synchronously so the exercise-change effect
+    // (which also fires when showLoader→false) skips exercise 0 and doesn't
+    // double-play. When handlePrevious resets lastSpokenExerciseRef to -1,
+    // the exercise-change effect will correctly re-fire for exercise 0.
+    lastSpokenExerciseRef.current = 0;
+
+    // Wait for TTS settings to load before speaking intro
+    // This prevents race condition where coach speaker ref is still default
+    let cancelled = false;
+    const waitAndSpeak = async () => {
+      // Wait up to 3 seconds for settings to load
+      let waited = 0;
+      while (!ttsSettingsLoadedRef.current && waited < 3000) {
+        await new Promise(r => setTimeout(r, 100));
+        waited += 100;
+        if (cancelled) return; // stop polling if component unmounted or effect re-ran
+      }
+      if (cancelled) return;
+      console.log('🔊 [CoachIntro] Settings loaded after', waited, 'ms, speaker:', ttsCoachRef.current?.voiceId || ttsSpeakerRef.current);
+      // Use ref so we always call the latest speakCoachIntroduction without
+      // adding it to this effect's dependency array (which would cause re-fires)
+      speakCoachIntroductionRef.current();
+    };
     
-    // Speak introduction first
     const timeout = setTimeout(() => {
-      speakCoachIntroduction();
+      waitAndSpeak();
     }, 500);
     
-    return () => clearTimeout(timeout);
-  }, [showLoader, speakCoachIntroduction]);
+    return () => { cancelled = true; clearTimeout(timeout); };
+  }, [showLoader]);
 
-  // Speak instruction when exercise changes (after first exercise)
+  // Speak instruction when exercise changes
   useEffect(() => {
     // Don't speak while loader is showing
     if (showLoader) return;
-    
-    // Skip first exercise (handled by coach intro)
-    if (currentExercise === 0) return;
-    
-    // Skip if already spoken for this exercise
+
+    // Skip if already spoken for this exercise (covers exercise 0 on mount — the
+    // intro useEffect sets lastSpokenExerciseRef.current = 0 synchronously, so
+    // this guard fires before the setTimeout below and prevents double-play).
+    // Going BACK to exercise 0 via handlePrevious resets it to -1, so audio replays.
     if (lastSpokenExerciseRef.current === currentExercise) return;
     
     const exercise = exercises[currentExercise];
     if (exercise) {
-      console.log('Speaking instruction for exercise:', currentExercise, exercise.nameTh);
       lastSpokenExerciseRef.current = currentExercise;
       
       // Small delay to ensure UI is ready
@@ -1225,56 +1576,81 @@ export default function WorkoutUI() {
   useEffect(() => {
     if (!isKayaWorkout || exerciseCompleted || showRestScreen) return;
     
+    // Get current exercise config to check if it's time-based
+    const currentExerciseConfig = exercises[currentExercise];
+    const kayaExType = currentExerciseConfig?.kayaExercise as ExerciseType | undefined;
+    const exerciseDefinition = kayaExType ? EXERCISES[kayaExType] : null;
+    
+    // Skip auto-advance for time-based exercises (they use holdTime, not reps)
+    if (exerciseDefinition?.isTimeBased) {
+      console.log(`⏱️ Time-based exercise: ${kayaExType} - skipping rep-based auto-advance`);
+      return;
+    }
+    
     const targetReps = exercises[currentExercise]?.reps || 10;
     
-    if (kayaAnalysis.reps >= targetReps) {
+    // Only auto-advance if targetReps > 0 and reps reached target
+    if (targetReps > 0 && kayaAnalysis.reps >= targetReps) {
       setExerciseCompleted(true);
       saveCurrentExerciseResult();
-      
-      // Go directly to next exercise after short delay
+
+      // ✅ Wait for rep-10 audio to finish (rep count audio plays ~1s), then speak set_complete
       const timeout = setTimeout(() => {
-        if (currentExercise < exercises.length - 1) {
-          // Reset for next exercise
-          kayaAnalysis.nextExercise();
-          setCurrentExercise((prev) => prev + 1);
-          setExerciseCompleted(false);
-          lastRepRef.current = 0;
-          // Reset spoken ref to trigger TTS for new exercise
-          lastSpokenExerciseRef.current = -1;
-        } else {
-          finishWorkout();
-        }
-      }, 1500);
+        playCoachAudioRef.current('set_complete', () => {
+          if (currentExercise < exercises.length - 1) {
+            // Show 30s rest period — skipRest() handles the actual exercise transition
+            showRestPeriod();
+          } else {
+            finishWorkout();
+          }
+        });
+      }, 1500); // Allow rep-10 audio (~1s) to finish before set_complete fires
       return () => clearTimeout(timeout);
     }
-  }, [isKayaWorkout, kayaAnalysis.reps, currentExercise, exercises, exerciseCompleted, showRestScreen, saveCurrentExerciseResult, kayaAnalysis, finishWorkout]);
+  }, [isKayaWorkout, kayaAnalysis.reps, currentExercise, exercises, exerciseCompleted, showRestScreen, saveCurrentExerciseResult, kayaAnalysis, finishWorkout, showRestPeriod]);
 
   const handleNext = useCallback(() => {
+    stopAllTTS(); // ✂️ Cut all current audio immediately before speaking next exercise
     saveCurrentExerciseResult();
     if (currentExercise < exercises.length - 1) {
       if (isKayaWorkout) {
         kayaAnalysis.nextExercise();
       }
+      lastSpokenExerciseRef.current = -1; // ensure next exercise TTS fires
+      setExerciseCompleted(false); // reset in case user skips while auto-advance audio chain is running
       setCurrentExercise((prev) => prev + 1);
       const nextExercise = exercises[currentExercise + 1];
       setTimeLeft(nextExercise.duration || 0);
     } else {
       finishWorkout();
     }
-  }, [currentExercise, exercises, isKayaWorkout, kayaAnalysis, saveCurrentExerciseResult, finishWorkout]);
+  }, [currentExercise, exercises, isKayaWorkout, kayaAnalysis, saveCurrentExerciseResult, finishWorkout, stopAllTTS]);
+
+  // Keep handleNextRef updated so non-reactive code always has latest
+  useEffect(() => { handleNextRef.current = handleNext; }, [handleNext]);
 
   const handlePrevious = useCallback(() => {
     if (currentExercise > 0) {
+      stopAllTTS();
       if (isKayaWorkout) {
         kayaAnalysis.previousExercise();
       }
+      lastSpokenExerciseRef.current = -1; // allow re-speaking instruction on previous exercise
+      setExerciseCompleted(false);
       setCurrentExercise((prev) => prev - 1);
       const prevExercise = exercises[currentExercise - 1];
       setTimeLeft(prevExercise.duration || 0);
     }
-  }, [currentExercise, exercises, isKayaWorkout, kayaAnalysis]);
+  }, [currentExercise, exercises, isKayaWorkout, kayaAnalysis, stopAllTTS]);
 
   const handleStop = () => {
+    stoppedRef.current = true;    // prevent any new audio from starting
+    isCountingRepRef.current = false; // release counting lock
+    navigatedRef.current = true;  // prevent finishWorkout's fallback timeout from navigating
+    // Clear all pending timeouts (rest announcement, finishWorkout fallback, etc.)
+    for (const t of pendingTimeoutsRef.current) clearTimeout(t);
+    pendingTimeoutsRef.current = [];
+    stopAllTTS();
     navigate("/dashboard");
   };
 
@@ -1314,9 +1690,11 @@ export default function WorkoutUI() {
       ctx.strokeText(text, 20, 40);
       ctx.fillText(text, 20, 40);
       
-      // Reps if KAYA workout
+      // Reps or time if KAYA workout
       if (isKayaWorkout) {
-        const repsText = `${kayaAnalysis.reps} ครั้ง`;
+        const currentEx2 = exercises[currentExercise];
+        const isTimeBasedEx = currentEx2?.duration && !currentEx2?.reps;
+        const repsText = isTimeBasedEx ? `${formatTime(timeLeft)} เหลือ` : `${kayaAnalysis.reps} ครั้ง`;
         ctx.strokeText(repsText, 20, 70);
         ctx.fillText(repsText, 20, 70);
       }
@@ -1333,7 +1711,7 @@ export default function WorkoutUI() {
     } catch (error) {
       console.error('Screenshot failed:', error);
     }
-  }, [exercises, currentExercise, isKayaWorkout, kayaAnalysis.reps]);
+  }, [exercises, currentExercise, isKayaWorkout, kayaAnalysis.reps, timeLeft]);
 
   const exercise = exercises[currentExercise];
   const progress = ((currentExercise + 1) / exercises.length) * 100;
@@ -1416,7 +1794,9 @@ export default function WorkoutUI() {
               </div>
               <div>
                 <h3 className="text-xl font-bold text-white">{nextExercise.nameTh || nextExercise.name}</h3>
-                <p className="text-white/60">{nextExercise.reps} ครั้ง</p>
+                <p className="text-white/60">
+                  {nextExercise.reps ? `${nextExercise.reps} ครั้ง` : nextExercise.duration ? `${nextExercise.duration} วิ` : ''}
+                </p>
               </div>
             </div>
           </div>
@@ -1498,10 +1878,8 @@ export default function WorkoutUI() {
                 playsInline
                 muted
                 onCanPlay={() => {
-                  console.log('Video can play');
                   setCameraReady(true);
                 }}
-                onLoadedData={() => console.log('Video data loaded')}
                 className="w-full h-full object-cover scale-x-[-1]"
                 style={{ backgroundColor: '#000' }}
               />
@@ -1559,10 +1937,14 @@ export default function WorkoutUI() {
         {isKayaWorkout && (
           <AICoachPopup
             currentMessage={kayaAnalysis.coachMessage}
+            coachId={ttsCoachId}
+            speaker={ttsCoach?.voiceId || ttsSpeaker}
+            ttsEnabled={ttsEnabled}
+            ttsSpeed={ttsSpeed}
           />
         )}
 
-        {/* KAYA Stage Indicator */}
+        {/* KAYA Stage Indicator - Desktop */}
         {isKayaWorkout && currentKayaExercise && (
           <div className="absolute top-24 left-6 z-20">
             <StageIndicator 
@@ -1572,6 +1954,25 @@ export default function WorkoutUI() {
               formScore={kayaAnalysis.formScore}
               reps={kayaAnalysis.reps}
             />
+          </div>
+        )}
+
+        {/* KAYA Form Score Badge - Desktop */}
+        {isKayaWorkout && kayaAnalysis.isBodyVisible && (
+          <div className="absolute top-24 right-6 z-20">
+            <div className={cn(
+              "px-4 py-3 rounded-2xl backdrop-blur-md border text-center min-w-[100px]",
+              kayaAnalysis.formScore >= 80 ? "bg-green-500/20 border-green-500/30" :
+              kayaAnalysis.formScore >= 50 ? "bg-yellow-500/20 border-yellow-500/30" :
+              "bg-red-500/20 border-red-500/30"
+            )}>
+              <p className="text-white/60 text-xs mb-0.5">ฟอร์ม</p>
+              <p className={cn(
+                "text-3xl font-black",
+                kayaAnalysis.formScore >= 80 ? "text-green-400" :
+                kayaAnalysis.formScore >= 50 ? "text-yellow-400" : "text-red-400"
+              )}>{kayaAnalysis.formScore}%</p>
+            </div>
           </div>
         )}
 
@@ -1631,6 +2032,19 @@ export default function WorkoutUI() {
                 {showSkeleton ? <Bone className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
               </button>
             )}
+            {/* Visual Pose Guide Toggle - Desktop */}
+            {isKayaWorkout && cameraEnabled && (
+              <button
+                onClick={() => setShowVisualGuide(!showVisualGuide)}
+                className={cn(
+                  "w-10 h-10 rounded-full backdrop-blur-sm flex items-center justify-center transition-colors",
+                  showVisualGuide ? "bg-orange-500 text-white" : "bg-black/30 text-white/70 hover:bg-black/50"
+                )}
+                title={showVisualGuide ? "ซ่อนไกด์ท่า" : "แสดงไกด์ท่า"}
+              >
+                <Target className="w-4 h-4" />
+              </button>
+            )}
             {/* Music Toggle */}
             <button
               onClick={() => setShowMusicPlayer(!showMusicPlayer)}
@@ -1644,8 +2058,36 @@ export default function WorkoutUI() {
             <button
               onClick={captureScreenshot}
               className="w-10 h-10 rounded-full bg-black/30 text-white/70 hover:bg-black/50 backdrop-blur-sm flex items-center justify-center transition-colors"
+              title="ถ่ายรูป"
             >
               <Camera className="w-4 h-4" />
+            </button>
+            {/* Camera Toggle - Desktop */}
+            <button
+              onClick={toggleCamera}
+              className={cn(
+                "w-10 h-10 rounded-full backdrop-blur-sm flex items-center justify-center transition-colors",
+                cameraEnabled ? "bg-black/30 text-white/70 hover:bg-black/50" : "bg-red-500/30 text-red-400"
+              )}
+              title={cameraEnabled ? "ปิดกล้อง" : "เปิดกล้อง"}
+            >
+              {cameraEnabled ? <Eye className="w-4 h-4" /> : <CameraOff className="w-4 h-4" />}
+            </button>
+            {/* Mute/Unmute Toggle - Desktop */}
+            <button
+              onClick={() => {
+                const next = !ttsEnabled;
+                setTtsEnabled(next);
+                ttsEnabledRef.current = next;
+                if (!next) stopAllTTS();
+              }}
+              className={cn(
+                "w-10 h-10 rounded-full backdrop-blur-sm flex items-center justify-center transition-colors",
+                ttsEnabled ? "bg-black/30 text-white/70 hover:bg-black/50" : "bg-red-500/30 text-red-400"
+              )}
+              title={ttsEnabled ? "ปิดเสียงโค้ช" : "เปิดเสียงโค้ช"}
+            >
+              {ttsEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
             </button>
           </div>
         </div>
@@ -1722,8 +2164,17 @@ export default function WorkoutUI() {
                   <h2 className="text-xl font-bold text-white">{exercise?.nameTh || exercise?.name}</h2>
                   {isKayaWorkout ? (
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-2xl font-bold text-primary">{Math.min(kayaAnalysis.reps, exercise?.reps || 10)}</span>
-                      <span className="text-white/60 text-sm">/ {exercise?.reps || 10} ครั้ง</span>
+                      {exercise?.duration && !exercise?.reps ? (
+                        <>
+                          <span className="text-2xl font-bold text-primary">{formatTime(timeLeft)}</span>
+                          <span className="text-white/60 text-sm">เหลือ</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-2xl font-bold text-primary">{Math.min(kayaAnalysis.reps, exercise?.reps || 10)}</span>
+                          <span className="text-white/60 text-sm">/ {exercise?.reps || 10} ครั้ง</span>
+                        </>
+                      )}
                     </div>
                   ) : (
                     <p className="text-white/60 text-sm">
@@ -1732,6 +2183,24 @@ export default function WorkoutUI() {
                   )}
                 </div>
               </div>
+              {/* KAYA Form Score - inline desktop bottom */}
+              {isKayaWorkout && kayaAnalysis.isBodyVisible && (
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-white/50 text-xs">ฟอร์ม</span>
+                  <div className="w-24 h-1.5 bg-white/20 rounded-full overflow-hidden">
+                    <div className={cn(
+                      "h-full rounded-full transition-all duration-500",
+                      kayaAnalysis.formScore >= 80 ? "bg-green-500" :
+                      kayaAnalysis.formScore >= 50 ? "bg-yellow-500" : "bg-red-500"
+                    )} style={{ width: `${kayaAnalysis.formScore}%` }} />
+                  </div>
+                  <span className={cn(
+                    "text-xs font-bold",
+                    kayaAnalysis.formScore >= 80 ? "text-green-400" :
+                    kayaAnalysis.formScore >= 50 ? "text-yellow-400" : "text-red-400"
+                  )}>{kayaAnalysis.formScore}%</span>
+                </div>
+              )}
             </div>
 
             {/* Controls */}
@@ -1772,7 +2241,10 @@ export default function WorkoutUI() {
                 <SkipBack className="w-5 h-5" />
               </button>
               <button
-                onClick={() => setIsPaused(!isPaused)}
+                onClick={() => {
+                  if (!isPaused) stopAllTTS(); // stop coach audio when pausing
+                  setIsPaused(!isPaused);
+                }}
                 className="w-14 h-14 rounded-full bg-primary flex items-center justify-center text-white hover:bg-primary/90 transition-colors"
               >
                 {isPaused ? <Play className="w-6 h-6 ml-1" /> : <Pause className="w-6 h-6" />}
@@ -1792,7 +2264,7 @@ export default function WorkoutUI() {
 
   // Mobile View with Camera
   return (
-    <div className="min-h-screen bg-black flex flex-col relative overflow-hidden">
+    <div ref={containerRef} className="fixed inset-0 bg-black flex flex-col overflow-hidden">
       {/* Screenshot Flash Effect */}
       {showScreenshotFlash && (
         <div className="absolute inset-0 bg-white z-50 animate-flash" />
@@ -1816,10 +2288,33 @@ export default function WorkoutUI() {
               autoPlay
               playsInline
               muted
+              onCanPlay={() => {
+                setCameraReady(true);
+              }}
               className="w-full h-full object-cover scale-x-[-1]"
+              style={{ backgroundColor: '#000' }}
             />
-              {/* Skeleton Overlay for Mobile (temporarily disabled for kaya-intermediate diagnostics) */}
-            {cameraEnabled && (showSkeleton || showOpticalFlow) && selectedStyleId !== 'kaya-intermediate' && (
+              {/* Autoplay blocked overlay - Mobile */}
+              {autoplayBlocked && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-20">
+                  <button
+                    onClick={async () => {
+                      try {
+                        await videoRef.current?.play();
+                        setAutoplayBlocked(false);
+                        setCameraError('');
+                      } catch (e) {
+                        setCameraError('ไม่สามารถเริ่มวิดีโอได้ กรุณาแตะหน้าจออีกครั้ง');
+                      }
+                    }}
+                    className="px-6 py-3 bg-primary text-white rounded-xl shadow-lg text-lg font-medium"
+                  >
+                    แตะเพื่อเปิดกล้อง
+                  </button>
+                </div>
+              )}
+              {/* Skeleton Overlay for Mobile */}
+            {cameraEnabled && (showSkeleton || showOpticalFlow) && (
               <SkeletonOverlay
                 landmarks={landmarks}
                 opticalFlowPoints={opticalFlowPoints}
@@ -1839,86 +2334,100 @@ export default function WorkoutUI() {
       <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-black/60 pointer-events-none" />
 
       {/* Content */}
-      <div className="relative z-10 flex flex-col h-full">
+      <div className="relative z-10 flex flex-col flex-1">
         {/* Header */}
-        <div className="px-4 pt-6 pb-4">
+        <div className="px-3 pt-4 pb-3" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
           <div className="flex items-center justify-between mb-3">
-            <button onClick={handleStop} className="w-10 h-10 rounded-xl bg-white/10 backdrop-blur-sm flex items-center justify-center text-white">
+            <button onClick={handleStop} className="w-9 h-9 rounded-xl bg-white/10 backdrop-blur-sm flex items-center justify-center text-white flex-shrink-0">
               <X className="w-5 h-5" />
             </button>
             
             {/* AI Badge */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-primary/20 to-orange-400/20 backdrop-blur-sm border border-primary/30">
-              <Brain className="w-3.5 h-3.5 text-primary" />
-              <span className="text-xs font-medium text-white">AI Active</span>
+            <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-gradient-to-r from-primary/20 to-orange-400/20 backdrop-blur-sm border border-primary/30 flex-shrink-0">
+              <Brain className="w-3 h-3 text-primary" />
+              <span className="text-[10px] font-medium text-white">AI</span>
               <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 flex-shrink-0">
               {/* Music Toggle for Mobile */}
               <button 
                 onClick={() => setShowMusicPlayer(!showMusicPlayer)}
                 className={cn(
-                  "w-10 h-10 rounded-xl backdrop-blur-sm flex items-center justify-center transition-colors",
+                  "w-9 h-9 rounded-xl backdrop-blur-sm flex items-center justify-center transition-colors",
                   showMusicPlayer ? "bg-primary/80 text-white" : "bg-white/10 text-white/60"
                 )}
                 title={showMusicPlayer ? "ซ่อนเพลง" : "เปิดเพลง"}
               >
-                <Music className="w-5 h-5" />
+                <Music className="w-4 h-4" />
               </button>
               {/* Skeleton Toggle for Mobile */}
               {isKayaWorkout && (
                 <button 
                   onClick={() => setShowSkeleton(!showSkeleton)}
                   className={cn(
-                    "w-10 h-10 rounded-xl backdrop-blur-sm flex items-center justify-center transition-colors",
+                    "w-9 h-9 rounded-xl backdrop-blur-sm flex items-center justify-center transition-colors",
                     showSkeleton ? "bg-green-500/80 text-white" : "bg-white/10 text-white/60"
                   )}
                   title={showSkeleton ? "ซ่อนโครงกระดูก" : "แสดงโครงกระดูก"}
                 >
-                  {showSkeleton ? <Bone className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
+                  {showSkeleton ? <Bone className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                </button>
+              )}
+              {/* Visual Pose Guide Toggle for Mobile */}
+              {isKayaWorkout && cameraEnabled && (
+                <button 
+                  onClick={() => setShowVisualGuide(!showVisualGuide)}
+                  className={cn(
+                    "w-9 h-9 rounded-xl backdrop-blur-sm flex items-center justify-center transition-colors",
+                    showVisualGuide ? "bg-orange-500/80 text-white" : "bg-white/10 text-white/60"
+                  )}
+                  title={showVisualGuide ? "ซ่อนไกด์ท่า" : "แสดงไกด์ท่า"}
+                >
+                  <Target className="w-4 h-4" />
                 </button>
               )}
               {/* Screenshot Button for Mobile */}
               <button
                 onClick={captureScreenshot}
-                className="w-10 h-10 rounded-xl bg-pink-500/80 text-white backdrop-blur-sm flex items-center justify-center transition-colors"
+                className="w-9 h-9 rounded-xl bg-pink-500/80 text-white backdrop-blur-sm flex items-center justify-center transition-colors"
                 title="ถ่ายรูป"
               >
-                <Camera className="w-5 h-5" />
+                <Camera className="w-4 h-4" />
               </button>
+              {/* Camera On/Off Toggle - use Eye icon to distinguish from screenshot */}
               <button 
                 onClick={toggleCamera}
                 className={cn(
-                  "w-10 h-10 rounded-xl backdrop-blur-sm flex items-center justify-center transition-colors",
+                  "w-9 h-9 rounded-xl backdrop-blur-sm flex items-center justify-center transition-colors",
                   cameraEnabled ? "bg-white/10 text-white" : "bg-red-500/20 text-red-400"
                 )}
+                title={cameraEnabled ? "ปิดกล้อง" : "เปิดกล้อง"}
               >
-                {cameraEnabled ? <Camera className="w-5 h-5" /> : <CameraOff className="w-5 h-5" />}
+                {cameraEnabled ? <Eye className="w-4 h-4" /> : <CameraOff className="w-4 h-4" />}
               </button>
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl px-3 py-2">
-                <p className="text-white font-bold text-lg">{formatTime(totalTime)}</p>
+              {/* Mute/Unmute Toggle - Mobile */}
+              <button
+                onClick={() => {
+                  const next = !ttsEnabled;
+                  setTtsEnabled(next);
+                  ttsEnabledRef.current = next;
+                  if (!next) stopAllTTS();
+                }}
+                className={cn(
+                  "w-9 h-9 rounded-xl backdrop-blur-sm flex items-center justify-center transition-colors",
+                  ttsEnabled ? "bg-white/10 text-white" : "bg-red-500/20 text-red-400"
+                )}
+                title={ttsEnabled ? "ปิดเสียงโค้ช" : "เปิดเสียงโค้ช"}
+              >
+                {ttsEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+              </button>
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl px-2 py-1.5">
+                <p className="text-white font-bold text-sm tabular-nums">{formatTime(totalTime)}</p>
               </div>
             </div>
           </div>
-          {/* Debug overlay for KAYA intermediate to diagnose black screen */}
-          {selectedStyleId === 'kaya-intermediate' && (
-            <div className="absolute top-6 right-6 z-50 p-3 bg-white/10 backdrop-blur rounded-lg text-xs text-white border border-white/10">
-              <div className="font-medium mb-1">Debug</div>
-              <div>cameraEnabled: {String(cameraEnabled)}</div>
-              <div>autoplayBlocked: {String(autoplayBlocked)}</div>
-              <div>cameraReady: {String(cameraReady)}</div>
-              <div>videoReadyState: {videoRef.current?.readyState ?? 'null'}</div>
-              <div>landmarks: {landmarks.length}</div>
-              <div>opticalFlow: {opticalFlowPoints.length}</div>
-              <div>mediaPipeLoading: {String(mediaPipeLoading)}</div>
-              <div>mediaPipeError: {String(mediaPipeError ?? '')}</div>
-              <div className="mt-2">
-                <canvas ref={debugCanvasRef} width={160} height={120} className="border border-white/20" />
-              </div>
-              <div className="mt-2 text-red-300">{cameraError}</div>
-            </div>
-          )}
+
 
           {/* Music Player for Mobile */}
           {showMusicPlayer && (
@@ -1935,7 +2444,7 @@ export default function WorkoutUI() {
             />
           </div>
           <p className="text-sm text-white/60 mt-2 text-center">
-            Exercise {currentExercise + 1} of {exercises.length}
+            ท่าที่ {currentExercise + 1} จาก {exercises.length}
           </p>
         </div>
 
@@ -1950,19 +2459,59 @@ export default function WorkoutUI() {
                 {exerciseIcons[exercise.icon] || <Dumbbell className="w-12 h-12" />}
               </div>
               <div className="flex-1">
-                <h2 className="text-2xl font-bold text-white">{exercise.name}</h2>
-                {exercise.duration ? (
-                  <p className="text-white/60">{exercise.duration} seconds</p>
+                <h2 className="text-2xl font-bold text-white">{exercise.nameTh || exercise.name}</h2>
+                {isKayaWorkout ? (
+                  exercise?.duration && !exercise?.reps ? (
+                    <p className="text-white/60">{formatTime(timeLeft)} เหลือ</p>
+                  ) : (
+                    <p className="text-white/60">{Math.min(kayaAnalysis.reps, exercise?.reps || 10)} / {exercise?.reps || 10} ครั้ง</p>
+                  )
                 ) : (
-                  <p className="text-white/60">{exercise.reps} reps</p>
+                  exercise.duration ? (
+                    <p className="text-white/60">{exercise.duration} วินาที</p>
+                  ) : (
+                    <p className="text-white/60">{exercise.reps} ครั้ง</p>
+                  )
                 )}
               </div>
-              {exercise.duration ? (
-                <div className="text-4xl font-bold text-primary font-mono">{timeLeft}s</div>
+              {isKayaWorkout ? (
+                exercise?.duration && !exercise?.reps ? (
+                  <div className="text-4xl font-bold text-primary font-mono">{formatTime(timeLeft)}</div>
+                ) : (
+                  <div className="text-4xl font-bold text-primary font-mono">{Math.min(kayaAnalysis.reps, exercise?.reps || 10)}</div>
+                )
               ) : (
-                <div className="text-4xl font-bold text-primary font-mono">{exercise.reps}</div>
+                exercise.duration ? (
+                  <div className="text-4xl font-bold text-primary font-mono">{timeLeft}s</div>
+                ) : (
+                  <div className="text-4xl font-bold text-primary font-mono">{exercise.reps}</div>
+                )
               )}
             </div>
+
+            {/* KAYA Form Score Bar */}
+            {isKayaWorkout && kayaAnalysis.isBodyVisible && (
+              <div className="mb-3">
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-white/60">ฟอร์ม</span>
+                  <span className={cn(
+                    "font-bold",
+                    kayaAnalysis.formScore >= 80 ? "text-green-400" :
+                    kayaAnalysis.formScore >= 50 ? "text-yellow-400" : "text-red-400"
+                  )}>{kayaAnalysis.formScore}%</span>
+                </div>
+                <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+                  <div 
+                    className={cn(
+                      "h-full rounded-full transition-all duration-500",
+                      kayaAnalysis.formScore >= 80 ? "bg-green-500" :
+                      kayaAnalysis.formScore >= 50 ? "bg-yellow-500" : "bg-red-500"
+                    )}
+                    style={{ width: `${kayaAnalysis.formScore}%` }}
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Progress ring for timed exercises */}
             {exercise.duration && (
@@ -1975,6 +2524,32 @@ export default function WorkoutUI() {
             )}
           </div>
         </div>
+
+        {/* KAYA Stage Indicator - Mobile */}
+        {isKayaWorkout && currentKayaExercise && kayaAnalysis.isBodyVisible && (
+          <div className="px-4 mb-2">
+            <StageIndicator 
+              exerciseType={currentKayaExercise}
+              currentStage={kayaAnalysis.stage}
+              targetStage={kayaAnalysis.targetStage}
+              formScore={kayaAnalysis.formScore}
+              reps={kayaAnalysis.reps}
+            />
+          </div>
+        )}
+
+        {/* Rep Counter Animation - Mobile */}
+        {showRepCounter && (
+          <div className="absolute inset-0 flex items-center justify-center z-30 pointer-events-none">
+            <div className="animate-rep-popup">
+              <span className="text-[120px] font-black text-primary drop-shadow-2xl" style={{
+                textShadow: '0 0 60px rgba(221, 110, 83, 0.8), 0 0 120px rgba(221, 110, 83, 0.4)'
+              }}>
+                {displayRep}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* AI Coach Bubble */}
         {showCoach && (
@@ -2001,7 +2576,7 @@ export default function WorkoutUI() {
         )}
 
         {/* Controls */}
-        <div className="px-4 pb-8 safe-area-inset-bottom">
+        <div className="px-4 pb-4" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
           <div className="flex items-center justify-center gap-4">
             <Button
               variant="outline"
@@ -2015,7 +2590,10 @@ export default function WorkoutUI() {
             <Button
               size="icon"
               className="w-20 h-20 rounded-full bg-gradient-to-r from-primary to-orange-400 shadow-lg shadow-primary/30"
-              onClick={() => setIsPaused(!isPaused)}
+              onClick={() => {
+                if (!isPaused) stopAllTTS(); // stop coach audio when pausing
+                setIsPaused(!isPaused);
+              }}
             >
               {isPaused ? <Play className="w-8 h-8 ml-1" /> : <Pause className="w-8 h-8" />}
             </Button>
@@ -2030,11 +2608,11 @@ export default function WorkoutUI() {
           </div>
 
           {isPaused && (
-            <p className="text-center text-yellow-400 font-semibold mt-4 animate-pulse">PAUSED</p>
+            <p className="text-center text-yellow-400 font-semibold mt-4 animate-pulse">หยุดชั่วคราว</p>
           )}
 
           {/* Voice Coach Button */}
-          <div className="fixed bottom-28 left-4 flex flex-col items-center gap-2">
+          <div className="absolute bottom-32 left-4 flex flex-col items-center gap-2 z-20" style={{ bottom: 'calc(7rem + env(safe-area-inset-bottom, 0px))' }}>
             <button
               onMouseDown={startVoiceRecording}
               onMouseUp={stopVoiceRecording}
@@ -2075,7 +2653,8 @@ export default function WorkoutUI() {
           {!showCoach && (
             <button
               onClick={() => setShowCoach(true)}
-              className="fixed bottom-28 right-4 w-12 h-12 rounded-full bg-gradient-to-r from-primary to-orange-400 shadow-lg shadow-primary/30 flex items-center justify-center animate-scale-in"
+              className="absolute right-4 w-12 h-12 rounded-full bg-gradient-to-r from-primary to-orange-400 shadow-lg shadow-primary/30 flex items-center justify-center animate-scale-in z-20"
+              style={{ bottom: 'calc(7rem + env(safe-area-inset-bottom, 0px))' }}
             >
               <MessageCircle className="w-5 h-5 text-white" />
             </button>

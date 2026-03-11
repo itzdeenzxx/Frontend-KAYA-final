@@ -10,6 +10,9 @@ import {
 import { getFishById } from '@/lib/fishingDatabase';
 import { calculateFishingExp } from '@/lib/equipmentDatabase';
 import { RARITY_COLORS, RARITY_NAMES_TH } from '@/types/fishing';
+import {
+  PackageIcon, GiftIcon, CoinIcon, LightningIcon, EmojiIcon,
+} from './FishingIcons';
 
 export function SellSummaryScreen({
   session,
@@ -45,14 +48,14 @@ export function SellSummaryScreen({
 
       {/* Background Pattern */}
       <div className="absolute inset-0 opacity-10">
-        <div className="absolute top-10 left-10 text-9xl">📦</div>
-        <div className="absolute bottom-10 right-10 text-8xl">🎁</div>
+        <div className="absolute top-10 left-10"><PackageIcon className="w-36 h-36" /></div>
+        <div className="absolute bottom-10 right-10"><GiftIcon className="w-32 h-32" /></div>
       </div>
 
       <div className="relative z-10 py-12 px-4 max-w-6xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8 animate-fade-in">
-          <div className="text-7xl mb-4 animate-bounce-slow">📦</div>
+          <div className="mb-4 animate-bounce-slow flex justify-center"><PackageIcon className="w-20 h-20" /></div>
           <h1 className="text-5xl sm:text-6xl font-black text-white drop-shadow-2xl mb-2 tracking-wide">
             สรุปการตกปลา
           </h1>
@@ -71,7 +74,7 @@ export function SellSummaryScreen({
             <div className="bg-gradient-to-b from-gray-800 to-gray-900 rounded-2xl border-4 border-gray-700 p-6 shadow-2xl hover:scale-105 transition-transform">
               <div className="text-center">
                 <p className="text-white font-bold text-lg mb-4">COINS</p>
-                <div className="text-7xl mb-4">💰</div>
+                <div className="mb-4 flex justify-center"><CoinIcon className="w-20 h-20" /></div>
                 <p className="text-white font-black text-2xl">x {totalEarnings}</p>
               </div>
             </div>
@@ -91,7 +94,7 @@ export function SellSummaryScreen({
             <div className="bg-gradient-to-b from-gray-800 to-gray-900 rounded-2xl border-4 border-gray-700 p-6 shadow-2xl hover:scale-105 transition-transform">
               <div className="text-center">
                 <p className="text-white font-bold text-lg mb-4">EXP</p>
-                <div className="text-7xl mb-4">⚡</div>
+                <div className="mb-4 flex justify-center"><LightningIcon className="w-16 h-20" /></div>
                 <p className="text-white font-black text-2xl">+{totalExp}</p>
               </div>
             </div>
@@ -135,7 +138,7 @@ export function SellSummaryScreen({
 
                     {/* Fish Image */}
                     <div className="py-6 px-4 bg-gradient-to-b from-gray-700 to-gray-800">
-                      <div className="text-7xl text-center mb-2">{fish.emoji}</div>
+                      <div className="flex justify-center mb-2"><EmojiIcon emoji={fish.emoji} className="w-20 h-20" /></div>
                       <p className="text-white font-bold text-center text-sm mb-1">
                         {fish.nameTh}
                       </p>

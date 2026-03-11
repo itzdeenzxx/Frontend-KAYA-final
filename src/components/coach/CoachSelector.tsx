@@ -10,6 +10,7 @@ import { getCoachAvatar } from './CoachAvatars';
 import { getCustomAvatar } from './CustomAvatars';
 import { useTTS } from '@/hooks/useTTS';
 import { getCustomCoach } from '@/lib/firestore';
+import { getLocalAudioUrl } from '@/lib/coachAudio';
 
 interface CoachSelectorProps {
   userId?: string;
@@ -57,7 +58,11 @@ export const CoachSelector = ({
   }, [userId, selectedCoachId]);
 
   useEffect(() => {
-    return () => { stop(); };
+    return () => {
+      stop();
+      // Stop any local audio element on unmount to prevent memory leaks
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+    };
   }, [stop]);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -85,14 +90,57 @@ export const CoachSelector = ({
   const handlePreviewVoice = async (coach: Coach) => {
     if (playingCoachId === coach.id) {
       stop();
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
       setPlayingCoachId(null);
-    } else {
-      setPlayingCoachId(coach.id);
-      try {
-        await speak(coach.sampleGreeting);
-      } finally {
-        setPlayingCoachId(null);
+      return;
+    }
+
+    // Stop any currently playing audio before starting a new one
+    stop();
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+    setPlayingCoachId(coach.id);
+    try {
+      // Try local pre-recorded greeting first (instant, no network needed)
+      const localUrl = getLocalAudioUrl(coach.id, 'greeting');
+      if (localUrl) {
+        const played = await new Promise<boolean>((resolve) => {
+          if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+          const audio = new Audio(localUrl);
+          audioRef.current = audio;
+          audio.onended = () => { audioRef.current = null; resolve(true); };
+          audio.onerror = () => { audioRef.current = null; resolve(false); };
+          audio.play().catch(() => { audioRef.current = null; resolve(false); });
+        });
+        if (played) return;
+        // Local file failed — fall through to TTS API below
       }
+      // Fallback: Call Botnoi TTS API with the coach's voiceId
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      const res = await fetch('/api/aift/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: coach.sampleGreeting,
+          speaker: coach.voiceId,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const result = await res.json();
+        if (result.success && result.audio_base64) {
+          console.log('🔊 Preview voice:', coach.name, 'speaker:', coach.voiceId);
+          await playAudioBase64(result.audio_base64);
+          return;
+        }
+      }
+      console.warn('Preview TTS failed for', coach.name);
+    } catch (err: any) {
+      console.warn('Preview error:', err.name === 'AbortError' ? 'timeout' : err.message);
+    } finally {
+      setPlayingCoachId(null);
     }
   };
 
@@ -153,7 +201,7 @@ export const CoachSelector = ({
       <Card
         key={coach.id}
         className={cn(
-          'cursor-pointer transition-all duration-200 hover:shadow-lg relative overflow-hidden',
+          'cursor-pointer transition-all duration-200 hover:shadow-lg relative overflow-hidden h-full flex flex-col',
           isSelected
             ? 'ring-2 ring-primary bg-primary/5'
             : 'hover:bg-muted/50'
@@ -169,8 +217,8 @@ export const CoachSelector = ({
           </div>
         )}
         
-        <CardContent className="p-4">
-          <div className="flex flex-col items-center text-center space-y-3">
+        <CardContent className="p-4 flex flex-col h-full">
+          <div className="flex flex-col items-center text-center space-y-3 flex-1">
             <div
               className={cn(
                 'rounded-full p-1 transition-transform duration-200',
@@ -207,31 +255,31 @@ export const CoachSelector = ({
                 </Badge>
               ))}
             </div>
-
-            {showPreview && (
-              <Button
-                size="sm"
-                variant={isPlaying ? 'default' : 'outline'}
-                className="w-full mt-2"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handlePreviewVoice(coach);
-                }}
-              >
-                {isPlaying ? (
-                  <>
-                    <Pause className="w-4 h-4 mr-2" />
-                    หยุด
-                  </>
-                ) : (
-                  <>
-                    <Volume2 className="w-4 h-4 mr-2" />
-                    ฟังเสียงตัวอย่าง
-                  </>
-                )}
-              </Button>
-            )}
           </div>
+
+          {showPreview && (
+            <Button
+              size="sm"
+              variant={isPlaying ? 'default' : 'outline'}
+              className="w-full mt-3"
+              onClick={(e) => {
+                e.stopPropagation();
+                handlePreviewVoice(coach);
+              }}
+            >
+              {isPlaying ? (
+                <>
+                  <Pause className="w-4 h-4 mr-2" />
+                  หยุด
+                </>
+              ) : (
+                <>
+                  <Volume2 className="w-4 h-4 mr-2" />
+                  ฟังเสียงตัวอย่าง
+                </>
+              )}
+            </Button>
+          )}
         </CardContent>
       </Card>
     );
@@ -366,7 +414,13 @@ export const CoachSelector = ({
     <div className={cn('w-full', className)}>
       <Tabs
         value={currentTab}
-        onValueChange={(v) => setCurrentTab(v as 'female' | 'male' | 'custom')}
+        onValueChange={(v) => {
+          // Stop any playing audio when switching tabs
+          stop();
+          if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+          setPlayingCoachId(null);
+          setCurrentTab(v as 'female' | 'male' | 'custom');
+        }}
         className="w-full"
       >
         <TabsList className="grid w-full grid-cols-3 mb-4">

@@ -20,6 +20,10 @@ import {
   getBoatById,
 } from '@/lib/equipmentDatabase';
 import { RARITY_COLORS, RARITY_NAMES_TH } from '@/types/fishing';
+import {
+  GearIcon, ToolsIcon, FishingRodIcon, BaitIcon, BoatIcon,
+} from './FishingIcons';
+import { ShopItemIcon } from './ShopItemIcons';
 
 export function ShopScreen({
   player,
@@ -200,8 +204,8 @@ export function ShopScreen({
     <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-800 to-black relative overflow-hidden">
       {/* Background Pattern */}
       <div className="absolute inset-0 opacity-5">
-        <div className="absolute top-20 left-20 text-9xl">⚙️</div>
-        <div className="absolute bottom-20 right-20 text-8xl">🛠️</div>
+        <div className="absolute top-20 left-20"><GearIcon className="w-36 h-36" /></div>
+        <div className="absolute bottom-20 right-20"><ToolsIcon className="w-32 h-32" /></div>
       </div>
 
       <div className="relative z-10 flex h-screen">
@@ -231,7 +235,7 @@ export function ShopScreen({
               )}
             >
               <div className="flex items-center justify-between">
-                <span>🎣 RODS</span>
+                <span className="flex items-center gap-1"><FishingRodIcon className="w-5 h-5" /> RODS</span>
                 <span className="text-xs bg-purple-800 px-2 py-1 rounded">
                   {FISHING_RODS.length}
                 </span>
@@ -251,7 +255,7 @@ export function ShopScreen({
               )}
             >
               <div className="flex items-center justify-between">
-                <span>🪱 BAITS</span>
+                <span className="flex items-center gap-1"><BaitIcon className="w-5 h-5" /> BAITS</span>
                 <span className="text-xs bg-purple-800 px-2 py-1 rounded">
                   {BAITS.length}
                 </span>
@@ -271,7 +275,7 @@ export function ShopScreen({
               )}
             >
               <div className="flex items-center justify-between">
-                <span>⛵ BOATS</span>
+                <span className="flex items-center gap-1"><BoatIcon className="w-5 h-5" /> BOATS</span>
                 <span className="text-xs bg-purple-800 px-2 py-1 rounded">
                   {BOATS.length}
                 </span>
@@ -333,10 +337,8 @@ export function ShopScreen({
                         background: `linear-gradient(135deg, ${borderColor}20, ${borderColor}40)`,
                       }}
                     >
-                      <div className="text-7xl">
-                        {item.type === 'rod' && '🎣'}
-                        {item.type === 'bait' && '🪱'}
-                        {item.type === 'boat' && '⛵'}
+                      <div className="text-7xl flex items-center justify-center">
+                        <ShopItemIcon type={item.type} itemId={item.id} className="w-20 h-20" />
                       </div>
                     </div>
 
@@ -390,9 +392,7 @@ export function ShopScreen({
                   className="text-5xl animate-pulse"
                   style={{ filter: `drop-shadow(0 0 10px ${getBorderColor(selectedItem.rarity)})` }}
                 >
-                  {selectedItem.type === 'rod' && '🎣'}
-                  {selectedItem.type === 'bait' && '🪱'}
-                  {selectedItem.type === 'boat' && '⛵'}
+                  <ShopItemIcon type={selectedItem.type} itemId={selectedItem.id} className="w-16 h-16" />
                 </div>
                 <div className="flex-1">
                   <div

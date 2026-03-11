@@ -11,6 +11,12 @@ import {
 } from 'lucide-react';
 import { getRodById, getBaitById, getBoatById } from '@/lib/equipmentDatabase';
 import { RARITY_COLORS, RARITY_NAMES_TH } from '@/types/fishing';
+import {
+  CloudIcon, RockIcon, CoralIcon, FishIcon as FishSvgIcon, TropicalFishIcon,
+  PufferfishIcon, SharkIcon, BeachIcon, ShellIcon, StarFilledIcon,
+  WoodLogIcon, PalmTreeIcon, TreeIcon, WaveIcon, ShipIcon,
+  FishingRodIcon, SeagullIcon,
+} from './FishingIcons';
 
 export function MainHubScreen({
   player,
@@ -36,65 +42,65 @@ export function MainHubScreen({
       <div className="absolute inset-0">
         {/* Sky with clouds */}
         <div className="absolute top-0 left-0 right-0 h-1/4 bg-gradient-to-b from-sky-200 via-sky-300 to-transparent">
-          <div className="absolute top-8 left-20 text-5xl opacity-50 animate-float">☁️</div>
-          <div className="absolute top-12 right-32 text-4xl opacity-40 animate-float-slow">☁️</div>
-          <div className="absolute top-20 left-1/3 text-6xl opacity-30 animate-float">☁️</div>
+          <div className="absolute top-8 left-20 opacity-50 animate-float"><CloudIcon className="w-20 h-12" /></div>
+          <div className="absolute top-12 right-32 opacity-40 animate-float-slow"><CloudIcon className="w-16 h-10" /></div>
+          <div className="absolute top-20 left-1/3 opacity-30 animate-float"><CloudIcon className="w-24 h-14" /></div>
         </div>
 
         {/* Ocean gradient */}
         <div className="absolute inset-0 bg-gradient-to-b from-cyan-400 via-blue-500 to-blue-600 opacity-80" />
         
         {/* Underwater rocks and coral */}
-        <div className="absolute bottom-32 left-1/4 text-6xl opacity-30 animate-float-slow">🪨</div>
-        <div className="absolute bottom-40 right-1/3 text-5xl opacity-25 animate-float">🪸</div>
-        <div className="absolute bottom-48 left-1/3 text-4xl opacity-20">🪨</div>
+        <div className="absolute bottom-32 left-1/4 opacity-30 animate-float-slow"><RockIcon className="w-20 h-16" /></div>
+        <div className="absolute bottom-40 right-1/3 opacity-25 animate-float"><CoralIcon className="w-16 h-16" /></div>
+        <div className="absolute bottom-48 left-1/3 opacity-20"><RockIcon className="w-14 h-12" /></div>
         
         {/* Swimming fish */}
-        <div className="absolute top-1/3 left-1/4 text-4xl opacity-40 animate-swim">🐟</div>
-        <div className="absolute top-1/2 right-1/4 text-3xl opacity-35 animate-swim-reverse">🐠</div>
-        <div className="absolute bottom-1/2 left-1/3 text-5xl opacity-30 animate-swim-slow">🐡</div>
-        <div className="absolute top-2/3 right-1/3 text-4xl opacity-40 animate-swim">🦈</div>
-        <div className="absolute bottom-2/3 left-2/3 text-3xl opacity-35 -scale-x-100 animate-swim-reverse">🐟</div>
-        <div className="absolute top-1/2 left-1/2 text-2xl opacity-25 animate-swim-slow">🐠</div>
+        <div className="absolute top-1/3 left-1/4 opacity-40 animate-swim"><FishSvgIcon className="w-14 h-10" /></div>
+        <div className="absolute top-1/2 right-1/4 opacity-35 animate-swim-reverse"><TropicalFishIcon className="w-12 h-8" /></div>
+        <div className="absolute bottom-1/2 left-1/3 opacity-30 animate-swim-slow"><PufferfishIcon className="w-16 h-16" /></div>
+        <div className="absolute top-2/3 right-1/3 opacity-40 animate-swim"><SharkIcon className="w-14 h-8" /></div>
+        <div className="absolute bottom-2/3 left-2/3 opacity-35 -scale-x-100 animate-swim-reverse"><FishSvgIcon className="w-12 h-8" /></div>
+        <div className="absolute top-1/2 left-1/2 opacity-25 animate-swim-slow"><TropicalFishIcon className="w-10 h-7" /></div>
         
         {/* Rocks on sides */}
-        <div className="absolute bottom-0 left-0 text-9xl opacity-60">🪨</div>
-        <div className="absolute bottom-16 left-16 text-7xl opacity-50">🪨</div>
-        <div className="absolute bottom-8 left-8 text-5xl opacity-40">🪨</div>
-        <div className="absolute bottom-0 right-0 text-9xl opacity-60">🪨</div>
-        <div className="absolute bottom-12 right-20 text-8xl opacity-50">🪨</div>
-        <div className="absolute bottom-6 right-12 text-6xl opacity-45">🪨</div>
+        <div className="absolute bottom-0 left-0 opacity-60"><RockIcon className="w-28 h-24" /></div>
+        <div className="absolute bottom-16 left-16 opacity-50"><RockIcon className="w-24 h-20" /></div>
+        <div className="absolute bottom-8 left-8 opacity-40"><RockIcon className="w-16 h-14" /></div>
+        <div className="absolute bottom-0 right-0 opacity-60"><RockIcon className="w-28 h-24" /></div>
+        <div className="absolute bottom-12 right-20 opacity-50"><RockIcon className="w-24 h-20" /></div>
+        <div className="absolute bottom-6 right-12 opacity-45"><RockIcon className="w-20 h-16" /></div>
         
         {/* Beach/Sand elements */}
-        <div className="absolute bottom-0 left-1/4 text-4xl opacity-40">🏖️</div>
-        <div className="absolute bottom-4 right-1/3 text-3xl opacity-35">🐚</div>
-        <div className="absolute bottom-8 left-1/3 text-3xl opacity-30">⭐</div>
+        <div className="absolute bottom-0 left-1/4 opacity-40"><BeachIcon className="w-16 h-12" /></div>
+        <div className="absolute bottom-4 right-1/3 opacity-35"><ShellIcon className="w-10 h-10" /></div>
+        <div className="absolute bottom-8 left-1/3 opacity-30"><StarFilledIcon className="w-10 h-10" /></div>
         
         {/* Wooden pier/dock on left */}
         <div className="absolute bottom-0 left-0 ml-32 mb-20 flex flex-col items-center space-y-1">
-          <div className="text-5xl opacity-50">🪵</div>
-          <div className="text-5xl opacity-50">🪵</div>
-          <div className="text-5xl opacity-50">🪵</div>
-          <div className="text-5xl opacity-50">🪵</div>
+          <div className="opacity-50"><WoodLogIcon className="w-16 h-8" /></div>
+          <div className="opacity-50"><WoodLogIcon className="w-16 h-8" /></div>
+          <div className="opacity-50"><WoodLogIcon className="w-16 h-8" /></div>
+          <div className="opacity-50"><WoodLogIcon className="w-16 h-8" /></div>
         </div>
         
         {/* Palm trees on sides */}
-        <div className="absolute bottom-32 left-4 text-7xl opacity-50">🌴</div>
-        <div className="absolute bottom-28 right-4 text-8xl opacity-55">🌴</div>
-        <div className="absolute bottom-36 left-24 text-6xl opacity-40">🌳</div>
+        <div className="absolute bottom-32 left-4 opacity-50"><PalmTreeIcon className="w-20 h-24" /></div>
+        <div className="absolute bottom-28 right-4 opacity-55"><PalmTreeIcon className="w-24 h-28" /></div>
+        <div className="absolute bottom-36 left-24 opacity-40"><TreeIcon className="w-16 h-22" /></div>
         
         {/* Water waves */}
-        <div className="absolute bottom-1/4 left-1/4 text-3xl opacity-20 animate-wave">🌊</div>
-        <div className="absolute bottom-1/3 right-1/4 text-3xl opacity-25 animate-wave">🌊</div>
-        <div className="absolute bottom-1/2 left-1/2 text-2xl opacity-15 animate-wave">🌊</div>
+        <div className="absolute bottom-1/4 left-1/4 opacity-20 animate-wave"><WaveIcon className="w-12 h-6" /></div>
+        <div className="absolute bottom-1/3 right-1/4 opacity-25 animate-wave"><WaveIcon className="w-12 h-6" /></div>
+        <div className="absolute bottom-1/2 left-1/2 opacity-15 animate-wave"><WaveIcon className="w-10 h-5" /></div>
         
         {/* Fishing boat */}
-        <div className="absolute bottom-1/3 left-1/2 transform -translate-x-1/2 text-8xl animate-bob">🚢</div>
-        <div className="absolute bottom-1/3 left-1/2 transform -translate-x-1/2 translate-y-8 text-5xl rotate-45 animate-fishing">🎣</div>
+        <div className="absolute bottom-1/3 left-1/2 transform -translate-x-1/2 animate-bob"><ShipIcon className="w-28 h-20" /></div>
+        <div className="absolute bottom-1/3 left-1/2 transform -translate-x-1/2 translate-y-8 rotate-45 animate-fishing"><FishingRodIcon className="w-16 h-16" /></div>
         
         {/* Seagulls */}
-        <div className="absolute top-1/4 left-1/4 text-3xl opacity-50 animate-float">🦜</div>
-        <div className="absolute top-1/3 right-1/3 text-2xl opacity-40 animate-float-slow">🦜</div>
+        <div className="absolute top-1/4 left-1/4 opacity-50 animate-float"><SeagullIcon className="w-12 h-8" /></div>
+        <div className="absolute top-1/3 right-1/3 opacity-40 animate-float-slow"><SeagullIcon className="w-10 h-6" /></div>
       </div>
 
       {/* Top Stats Bar */}
@@ -210,7 +216,7 @@ export function MainHubScreen({
                   
                   <div className="bg-gradient-to-br from-blue-900/50 to-purple-900/50 rounded-xl p-3 sm:p-4 border-2 border-blue-500/50">
                     <div className="flex items-center space-x-3 mb-3">
-                      <div className="text-4xl sm:text-5xl">🎣</div>
+                      <div className="w-14 h-14 sm:w-16 sm:h-16"><FishingRodIcon className="w-full h-full" /></div>
                       <div className="flex-1">
                         <p className="text-white font-bold text-base sm:text-lg">{equippedRod.nameTh}</p>
                         <p className="text-cyan-300 text-xs sm:text-sm">คันเบ็ด</p>

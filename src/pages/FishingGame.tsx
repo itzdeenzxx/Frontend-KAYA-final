@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFishingGameState } from '@/hooks/useFishingGameState';
 import { FishingMenuScreen } from '@/components/fishing/FishingMenuScreen';
@@ -11,6 +12,32 @@ import { Loader2 } from 'lucide-react';
 
 export default function FishingGamePage() {
   const navigate = useNavigate();
+  const bgmRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    const audio = new Audio('/assets/music/fishing-game.mp3');
+    audio.loop = true;
+    audio.volume = 0.18;
+    bgmRef.current = audio;
+
+    const tryPlay = () => {
+      if (bgmRef.current && bgmRef.current.paused) {
+        bgmRef.current.play().catch(() => {});
+      }
+    };
+
+    // Browsers block autoplay until user interacts — listen for any interaction
+    const events = ['click', 'touchstart', 'keydown'] as const;
+    events.forEach(e => document.addEventListener(e, tryPlay, { once: true }));
+    tryPlay();
+
+    return () => {
+      events.forEach(e => document.removeEventListener(e, tryPlay));
+      audio.pause();
+      audio.src = '';
+    };
+  }, []);
+
   const {
     gameState,
     navigateToScreen,

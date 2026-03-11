@@ -9,57 +9,12 @@ declare const process: {
 
 type TTSRequest = {
   text: string;
-  voiceName?: string;     // Gemini voice name (Aoede, Kore, etc.) or VAJA speaker ID (nana, poom, etc.)
-  instruction?: string;   // Speaking style instruction for Gemini TTS
+  voiceName?: string;     // Botnoi speaker ID (numeric string)
+  speaker?: string;       // Alias for voiceName
+  speed?: number;
+  volume?: number;
+  language?: string;
 };
-
-// Map VAJA speaker IDs to Gemini TTS voice names
-// Gemini voices: Zephyr, Puck, Charon, Kore, Fenrir, Aoede, Leda, Orus, Perseus
-const VOICE_MAP: Record<string, string> = {
-  // Female coaches
-  nana: 'Kore',      // Cheerful female
-  farsai: 'Leda',    // Gentle female
-  prim: 'Aoede',     // Professional female
-  noina: 'Fenrir',   // Strict/strong female
-  // Male coaches
-  poom: 'Puck',      // Friendly male
-  thanwa: 'Charon',  // Intense male
-  // Defaults
-  default: 'Kore',
-};
-
-// Create WAV header for PCM data (s16le, 24000Hz, mono)
-function createWavHeader(pcmLength: number): Uint8Array {
-  const header = new ArrayBuffer(44);
-  const view = new DataView(header);
-
-  const sampleRate = 24000;
-  const numChannels = 1;
-  const bitsPerSample = 16;
-  const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
-  const blockAlign = numChannels * (bitsPerSample / 8);
-
-  // "RIFF" chunk
-  view.setUint32(0, 0x52494646, false); // "RIFF"
-  view.setUint32(4, 36 + pcmLength, true); // file size - 8
-  view.setUint32(8, 0x57415645, false); // "WAVE"
-
-  // "fmt " sub-chunk
-  view.setUint32(12, 0x666D7420, false); // "fmt "
-  view.setUint32(16, 16, true); // sub-chunk size
-  view.setUint16(20, 1, true); // PCM format
-  view.setUint16(22, numChannels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, byteRate, true);
-  view.setUint16(32, blockAlign, true);
-  view.setUint16(34, bitsPerSample, true);
-
-  // "data" sub-chunk
-  view.setUint32(36, 0x64617461, false); // "data"
-  view.setUint32(40, pcmLength, true);
-
-  return new Uint8Array(header);
-}
 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
@@ -69,9 +24,9 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
-  const apiKey = process.env.GOOGLE_API_KEY;
-  if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'Server misconfigured: missing GOOGLE_API_KEY' }), {
+  const botnoiToken = process.env.BOTNOI_TOKEN;
+  if (!botnoiToken) {
+    return new Response(JSON.stringify({ error: 'Server misconfigured: missing BOTNOI_TOKEN' }), {
       status: 500,
       headers: { 'content-type': 'application/json' },
     });
@@ -87,67 +42,56 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
-  const text = (body.text || '').trim();
+  let text = (body.text || '').trim();
   if (!text) {
     return new Response(JSON.stringify({ error: 'Missing text' }), {
       status: 400,
       headers: { 'content-type': 'application/json' },
     });
   }
+  if (text.length > 1000) {
+    text = text.substring(0, 997) + '...';
+  }
 
-  // Map speaker to Gemini voice — accept direct Gemini voice names or VAJA speaker IDs
-  const speakerKey = body.voiceName || 'default';
-  // If it's already a valid Gemini voice name (starts with uppercase), use as-is
-  const GEMINI_VOICES = ['Aoede', 'Kore', 'Leda', 'Zephyr', 'Charon', 'Fenrir', 'Orus', 'Perseus', 'Puck'];
-  const voiceName = GEMINI_VOICES.includes(speakerKey)
-    ? speakerKey
-    : (VOICE_MAP[speakerKey] || VOICE_MAP['default']);
+  // Validate speaker is a numeric Botnoi ID; fallback to '26' (YingAiko) if old VAJA name
+  const rawSpeaker = body.voiceName || body.speaker || '26';
+  const speaker = /^\d+$/.test(rawSpeaker) ? rawSpeaker : '26';
+  const speed = body.speed || 1;
+  const volume = body.volume || 1;
+  const language = body.language || 'th';
 
-  // Build instruction for speaking style
-  const instruction = (body.instruction || '').trim();
-
-  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent`;
-
-  // Preprocess text: replace ๆ (mai yamok) with repeated word
-  const preprocessText = (input: string): string => {
-    return input.replace(/(\S+)\u0e46/g, '$1$1');
-  };
-  const processedText = preprocessText(text);
+  const botnoiUrl = 'https://api-voice.botnoi.ai/openapi/v1/generate_audio';
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 25000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-    // TTS model only accepts plain text — no instructions, no prefixes
-    // Voice personality comes from voiceName selection only
-    const response = await fetch(`${geminiUrl}?key=${apiKey}`, {
+    console.log(`[Botnoi TTS] Synthesizing: speaker=${speaker}, text=${text.substring(0, 50)}...`);
+    const response = await fetch(botnoiUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'botnoi-token': botnoiToken,
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({
-        contents: [{
-          parts: [{ text: processedText }],
-        }],
-        generationConfig: {
-          responseModalities: ['AUDIO'],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: {
-                voiceName,
-              },
-            },
-          },
-        },
+        text,
+        speaker,
+        volume,
+        speed,
+        type_media: 'mp3',
+        save_file: 'true',
+        language,
+        page: 'user',
       }),
       signal: controller.signal,
     });
-
     clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error('Gemini TTS API error:', response.status, errText);
+      console.error('[Botnoi TTS] API error:', response.status, errText);
       return new Response(JSON.stringify({
-        error: 'Gemini TTS API error',
+        error: 'Botnoi TTS API error',
         status: response.status,
         details: errText,
       }), {
@@ -156,12 +100,12 @@ export default async function handler(req: Request): Promise<Response> {
       });
     }
 
-    const result = await response.json() as any;
-    const audioBase64 = result?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    const result = await response.json() as { text?: string; audio_url?: string; point?: number };
+    const audioUrl = result?.audio_url || '';
 
-    if (!audioBase64) {
+    if (!audioUrl) {
       return new Response(JSON.stringify({
-        error: 'No audio data in Gemini response',
+        error: 'No audio_url in Botnoi response',
         details: JSON.stringify(result).substring(0, 500),
       }), {
         status: 502,
@@ -169,28 +113,38 @@ export default async function handler(req: Request): Promise<Response> {
       });
     }
 
-    // Decode PCM base64 to binary
-    const pcmBinary = atob(audioBase64);
-    const pcmBytes = new Uint8Array(pcmBinary.length);
-    for (let i = 0; i < pcmBinary.length; i++) {
-      pcmBytes[i] = pcmBinary.charCodeAt(i);
+    console.log('[Botnoi TTS] Got audio_url:', audioUrl);
+
+    // Download audio file
+    const ctrl2 = new AbortController();
+    const t2 = setTimeout(() => ctrl2.abort(), 10000);
+    const audioRes = await fetch(audioUrl, { signal: ctrl2.signal });
+    clearTimeout(t2);
+
+    if (!audioRes.ok) {
+      return new Response(JSON.stringify({
+        error: 'Failed to download audio',
+        status: audioRes.status,
+      }), {
+        status: 502,
+        headers: { 'content-type': 'application/json' },
+      });
     }
 
-    // Create WAV by prepending header to PCM data
-    const wavHeader = createWavHeader(pcmBytes.length);
-    const wavBytes = new Uint8Array(wavHeader.length + pcmBytes.length);
-    wavBytes.set(wavHeader, 0);
-    wavBytes.set(pcmBytes, wavHeader.length);
+    const audioBuffer = await audioRes.arrayBuffer();
+    const bytes = new Uint8Array(audioBuffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const base64Audio = btoa(binary);
 
-    // Convert WAV to base64
-    const wavBase64 = btoa(
-      wavBytes.reduce((data, byte) => data + String.fromCharCode(byte), '')
-    );
+    console.log('[Botnoi TTS] Success, audio size:', bytes.length, 'bytes');
 
     return new Response(JSON.stringify({
       success: true,
-      audio_base64: wavBase64,
-      voice: voiceName,
+      audio_base64: base64Audio,
+      audio_url: audioUrl,
     }), {
       status: 200,
       headers: {
@@ -200,14 +154,14 @@ export default async function handler(req: Request): Promise<Response> {
     });
 
   } catch (err: any) {
-    console.error('Gemini TTS error:', err);
+    console.error('[Botnoi TTS] Error:', err);
     if (err.name === 'AbortError') {
-      return new Response(JSON.stringify({ error: 'Gemini TTS request timeout' }), {
+      return new Response(JSON.stringify({ error: 'Botnoi TTS request timeout' }), {
         status: 504,
         headers: { 'content-type': 'application/json' },
       });
     }
-    return new Response(JSON.stringify({ error: 'Gemini TTS request failed', details: err.message }), {
+    return new Response(JSON.stringify({ error: 'Botnoi TTS request failed', details: err.message }), {
       status: 500,
       headers: { 'content-type': 'application/json' },
     });

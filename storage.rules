@@ -12,6 +12,26 @@ service firebase.storage {
                        && request.resource.contentType.matches('audio/.*'));
     }
 
+    // Nutrition scan images
+    // Path: nutrition-scans/{userId}/{filename}
+    // Allow read for anyone, write for images up to 10MB
+    match /nutrition-scans/{userId}/{fileName} {
+      allow read: if true;
+      allow write: if request.resource == null // allow delete
+                   || (request.resource.size < 10 * 1024 * 1024
+                       && request.resource.contentType.matches('image/.*'));
+    }
+
+    // Workout share card images
+    // Path: workout-shares/{userId}/{filename}
+    // Allow read for anyone, write for images up to 5MB
+    match /workout-shares/{userId}/{fileName} {
+      allow read: if true;
+      allow write: if request.resource == null
+                   || (request.resource.size < 5 * 1024 * 1024
+                       && request.resource.contentType.matches('image/.*'));
+    }
+
     // Deny everything else
     match /{allPaths=**} {
       allow read, write: if false;

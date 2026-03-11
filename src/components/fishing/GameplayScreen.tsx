@@ -26,6 +26,10 @@ import {
 } from '@/lib/equipmentDatabase';
 import { BIOME_NAMES_TH, RARITY_COLORS, RARITY_NAMES_TH } from '@/types/fishing';
 import { useFishingGame } from '@/hooks/useFishingGame';
+import {
+  FishingRodIcon, FishIcon as FishSvgIcon, WaveIcon,
+  CameraIcon, EmojiIcon, PartyPopperIcon, HandWaveIcon,
+} from './FishingIcons';
 
 // Import biome background images
 import OceanBg from '@/assets/Ocean.png';
@@ -200,7 +204,6 @@ export function GameplayScreen({
     >
       {/* Overlay for better text readability */}
       <div className="absolute inset-0 bg-black/10" />
-
       {/* Video & Canvas for gesture detection - Top Right Corner */}
       <div className="absolute right-2 sm:right-4 top-24 sm:top-28 z-20">
         <div className="relative w-32 h-24 sm:w-40 sm:h-30 md:w-48 md:h-36 lg:w-56 lg:h-42 rounded-lg sm:rounded-xl overflow-hidden border-2 sm:border-4 border-white/30 shadow-xl sm:shadow-2xl bg-black/50">
@@ -221,7 +224,7 @@ export function GameplayScreen({
           />
           {/* Camera label */}
           <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] sm:text-xs text-center py-0.5 sm:py-1 hidden sm:block">
-            📷 กล้องของคุณ
+            <span className="flex items-center justify-center gap-1"><CameraIcon className="w-3 h-3 inline" /> กล้องของคุณ</span>
           </div>
         </div>
       </div>
@@ -286,7 +289,7 @@ export function GameplayScreen({
           {phase === 'idle' && (
             <Card className="bg-white/95 backdrop-blur shadow-2xl max-w-md">
               <CardContent className="p-8 text-center">
-                <div className="text-6xl mb-4">🎣</div>
+              <div className="mb-4 flex justify-center"><FishingRodIcon className="w-20 h-20" /></div>
                 {isFull ? (
                   <>
                     <h2 className="text-3xl font-bold text-red-600 mb-4">
@@ -322,7 +325,7 @@ export function GameplayScreen({
           {phase === 'casting' && (
             <Card className="bg-white/95 backdrop-blur shadow-2xl max-w-md">
               <CardContent className="p-8 text-center">
-                <div className="text-6xl mb-4 animate-bounce">🎣</div>
+              <div className="mb-4 flex justify-center animate-bounce"><FishingRodIcon className="w-20 h-20" /></div>
                 <h2 className="text-3xl font-bold text-blue-600">
                   กำลังขว้าง...
                 </h2>
@@ -333,7 +336,7 @@ export function GameplayScreen({
           {phase === 'waiting' && (
             <Card className="bg-white/95 backdrop-blur shadow-2xl max-w-md">
               <CardContent className="p-8 text-center">
-                <div className="text-6xl mb-4">🌊</div>
+              <div className="mb-4 flex justify-center"><WaveIcon className="w-20 h-10" /></div>
                 <h2 className="text-3xl font-bold text-blue-600 mb-2">
                   รอปลาติด...
                 </h2>
@@ -349,7 +352,7 @@ export function GameplayScreen({
           {phase === 'bite' && currentFish && (
             <Card className="bg-white/95 backdrop-blur shadow-2xl max-w-md animate-pulse">
               <CardContent className="p-8 text-center">
-                <div className="text-6xl mb-4">{currentFish.emoji}</div>
+              <div className="mb-4 flex justify-center"><EmojiIcon emoji={currentFish.emoji} className="w-20 h-20" /></div>
                 <h2 className="text-3xl font-bold text-red-600 mb-2">
                   ปลาติดเบ็ด!
                 </h2>
@@ -364,7 +367,7 @@ export function GameplayScreen({
             <Card className="bg-white/95 backdrop-blur shadow-2xl max-w-lg">
               <CardContent className="p-8">
                 <div className="text-center mb-6">
-                  <div className="text-6xl mb-4">{currentFish.emoji}</div>
+                  <div className="mb-4 flex justify-center"><EmojiIcon emoji={currentFish.emoji} className="w-20 h-20" /></div>
                   <h2 className="text-2xl font-bold text-gray-800 mb-2">
                     {currentFish.nameTh}
                   </h2>
@@ -395,8 +398,8 @@ export function GameplayScreen({
                 </div>
 
                 <div className="bg-yellow-50 border-2 border-yellow-400 rounded-lg p-4 text-center">
-                  <p className="text-lg font-bold text-yellow-800">
-                    👋 ตบมือลงเพื่อดึงปลา!
+                  <p className="text-lg font-bold text-yellow-800 flex items-center justify-center gap-2">
+                    <HandWaveIcon className="w-6 h-6" /> ตบมือลงเพื่อดึงปลา!
                   </p>
                   <p className="text-sm text-yellow-700 mt-1">
                     ต้องตบ: {catchAttempts} ครั้ง
@@ -409,9 +412,9 @@ export function GameplayScreen({
           {phase === 'caught' && currentFish && (
             <Card className="bg-gradient-to-br from-green-400 to-blue-500 shadow-2xl max-w-md animate-bounce">
               <CardContent className="p-8 text-center">
-                <div className="text-6xl mb-4">{currentFish.emoji}</div>
-                <h2 className="text-3xl font-bold text-white mb-2">
-                  🎉 จับได้แล้ว!
+              <div className="mb-4 flex justify-center"><EmojiIcon emoji={currentFish.emoji} className="w-20 h-20" /></div>
+                <h2 className="text-3xl font-bold text-white mb-2 flex items-center justify-center gap-2">
+                  <PartyPopperIcon className="w-8 h-8" /> จับได้แล้ว!
                 </h2>
                 <p className="text-xl text-white font-semibold">
                   {currentFish.nameTh}

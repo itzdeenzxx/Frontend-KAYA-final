@@ -59,6 +59,12 @@ class SoundGenerator {
     if (this.masterGain) {
       this.masterGain.gain.value = this.isMuted ? 0 : 0.6;
     }
+    if (this.bgAudio) {
+      this.bgAudio.muted = this.isMuted;
+    }
+    if (this.isMuted) {
+      this.stopBgMusic();
+    }
   }
 
   getMuted() {
@@ -127,241 +133,73 @@ class SoundGenerator {
     return buffer;
   }
 
-  // Background music patterns per level
-  private bgMusicInterval: NodeJS.Timeout | null = null;
+  // Background music using mp3 file
+  private bgAudio: HTMLAudioElement | null = null;
   private bgMusicPlaying = false;
-
-  private getMusicPattern() {
-    switch (this.currentLevel) {
-      case 'easy':
-        return {
-          notes: [
-            { freq: 262, dur: 0.2 }, // C4
-            { freq: 294, dur: 0.2 }, // D4
-            { freq: 330, dur: 0.2 }, // E4
-            { freq: 294, dur: 0.2 }, // D4
-          ],
-          tempo: 500,
-          type: 'sine' as OscillatorType,
-          volume: 0.1
-        };
-      case 'hard':
-        return {
-          notes: [
-            { freq: 147, dur: 0.15 }, // D3
-            { freq: 165, dur: 0.15 }, // E3
-            { freq: 147, dur: 0.15 }, // D3
-            { freq: 131, dur: 0.15 }, // C3
-            { freq: 147, dur: 0.15 }, // D3
-            { freq: 196, dur: 0.15 }, // G3
-          ],
-          tempo: 250,
-          type: 'sawtooth' as OscillatorType,
-          volume: 0.08
-        };
-      case 'party':
-        return {
-          notes: [
-            { freq: 392, dur: 0.1 }, // G4
-            { freq: 440, dur: 0.1 }, // A4
-            { freq: 494, dur: 0.1 }, // B4
-            { freq: 523, dur: 0.1 }, // C5
-            { freq: 494, dur: 0.1 }, // B4
-            { freq: 440, dur: 0.1 }, // A4
-            { freq: 392, dur: 0.1 }, // G4
-            { freq: 349, dur: 0.1 }, // F4
-          ],
-          tempo: 180,
-          type: 'square' as OscillatorType,
-          volume: 0.07
-        };
-      default: // medium
-        return {
-          notes: [
-            { freq: 262, dur: 0.15 }, // C4
-            { freq: 330, dur: 0.15 }, // E4
-            { freq: 392, dur: 0.15 }, // G4
-            { freq: 330, dur: 0.15 }, // E4
-          ],
-          tempo: 350,
-          type: 'triangle' as OscillatorType,
-          volume: 0.09
-        };
-    }
-  }
 
   playBgMusic() {
     if (this.bgMusicPlaying || this.isMuted) return;
     this.bgMusicPlaying = true;
-    
-    const pattern = this.getMusicPattern();
-    let i = 0;
-    
-    const playNext = () => {
-      if (!this.bgMusicPlaying || this.isMuted) return;
-      const note = pattern.notes[i % pattern.notes.length];
-      this.playTone(note.freq, note.dur, pattern.type, pattern.volume, 1500);
-      i++;
+
+    if (!this.bgAudio) {
+      this.bgAudio = new Audio('/assets/music/mouse-game.mp3');
+      this.bgAudio.loop = true;
+      this.bgAudio.volume = 0.18;
+    }
+
+    const tryPlay = () => {
+      if (this.bgAudio && this.bgAudio.paused && this.bgMusicPlaying) {
+        this.bgAudio.play().catch(() => {});
+      }
     };
-    
-    playNext();
-    this.bgMusicInterval = setInterval(playNext, pattern.tempo);
+    tryPlay();
+    // If blocked by autoplay policy, unlock on next interaction
+    const events = ['click', 'touchstart', 'keydown'] as const;
+    events.forEach(e => document.addEventListener(e, tryPlay, { once: true }));
   }
 
   stopBgMusic() {
     this.bgMusicPlaying = false;
-    if (this.bgMusicInterval) {
-      clearInterval(this.bgMusicInterval);
-      this.bgMusicInterval = null;
+    if (this.bgAudio) {
+      this.bgAudio.pause();
+      this.bgAudio.currentTime = 0;
     }
   }
 
   playGreenLight() {
-    // Bright, happy ascending arpeggio
-    const baseFreq = this.currentLevel === 'party' ? 587 : 523; // D5 or C5
-    this.playArpeggio([baseFreq, baseFreq * 1.25, baseFreq * 1.5, baseFreq * 2], 0.3, 'sine', 40);
-    
-    // Add shimmer
-    setTimeout(() => {
-      this.playTone(baseFreq * 2, 0.5, 'sine', 0.15, 3000);
-    }, 200);
+    const baseFreq = this.currentLevel === 'party' ? 587 : 523;
+    this.playTone(baseFreq, 0.2, 'sine', 0.12);
   }
 
   playYellowLight() {
-    // Urgent warning beeps
     const freq = this.currentLevel === 'hard' ? 880 : 660;
-    
-    for (let i = 0; i < 3; i++) {
-      setTimeout(() => {
-        this.playTone(freq, 0.15, 'triangle', 0.35);
-        this.playTone(freq * 1.5, 0.1, 'sine', 0.15);
-      }, i * 200);
-    }
+    this.playTone(freq, 0.12, 'triangle', 0.15);
   }
 
   playRedLight() {
-    // Dramatic stop sound
     const baseFreq = this.currentLevel === 'hard' ? 200 : 250;
-    
-    // Deep bass hit
-    this.playTone(baseFreq, 0.6, 'sawtooth', 0.4, 500);
-    
-    // Add tension
-    setTimeout(() => {
-      this.playTone(baseFreq * 0.75, 0.4, 'square', 0.2, 300);
-    }, 100);
-    
-    // Eerie high tone
-    if (this.currentLevel === 'hard' || this.currentLevel === 'party') {
-      setTimeout(() => {
-        this.playTone(baseFreq * 4, 0.3, 'sine', 0.1);
-      }, 200);
-    }
+    this.playTone(baseFreq, 0.3, 'sawtooth', 0.2, 500);
   }
 
   playStep() {
-    // Footstep sound varies by level
     const baseFreq = 600 + Math.random() * 200;
-    
-    switch (this.currentLevel) {
-      case 'easy':
-        this.playTone(baseFreq, 0.04, 'sine', 0.12);
-        break;
-      case 'hard':
-        this.playTone(baseFreq * 0.8, 0.03, 'square', 0.1);
-        this.playTone(baseFreq * 1.2, 0.02, 'sawtooth', 0.05);
-        break;
-      case 'party':
-        // Musical steps!
-        const notes = [523, 587, 659, 698, 784];
-        this.playTone(notes[Math.floor(Math.random() * notes.length)], 0.08, 'triangle', 0.15);
-        break;
-      default:
-        this.playTone(baseFreq, 0.05, 'triangle', 0.12);
-    }
+    this.playTone(baseFreq, 0.03, 'sine', 0.06);
   }
 
   playHit() {
-    if (!this.audioContext || !this.masterGain || this.isMuted) return;
-    
-    this.ensureContext();
-    
-    // Explosion with more impact
-    const noiseBuffer = this.createNoiseBuffer(0.4, 0.08);
-    if (noiseBuffer) {
-      const noise = this.audioContext.createBufferSource();
-      const noiseGain = this.audioContext.createGain();
-      const filter = this.audioContext.createBiquadFilter();
-      
-      filter.type = 'lowpass';
-      filter.frequency.value = 1000;
-      
-      noise.buffer = noiseBuffer;
-      noiseGain.gain.setValueAtTime(0.6, this.audioContext.currentTime);
-      noiseGain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.4);
-      
-      noise.connect(filter);
-      filter.connect(noiseGain);
-      noiseGain.connect(this.masterGain);
-      noise.start();
-    }
-    
-    // Deep impact boom
-    this.playTone(60, 0.5, 'sine', 0.6);
-    this.playTone(80, 0.4, 'triangle', 0.4);
-    
-    // Rocket whistle down
-    if (this.audioContext) {
-      const osc = this.audioContext.createOscillator();
-      const gain = this.audioContext.createGain();
-      
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(1200, this.audioContext.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(100, this.audioContext.currentTime + 0.3);
-      
-      gain.gain.setValueAtTime(0.3, this.audioContext.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.3);
-      
-      osc.connect(gain);
-      gain.connect(this.masterGain);
-      osc.start();
-      osc.stop(this.audioContext.currentTime + 0.3);
-    }
+    this.playTone(60, 0.3, 'sine', 0.25);
   }
 
   playWin() {
-    // Epic victory fanfare!
     const fanfare = [
-      { freq: 523, delay: 0 },    // C5
-      { freq: 659, delay: 100 },  // E5
-      { freq: 784, delay: 200 },  // G5
-      { freq: 1047, delay: 350 }, // C6
-      { freq: 1319, delay: 500 }, // E6
-      { freq: 1568, delay: 650 }, // G6
-      { freq: 2093, delay: 800 }, // C7
+      { freq: 523, delay: 0 },
+      { freq: 659, delay: 120 },
+      { freq: 784, delay: 240 },
+      { freq: 1047, delay: 400 },
     ];
-    
     fanfare.forEach(({ freq, delay }) => {
-      setTimeout(() => {
-        this.playTone(freq, 0.4, 'sine', 0.25, 4000);
-        // Add harmony
-        this.playTone(freq * 1.25, 0.3, 'triangle', 0.1);
-      }, delay);
+      setTimeout(() => this.playTone(freq, 0.3, 'sine', 0.15), delay);
     });
-    
-    // Sparkle effect
-    setTimeout(() => {
-      for (let i = 0; i < 8; i++) {
-        setTimeout(() => {
-          this.playTone(2000 + Math.random() * 1000, 0.1, 'sine', 0.08);
-        }, i * 80);
-      }
-    }, 900);
-    
-    // Final chord
-    setTimeout(() => {
-      this.playArpeggio([1047, 1319, 1568, 2093], 0.8, 'sine', 30);
-    }, 1100);
   }
 
   playClick() {

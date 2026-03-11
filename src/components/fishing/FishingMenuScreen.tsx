@@ -6,6 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ArrowLeft, Play, PlayCircle, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  CloudIcon, SunIcon, TreeIcon, DockIcon, BoatIcon, FishIcon,
+  TropicalFishIcon, FishermanIcon, FishingRodIcon, SharkIcon,
+  OctopusIcon, CrabIcon, StarFilledIcon, ChartIcon, WarningIcon,
+  NewBadgeIcon,
+} from './FishingIcons';
 
 export function FishingMenuScreen({
   onNewGame,
@@ -36,22 +42,22 @@ export function FishingMenuScreen({
       {/* Sky & Background */}
       <div className="absolute inset-0">
         {/* Clouds */}
-        <div className="absolute top-10 left-10 text-6xl opacity-80 animate-float">☁️</div>
-        <div className="absolute top-20 right-20 text-5xl opacity-70 animate-float-slow">☁️</div>
-        <div className="absolute top-32 left-1/3 text-7xl opacity-60 animate-float-delayed">☁️</div>
+        <div className="absolute top-10 left-10 opacity-80 animate-float"><CloudIcon className="w-24 h-16" /></div>
+        <div className="absolute top-20 right-20 opacity-70 animate-float-slow"><CloudIcon className="w-20 h-14" /></div>
+        <div className="absolute top-32 left-1/3 opacity-60 animate-float-delayed"><CloudIcon className="w-28 h-18" /></div>
         
         {/* Sun */}
-        <div className="absolute top-10 right-10 text-8xl animate-spin-slow">☀️</div>
+        <div className="absolute top-10 right-10 animate-spin-slow"><SunIcon className="w-24 h-24" /></div>
         
         {/* Trees - Left Side */}
-        <div className="absolute bottom-32 left-0 text-9xl opacity-90">🌲</div>
-        <div className="absolute bottom-28 left-16 text-8xl opacity-80">🌲</div>
-        <div className="absolute bottom-36 left-8 text-7xl opacity-70">🌲</div>
+        <div className="absolute bottom-32 left-0 opacity-90"><TreeIcon className="w-28 h-36" /></div>
+        <div className="absolute bottom-28 left-16 opacity-80"><TreeIcon className="w-24 h-32" /></div>
+        <div className="absolute bottom-36 left-8 opacity-70"><TreeIcon className="w-20 h-28" /></div>
         
         {/* Trees - Right Side */}
-        <div className="absolute bottom-32 right-0 text-9xl opacity-90">🌲</div>
-        <div className="absolute bottom-28 right-16 text-8xl opacity-80">🌲</div>
-        <div className="absolute bottom-36 right-8 text-7xl opacity-70">🌲</div>
+        <div className="absolute bottom-32 right-0 opacity-90"><TreeIcon className="w-28 h-36" /></div>
+        <div className="absolute bottom-28 right-16 opacity-80"><TreeIcon className="w-24 h-32" /></div>
+        <div className="absolute bottom-36 right-8 opacity-70"><TreeIcon className="w-20 h-28" /></div>
         
         {/* Water Surface */}
         <div className="absolute bottom-0 left-0 right-0 h-1/2 bg-gradient-to-b from-blue-400/60 via-blue-500/70 to-blue-600/80" />
@@ -59,20 +65,20 @@ export function FishingMenuScreen({
         <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-blue-500/30 to-transparent animate-wave-slow" />
         
         {/* Dock/Pier */}
-        <div className="absolute bottom-48 left-1/4 text-6xl opacity-90">🏚️</div>
+        <div className="absolute bottom-48 left-1/4 opacity-90"><DockIcon className="w-20 h-16" /></div>
         
         {/* Boat */}
-        <div className="absolute bottom-40 right-1/4 text-7xl animate-bob">⛵</div>
+        <div className="absolute bottom-40 right-1/4 animate-bob"><BoatIcon className="w-24 h-18" /></div>
         
         {/* Jumping Fish */}
-        <div className="absolute bottom-64 left-1/3 text-6xl animate-jump">🐟</div>
-        <div className="absolute bottom-60 right-1/3 text-5xl animate-jump-delayed">🐠</div>
+        <div className="absolute bottom-64 left-1/3 animate-jump"><FishIcon className="w-20 h-14" /></div>
+        <div className="absolute bottom-60 right-1/3 animate-jump-delayed"><TropicalFishIcon className="w-16 h-12" /></div>
         
         {/* Fisherman Character */}
-        <div className="absolute bottom-52 left-20 text-8xl animate-wave-hand">🧑‍🌾</div>
+        <div className="absolute bottom-52 left-20 animate-wave-hand"><FishermanIcon className="w-20 h-28" /></div>
         
         {/* Fishing Rod */}
-        <div className="absolute bottom-60 left-32 text-7xl transform rotate-45 animate-fishing">🎣</div>
+        <div className="absolute bottom-60 left-32 transform rotate-45 animate-fishing"><FishingRodIcon className="w-20 h-20" /></div>
         
         {/* Ripples in water */}
         <div className="absolute bottom-40 left-1/2 transform -translate-x-1/2">
@@ -101,7 +107,7 @@ export function FishingMenuScreen({
       <div className="relative z-10 flex flex-col items-center justify-center min-h-screen p-8">
         {/* Title */}
         <div className="text-center mb-8 animate-fade-in">
-          <div className="text-7xl mb-4 animate-bounce-slow">🎣</div>
+          <div className="mb-4 animate-bounce-slow flex justify-center"><FishingRodIcon className="w-20 h-20" /></div>
           <h1 className="text-5xl md:text-7xl font-bold text-white drop-shadow-2xl mb-2">
             Fishing Legend
           </h1>
@@ -115,9 +121,9 @@ export function FishingMenuScreen({
           <CardContent className="p-8">
             {/* Decorative Fish Icons */}
             <div className="flex justify-between items-center mb-6">
-              <span className="text-4xl animate-bounce-slow">🐟</span>
-              <span className="text-3xl">🎣</span>
-              <span className="text-4xl animate-bounce-slow" style={{ animationDelay: '0.5s' }}>🐠</span>
+              <span className="animate-bounce-slow inline-block"><FishIcon className="w-12 h-8" /></span>
+              <span className="inline-block"><FishingRodIcon className="w-10 h-10" /></span>
+              <span className="animate-bounce-slow inline-block" style={{ animationDelay: '0.5s' }}><TropicalFishIcon className="w-12 h-8" /></span>
             </div>
 
             <div className="space-y-4">
@@ -130,7 +136,7 @@ export function FishingMenuScreen({
                 <PlayCircle className="mr-3 h-8 w-8" />
                 <div className="text-left">
                   <div>เริ่มเกมใหม่</div>
-                  <div className="text-sm font-normal opacity-90">🌟 เริ่มต้นผจญภัย</div>
+                  <div className="text-sm font-normal opacity-90 flex items-center gap-1"><StarFilledIcon className="w-4 h-4 inline" /> เริ่มต้นผจญภัย</div>
                 </div>
               </Button>
 
@@ -151,15 +157,15 @@ export function FishingMenuScreen({
                 <div className="text-left">
                   <div>{isLoading ? 'กำลังโหลด...' : 'เล่นต่อ'}</div>
                   {hasProgress && !isLoading && (
-                    <div className="text-sm font-normal opacity-90">📊 ข้อมูลของคุณ</div>
+                    <div className="text-sm font-normal opacity-90 flex items-center gap-1"><ChartIcon className="w-4 h-4 inline" /> ข้อมูลของคุณ</div>
                   )}
                 </div>
               </Button>
 
               {!hasProgress && !isLoading && (
                 <div className="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-3 text-center">
-                  <p className="text-sm text-yellow-800 font-semibold">
-                    ⚠️ คุณยังไม่เคยเล่นเกมนี้มาก่อน
+                  <p className="text-sm text-yellow-800 font-semibold flex items-center justify-center gap-1">
+                    <WarningIcon className="w-4 h-4 inline" /> คุณยังไม่เคยเล่นเกมนี้มาก่อน
                   </p>
                 </div>
               )}
@@ -197,7 +203,7 @@ export function FishingMenuScreen({
                           ? "bg-green-100 text-green-700 border-2 border-green-300" 
                           : "bg-yellow-100 text-yellow-700 border-2 border-yellow-300"
                       )}>
-                        {hasProgress ? '⭐ มีข้อมูลการเล่น' : '🆕 ผู้เล่นใหม่'}
+                        {hasProgress ? <><StarFilledIcon className="w-4 h-4 inline mr-1" />มีข้อมูลการเล่น</> : <><NewBadgeIcon className="w-6 h-4 inline mr-1" />ผู้เล่นใหม่</>}
                       </span>
                     </div>
                   </div>
@@ -209,10 +215,10 @@ export function FishingMenuScreen({
 
         {/* Footer with decorative fish */}
         <div className="mt-8 text-center">
-          <div className="flex justify-center space-x-4 mb-3 text-3xl">
-            <span className="animate-bounce-slow">🦈</span>
-            <span className="animate-bounce-slow" style={{ animationDelay: '0.3s' }}>🐙</span>
-            <span className="animate-bounce-slow" style={{ animationDelay: '0.6s' }}>🦀</span>
+          <div className="flex justify-center space-x-4 mb-3">
+            <span className="animate-bounce-slow inline-block"><SharkIcon className="w-12 h-8" /></span>
+            <span className="animate-bounce-slow inline-block" style={{ animationDelay: '0.3s' }}><OctopusIcon className="w-10 h-10" /></span>
+            <span className="animate-bounce-slow inline-block" style={{ animationDelay: '0.6s' }}><CrabIcon className="w-10 h-8" /></span>
           </div>
           <p className="text-sm text-white/80 font-semibold drop-shadow-lg">
             v1.0.0 | © 2026 KAYA Fishing Legend

@@ -9,6 +9,7 @@ interface MouseCharacterProps {
   side?: 'LEFT' | 'RIGHT' | 'CENTER';
   color?: 'pink' | 'blue';
   rocketPosition?: { x: number; y: number };
+  levelId?: string;
 }
 
 export function MouseCharacter({ 
@@ -17,6 +18,7 @@ export function MouseCharacter({
   gameState, 
   side = 'CENTER',
   color = 'pink',
+  levelId = '',
 }: MouseCharacterProps) {
   const isHit = gameState === 'HIT';
   const isWin = gameState === 'WIN';
@@ -70,6 +72,7 @@ export function MouseCharacter({
           isRunning={isRunning && (gameState === 'GREEN_LIGHT' || gameState === 'YELLOW_LIGHT')}
           isHit={isHit}
           color={color}
+          levelId={levelId}
         />
         
         {/* Win sparkles */}

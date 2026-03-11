@@ -42,6 +42,11 @@ export const COLLECTIONS = {
   LEADERBOARD: 'leaderboard',
   SETTINGS: 'userSettings',
   DAILY_STATS: 'dailyStats',
+  NUTRITION_SCANS: 'nutritionScans',
+  FOOD_DATABASE: 'foodDatabase',
+  SAVED_RECIPES: 'savedRecipes',
+  HEALTHY_FOODS: 'healthyFoods',
+  SAVED_FOODS: 'savedFoods',
 } as const;
 
 // ==================== DAILY STATS ====================
@@ -326,30 +331,23 @@ export interface FirestoreUserSettings {
   updatedAt: Timestamp;
 }
 
-// VAJA TTS Speakers list
-export const VAJA_SPEAKERS = [
-  { id: 'nana', name: 'นาน่า', description: 'ผู้หญิง | พากย์การ์ตูน | Animation' },
-  { id: 'noina', name: 'น้อยหน่า', description: 'ผู้หญิง | สปอตโฆษณา | ระบบตอบรับ' },
-  { id: 'farah', name: 'ฟาร่า', description: 'ผู้หญิง | สารคดี | Presentation' },
-  { id: 'mewzy', name: 'มิวซี่', description: 'ผู้หญิง | สปอตโฆษณา' },
-  { id: 'farsai', name: 'ฟ้าใส', description: 'ผู้หญิง | พากย์การ์ตูน | Animation' },
-  { id: 'prim', name: 'พริม', description: 'ผู้หญิง | Announcer' },
-  { id: 'ped', name: 'เป็ด', description: 'ผู้หญิง | Announcer' },
-  { id: 'poom', name: 'ภูมิ', description: 'ผู้ชาย | สปอตโฆษณา | ระบบตอบรับ' },
-  { id: 'doikham', name: 'ดอยคำ', description: 'ผู้ชาย | ภาษาเหนือ' },
-  { id: 'praw', name: 'พราว', description: 'เด็กผู้หญิง' },
-  { id: 'wayu', name: 'วายุ', description: 'เด็กผู้ชาย' },
-  { id: 'namphueng', name: 'น้ำผึ้ง', description: 'ผู้หญิง | Anchor-style' },
-  { id: 'toon', name: 'ตูน', description: 'ผู้หญิง | Broadcast-style' },
-  { id: 'sanooch', name: 'สนุช', description: 'ผู้หญิง | Teacher-style' },
-  { id: 'thanwa', name: 'ธันวา', description: 'ผู้ชาย | Broadcast-style' },
+// Botnoi TTS Speakers list
+export const BOTNOI_SPEAKERS = [
+  { id: '26', name: 'ไอโกะ (YingAiko)', description: 'ผู้หญิง | เสียงหวาน / อนิเมะ' },
+  { id: '9', name: 'นาเดียร์ (Nadia)', description: 'ผู้หญิง | เสียงเล่าเรื่อง / มั่นใจ' },
+  { id: '543', name: 'ณัฐกานต์ (Nattakarn)', description: 'ผู้ชาย | เสียงผู้ชาย' },
+  { id: '31', name: 'นายเบรด (Mr.Bread)', description: 'ผู้ชาย | เสียงขี้เล่น' },
+  { id: '37', name: 'ผู้ใหญ่ลี (PhuyaiLee)', description: 'ผู้ชาย | เสียงผู้ใหญ่ / สุพรรณ' },
+  { id: '5', name: 'อลัน (Alan)', description: 'ผู้ชาย | เสียงชัดเจน / จริงจัง' },
+  { id: '299', name: 'หอมจันทน์ (Homchan)', description: 'ผู้หญิง | เสียงคนใต้ / น่ารัก' },
+  { id: '52', name: 'มานี (Manee)', description: 'ผู้หญิง | เสียงอนิเมะ / ขี้เล่น' },
 ] as const;
 
 // Default TTS Settings
 export const DEFAULT_TTS_SETTINGS = {
   enabled: true,
   speed: 1.0,
-  speaker: 'nana',  // Default VAJA speaker (fallback)
+  speaker: '26',  // Default Botnoi speaker (ไอโกะ / YingAiko)
   nfeSteps: 32,
   useVajax: false,
   referenceAudioUrl: '',  
@@ -698,6 +696,300 @@ export const getUserNutritionLogs = async (
   })) as FirestoreNutritionLog[];
 };
 
+// ==================== NUTRITION SCAN OPERATIONS ====================
+
+export interface FirestoreNutritionScan {
+  id?: string;
+  userId: string;
+  imageUrl: string;
+  predictions: {
+    calories: number;
+    protein: number;
+    fat: number;
+    carbohydrates: number;
+    total_mass: number;
+  };
+  analysis: {
+    food_name: string;
+    food_name_en: string;
+    description: string;
+    ingredients: Array<{
+      name: string;
+      estimated_grams: number;
+      calories: number;
+      protein: number;
+      fat: number;
+      carbohydrates: number;
+    }>;
+    health_tips: string;
+  };
+  scannedAt: Timestamp;
+}
+
+// Save nutrition scan
+export const saveNutritionScan = async (
+  data: Omit<FirestoreNutritionScan, 'id' | 'scannedAt'>
+): Promise<string> => {
+  const scanRef = collection(db, COLLECTIONS.NUTRITION_SCANS);
+  const docRef = await addDoc(scanRef, {
+    ...data,
+    scannedAt: serverTimestamp(),
+  });
+  return docRef.id;
+};
+
+// Get user nutrition scans
+export const getUserNutritionScans = async (
+  userId: string,
+  limitCount: number = 20
+): Promise<FirestoreNutritionScan[]> => {
+  const scanRef = collection(db, COLLECTIONS.NUTRITION_SCANS);
+  const q = query(
+    scanRef,
+    where('userId', '==', userId),
+    orderBy('scannedAt', 'desc'),
+    limit(limitCount)
+  );
+
+  const querySnap = await getDocs(q);
+  return querySnap.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+  })) as FirestoreNutritionScan[];
+};
+
+// Delete nutrition scan
+export const deleteNutritionScan = async (scanId: string): Promise<void> => {
+  const scanRef = doc(db, COLLECTIONS.NUTRITION_SCANS, scanId);
+  await deleteDoc(scanRef);
+};
+
+// ==================== FOOD DATABASE OPERATIONS ====================
+
+export interface FirestoreFoodItem {
+  id?: string;
+  fdcId: number;
+  name: string;
+  category: string;
+  imageUrl: string;
+  imageCredit: string;
+  servingSize: number;
+  servingSizeUnit: string;
+  nutrients: {
+    calories: number;
+    protein: number;
+    fat: number;
+    carbohydrates: number;
+    fiber: number;
+    sugar: number;
+    sodium: number;
+    cholesterol: number;
+    calcium: number;
+    iron: number;
+    potassium: number;
+    vitaminC: number;
+    vitaminA: number;
+  };
+  searchCount: number;
+  addedAt: Timestamp;
+}
+
+// Save food item to database (upsert by fdcId)
+export const saveFoodItem = async (
+  data: Omit<FirestoreFoodItem, 'id' | 'addedAt' | 'searchCount'>
+): Promise<string> => {
+  // Check if food already exists by fdcId
+  const foodRef = collection(db, COLLECTIONS.FOOD_DATABASE);
+  const q = query(foodRef, where('fdcId', '==', data.fdcId), limit(1));
+  const snap = await getDocs(q);
+
+  if (!snap.empty) {
+    // Increment search count
+    const existingDoc = snap.docs[0];
+    await updateDoc(existingDoc.ref, {
+      searchCount: (existingDoc.data().searchCount || 0) + 1,
+      imageUrl: data.imageUrl || existingDoc.data().imageUrl,
+    });
+    return existingDoc.id;
+  }
+
+  const docRef = await addDoc(foodRef, {
+    ...data,
+    searchCount: 1,
+    addedAt: serverTimestamp(),
+  });
+  return docRef.id;
+};
+
+// Get popular/recommended foods (most searched)
+export const getPopularFoods = async (
+  limitCount: number = 12
+): Promise<FirestoreFoodItem[]> => {
+  const foodRef = collection(db, COLLECTIONS.FOOD_DATABASE);
+  const q = query(
+    foodRef,
+    orderBy('searchCount', 'desc'),
+    limit(limitCount)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as FirestoreFoodItem[];
+};
+
+// Get recently added foods
+export const getRecentFoods = async (
+  limitCount: number = 12
+): Promise<FirestoreFoodItem[]> => {
+  const foodRef = collection(db, COLLECTIONS.FOOD_DATABASE);
+  const q = query(
+    foodRef,
+    orderBy('addedAt', 'desc'),
+    limit(limitCount)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as FirestoreFoodItem[];
+};
+
+// ==================== SAVED RECIPES ====================
+
+export interface FirestoreSavedRecipe {
+  id?: string;
+  userId: string;
+  foodName: string;
+  foodNameEn?: string;
+  imageUrl?: string;
+  recipe: {
+    title: string;
+    titleEn: string;
+    servings: number;
+    prepTime: number;
+    cookTime: number;
+    difficulty: string;
+    ingredients: Array<{ name: string; amount: string }>;
+    steps: string[];
+    tips: string[];
+    nutritionPerServing: {
+      calories: number;
+      protein: number;
+      fat: number;
+      carbohydrates: number;
+    };
+  };
+  savedAt: Timestamp;
+}
+
+export const saveRecipe = async (
+  data: Omit<FirestoreSavedRecipe, 'id' | 'savedAt'>
+): Promise<string> => {
+  const ref = collection(db, COLLECTIONS.SAVED_RECIPES);
+  const docRef = await addDoc(ref, { ...data, savedAt: serverTimestamp() });
+  return docRef.id;
+};
+
+export const getUserSavedRecipes = async (
+  userId: string,
+  limitCount: number = 30
+): Promise<FirestoreSavedRecipe[]> => {
+  const ref = collection(db, COLLECTIONS.SAVED_RECIPES);
+  const q = query(ref, where('userId', '==', userId), orderBy('savedAt', 'desc'), limit(limitCount));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() })) as FirestoreSavedRecipe[];
+};
+
+export const deleteRecipe = async (recipeId: string): Promise<void> => {
+  await deleteDoc(doc(db, COLLECTIONS.SAVED_RECIPES, recipeId));
+};
+
+// ==================== SAVED FOODS (user-specific) ====================
+
+export interface FirestoreSavedFood {
+  id?: string;
+  userId: string;
+  fdcId?: number;
+  name: string;
+  nameEn?: string;
+  category?: string;
+  imageUrl?: string;
+  imageCredit?: string;
+  servingSize?: number;
+  servingSizeUnit?: string;
+  nutrients: {
+    calories: number;
+    protein: number;
+    fat: number;
+    carbohydrates: number;
+    fiber?: number;
+    sugar?: number;
+    sodium?: number;
+  };
+  source: 'search' | 'scan' | 'ai';
+  savedAt: Timestamp;
+}
+
+export const saveUserFood = async (
+  data: Omit<FirestoreSavedFood, 'id' | 'savedAt'>
+): Promise<string> => {
+  const ref = collection(db, COLLECTIONS.SAVED_FOODS);
+  const docRef = await addDoc(ref, { ...data, savedAt: serverTimestamp() });
+  return docRef.id;
+};
+
+export const getUserSavedFoods = async (
+  userId: string,
+  limitCount: number = 50
+): Promise<FirestoreSavedFood[]> => {
+  const ref = collection(db, COLLECTIONS.SAVED_FOODS);
+  const q = query(ref, where('userId', '==', userId), orderBy('savedAt', 'desc'), limit(limitCount));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() })) as FirestoreSavedFood[];
+};
+
+export const deleteUserSavedFood = async (foodId: string): Promise<void> => {
+  await deleteDoc(doc(db, COLLECTIONS.SAVED_FOODS, foodId));
+};
+
+// ==================== HEALTHY FOODS SEED ====================
+
+export interface FirestoreHealthyFood {
+  id?: string;
+  category: string;
+  categoryEn: string;
+  foods: Array<{
+    fdcId: number;
+    name: string;
+    imageUrl: string;
+    imageCredit: string;
+    nutrients: {
+      calories: number;
+      protein: number;
+      fat: number;
+      carbohydrates: number;
+    };
+  }>;
+  updatedAt: Timestamp;
+}
+
+export const getHealthyFoodCategories = async (): Promise<FirestoreHealthyFood[]> => {
+  const ref = collection(db, COLLECTIONS.HEALTHY_FOODS);
+  const q = query(ref, orderBy('updatedAt', 'desc'));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() })) as FirestoreHealthyFood[];
+};
+
+export const saveHealthyFoodCategory = async (
+  data: Omit<FirestoreHealthyFood, 'id' | 'updatedAt'>
+): Promise<string> => {
+  // Upsert by category
+  const ref = collection(db, COLLECTIONS.HEALTHY_FOODS);
+  const q = query(ref, where('categoryEn', '==', data.categoryEn), limit(1));
+  const snap = await getDocs(q);
+  if (!snap.empty) {
+    await updateDoc(snap.docs[0].ref, { ...data, updatedAt: serverTimestamp() });
+    return snap.docs[0].id;
+  }
+  const docRef = await addDoc(ref, { ...data, updatedAt: serverTimestamp() });
+  return docRef.id;
+};
+
 // ==================== BADGE OPERATIONS ====================
 
 // Award badge to user
@@ -835,9 +1127,9 @@ export const initializeUserSettings = async (userId: string): Promise<void> => {
     tts: {
       enabled: true,
       speed: 1.0,
-      speaker: 'nana',
+      speaker: '26',
       nfeSteps: 32,
-      useVajax: true,
+      useVajax: false,
       referenceAudioUrl: '',
       referenceText: '',
     },
@@ -935,7 +1227,7 @@ export const deleteCustomCoach = async (userId: string): Promise<void> => {
   const settingsRef = doc(db, COLLECTIONS.SETTINGS, userId);
   await updateDoc(settingsRef, {
     customCoach: null,
-    selectedCoachId: 'coach-nana', // Reset to default
+    selectedCoachId: 'coach-aiko', // Reset to default
     'tts.customVoiceEnabled': false,
     'tts.customCoachName': '',
     updatedAt: serverTimestamp(),

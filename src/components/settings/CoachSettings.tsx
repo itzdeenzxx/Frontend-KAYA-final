@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Volume2, Play, Loader2, Settings2, Sparkles, ChevronRight } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserSettings, updateTTSSettings, DEFAULT_TTS_SETTINGS, getCustomCoach } from '@/lib/firestore';
-import { getCoachById, Coach, buildCoachFromCustom, CustomCoach, CustomAvatarId } from '@/lib/coachConfig';
+import { getCoachById, Coach, buildCoachFromCustom, CustomCoach, CustomAvatarId, migrateCoachId } from '@/lib/coachConfig';
+import { getLocalAudioUrl } from '@/lib/coachAudio';
 import { getCoachAvatar } from '@/components/coach/CoachAvatars';
 import { getCustomAvatar } from '@/components/coach/CustomAvatars';
 import { CoachSelectionPopup } from '@/components/coach/CoachSelectionPopup';
@@ -23,9 +24,17 @@ export function CoachSettings({ isDark }: CoachSettingsProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCoachSelector, setShowCoachSelector] = useState(false);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Stop preview audio when component unmounts (user navigates away mid-play)
+  useEffect(() => {
+    return () => {
+      if (previewAudioRef.current) { previewAudioRef.current.pause(); previewAudioRef.current = null; }
+    };
+  }, []);
   
   // Selected coach
-  const [selectedCoachId, setSelectedCoachId] = useState<string>('coach-nana');
+  const [selectedCoachId, setSelectedCoachId] = useState<string>('coach-aiko');
   const [selectedCoach, setSelectedCoach] = useState<Coach | null>(null);
   const [customCoachData, setCustomCoachData] = useState<CustomCoach | null>(null);
   
@@ -49,7 +58,7 @@ export function CoachSettings({ isDark }: CoachSettingsProps) {
           });
         }
         if (userSettings?.selectedCoachId) {
-          setSelectedCoachId(userSettings.selectedCoachId);
+          setSelectedCoachId(migrateCoachId(userSettings.selectedCoachId));
         }
         // Load custom coach data
         const custom = await getCustomCoach(userProfile.lineUserId);
@@ -117,7 +126,7 @@ export function CoachSettings({ isDark }: CoachSettingsProps) {
     
     // Update TTS settings with new coach voice
     if (userProfile?.lineUserId) {
-      let voiceId = 'nana';
+      let voiceId = '8';
       if (coachId !== 'coach-custom') {
         const coach = getCoachById(coachId);
         if (coach) voiceId = coach.voiceId;
@@ -157,10 +166,17 @@ export function CoachSettings({ isDark }: CoachSettingsProps) {
     });
   }, []);
 
-  // Play preview
+  // Play preview (clicking while playing will stop the audio)
   const playPreview = useCallback(async () => {
     if (!selectedCoach) return;
-    
+
+    // If already playing, stop it
+    if (isPlaying) {
+      if (previewAudioRef.current) { previewAudioRef.current.pause(); previewAudioRef.current = null; }
+      setIsPlaying(false);
+      return;
+    }
+
     setIsPlaying(true);
     setError(null);
     
@@ -200,23 +216,37 @@ export function CoachSettings({ isDark }: CoachSettingsProps) {
               return;
             }
           }
-          console.warn('VAJAX preview failed, falling back to Gemini');
+          console.warn('VAJAX preview failed, falling back to Botnoi standard');
         } catch (err: any) {
           console.warn('VAJAX preview error:', err.name === 'AbortError' ? 'timeout' : err.message);
         }
       }
 
-      // Fallback: Gemini TTS (for preset coaches or custom without voice refs)
+      // Try local pre-recorded greeting first (instant, no network needed)
+      const localUrl = getLocalAudioUrl(selectedCoachId, 'greeting');
+      if (localUrl) {
+        const played = await new Promise<boolean>((resolve) => {
+          const audio = new Audio(localUrl);
+          previewAudioRef.current = audio;
+          audio.onended = () => { previewAudioRef.current = null; resolve(true); };
+          audio.onerror = () => { previewAudioRef.current = null; resolve(false); };
+          audio.play().catch(() => { previewAudioRef.current = null; resolve(false); });
+        });
+        if (played) return;
+        // Local file failed — fall through to Botnoi TTS below
+      }
+      // Fallback: Botnoi TTS (for preset coaches or custom without voice refs)
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      const previewSpeaker = selectedCoach.voiceId || '26';
+      console.log('🔊 CoachSettings preview:', selectedCoach.name, 'speaker:', previewSpeaker);
       
-      const response = await fetch('/api/gemini/tts', {
+      const response = await fetch('/api/aift/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: previewText,
-          voiceName: selectedCoach.geminiVoice || 'Kore',
-          instruction: selectedCoach.ttsInstruction || '',
+          speaker: previewSpeaker,
         }),
         signal: controller.signal,
       });
@@ -238,7 +268,7 @@ export function CoachSettings({ isDark }: CoachSettingsProps) {
     } finally {
       setIsPlaying(false);
     }
-  }, [selectedCoach, selectedCoachId, customCoachData, playAudioBase64]);
+  }, [selectedCoach, selectedCoachId, customCoachData, isPlaying, playAudioBase64]);
 
   if (isLoading) {
     return (
@@ -390,7 +420,6 @@ export function CoachSettings({ isDark }: CoachSettingsProps) {
           <div className="p-4">
             <Button
               onClick={playPreview}
-              disabled={!settings.enabled || isPlaying}
               className={cn(
                 "w-full gap-2",
                 isDark 
@@ -433,6 +462,7 @@ export function CoachSettings({ isDark }: CoachSettingsProps) {
         open={showCoachSelector}
         onClose={() => setShowCoachSelector(false)}
         onCoachSelected={handleCoachSelected}
+        currentCoachId={selectedCoachId}
         canSkip={false}
       />
     </>

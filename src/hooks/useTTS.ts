@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getUserSettings, getCustomCoach, DEFAULT_TTS_SETTINGS } from '@/lib/firestore';
-import { getCoachById, buildCoachFromCustom, CustomCoach } from '@/lib/coachConfig';
+import { getCoachById, buildCoachFromCustom, CustomCoach, migrateSpeakerId } from '@/lib/coachConfig';
 
 export interface TTSSettings {
   enabled: boolean;
@@ -47,7 +47,7 @@ export function useTTS(userId?: string, coachId?: string): UseTTSReturn {
           setSettings({
             enabled: userSettings.tts.enabled ?? DEFAULT_TTS_SETTINGS.enabled,
             speed: userSettings.tts.speed ?? DEFAULT_TTS_SETTINGS.speed,
-            speaker: userSettings.tts.speaker ?? DEFAULT_TTS_SETTINGS.speaker,
+            speaker: migrateSpeakerId(userSettings.tts.speaker),
             nfeSteps: userSettings.tts.nfeSteps ?? DEFAULT_TTS_SETTINGS.nfeSteps,
             useVajax: userSettings.tts.useVajax ?? DEFAULT_TTS_SETTINGS.useVajax,
             referenceAudioUrl: userSettings.tts.referenceAudioUrl,
@@ -196,52 +196,22 @@ export function useTTS(userId?: string, coachId?: string): UseTTSReturn {
                 continue;
               }
             }
-            console.warn('VAJAX custom voice failed, falling back to Gemini');
+            console.warn('VAJAX custom voice failed, falling back to Botnoi standard');
           } catch (err: any) {
             console.warn('VAJAX error:', err.name === 'AbortError' ? 'timeout' : err.message);
           }
         }
 
-        // Path B: Gemini TTS (primary for preset coaches)
-        try {
-          const geminiController = new AbortController();
-          const geminiTimeout = setTimeout(() => geminiController.abort(), 30000);
-
-          const geminiRes = await fetch('/api/gemini/tts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              text,
-              voiceName: coach?.geminiVoice || settings.speaker || 'Kore',
-              instruction: coach?.ttsInstruction || '',
-            }),
-            signal: geminiController.signal,
-          });
-
-          clearTimeout(geminiTimeout);
-
-          if (geminiRes.ok) {
-            const result = await geminiRes.json();
-            if (result.success && result.audio_base64) {
-              console.log('✅ Gemini TTS success, voice:', result.voice);
-              await playAudioBase64(result.audio_base64);
-              continue;
-            }
-          }
-          console.warn('Gemini TTS response not ok:', geminiRes.status);
-        } catch (err: any) {
-          console.warn('Gemini TTS error:', err.name === 'AbortError' ? 'timeout' : err.message);
-        }
-
-        // Path C: VAJA TTS (backup when available)
+        // Path B: Botnoi TTS (primary for all coaches)
         try {
           const vajaController = new AbortController();
-          const vajaTimeout = setTimeout(() => vajaController.abort(), 15000);
+          const vajaTimeout = setTimeout(() => vajaController.abort(), 12000);
+          const botnoiSpeaker = coach?.voiceId || settings.speaker || '26';
 
           const vajaRes = await fetch('/api/aift/tts', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text, speaker: settings.speaker || 'nana' }),
+            body: JSON.stringify({ text, speaker: botnoiSpeaker }),
             signal: vajaController.signal,
           });
 
@@ -250,17 +220,17 @@ export function useTTS(userId?: string, coachId?: string): UseTTSReturn {
           if (vajaRes.ok) {
             const result = await vajaRes.json();
             if (result.success && result.audio_base64) {
-              console.log('✅ VAJA TTS success');
+              console.log('✅ Botnoi TTS success, speaker:', botnoiSpeaker);
               await playAudioBase64(result.audio_base64);
               continue;
             }
           }
-          console.warn('VAJA TTS response not ok:', vajaRes.status);
+          console.warn('Botnoi TTS response not ok:', vajaRes.status);
         } catch (err: any) {
-          console.warn('VAJA TTS error:', err.name === 'AbortError' ? 'timeout' : err.message);
+          console.warn('Botnoi TTS error:', err.name === 'AbortError' ? 'timeout' : err.message);
         }
 
-        // Path D: Web Speech API (browser built-in)
+        // Path C: Web Speech API (browser built-in)
         console.log('🔄 Using Web Speech API fallback');
         await speakWithWebSpeech(text);
 
@@ -279,6 +249,11 @@ export function useTTS(userId?: string, coachId?: string): UseTTSReturn {
     if (!settings.enabled || !text.trim()) {
       return;
     }
+
+    // Deduplicate: skip if identical text is already the last queued item
+    // (prevents double-queuing from rapid re-renders or repeated callers)
+    const lastInQueue = queueRef.current[queueRef.current.length - 1];
+    if (lastInQueue === text) return;
 
     queueRef.current.push(text);
     processQueue();

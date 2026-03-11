@@ -99,6 +99,32 @@ export function WhackAMoleGame() {
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [score, setScore] = useState(0);
 
+  // Background music
+  const bgmRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    const audio = new Audio('/assets/music/mole-game.mp3');
+    audio.loop = true;
+    audio.volume = 0.18;
+    bgmRef.current = audio;
+
+    const tryPlay = () => {
+      if (bgmRef.current && bgmRef.current.paused) {
+        bgmRef.current.play().catch(() => {});
+      }
+    };
+
+    const events = ['click', 'touchstart', 'keydown'] as const;
+    events.forEach(e => document.addEventListener(e, tryPlay, { once: true }));
+    tryPlay();
+
+    return () => {
+      events.forEach(e => document.removeEventListener(e, tryPlay));
+      audio.pause();
+      audio.src = '';
+    };
+  }, []);
+
   // ตรวจจับแนวจอ — บังคับเล่นแนวนอนเท่านั้น
   const [isPortrait, setIsPortrait] = useState(() => window.innerHeight > window.innerWidth);
   useEffect(() => {
@@ -120,6 +146,13 @@ export function WhackAMoleGame() {
   const [isNewRecord, setIsNewRecord] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   
+  // Sync mute state with BGM
+  useEffect(() => {
+    if (bgmRef.current) {
+      bgmRef.current.muted = isMuted;
+    }
+  }, [isMuted]);
+
   const statsSavedRef = useRef(false); // Prevent double saving stats
   
   // Track game stats

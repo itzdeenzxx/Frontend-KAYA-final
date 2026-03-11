@@ -5,7 +5,8 @@ import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
-import { getUserSettings, updateTTSSettings, DEFAULT_TTS_SETTINGS, VAJA_SPEAKERS } from '@/lib/firestore';
+import { getUserSettings, updateTTSSettings, DEFAULT_TTS_SETTINGS, BOTNOI_SPEAKERS } from '@/lib/firestore';
+import { migrateSpeakerId } from '@/lib/coachConfig';
 
 interface TTSSettingsProps {
   isDark: boolean;
@@ -38,7 +39,7 @@ export function TTSSettings({ isDark }: TTSSettingsProps) {
           setSettings({
             enabled: userSettings.tts.enabled ?? DEFAULT_TTS_SETTINGS.enabled,
             speed: userSettings.tts.speed ?? DEFAULT_TTS_SETTINGS.speed,
-            speaker: userSettings.tts.speaker ?? DEFAULT_TTS_SETTINGS.speaker,
+            speaker: migrateSpeakerId(userSettings.tts.speaker),
             nfeSteps: userSettings.tts.nfeSteps ?? DEFAULT_TTS_SETTINGS.nfeSteps,
             useVajax: userSettings.tts.useVajax ?? DEFAULT_TTS_SETTINGS.useVajax,
           });
@@ -142,7 +143,7 @@ export function TTSSettings({ isDark }: TTSSettingsProps) {
     try {
       // Try TTS API first (VAJA)
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
       
       const response = await fetch('/api/aift/tts', {
         method: 'POST',
@@ -246,7 +247,7 @@ export function TTSSettings({ isDark }: TTSSettingsProps) {
                 เลือกเสียงโค้ช
               </p>
               <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>
-                {VAJA_SPEAKERS.find(s => s.id === settings.speaker)?.description || 'เลือกเสียงที่ต้องการ'}
+                {BOTNOI_SPEAKERS.find(s => s.id === settings.speaker)?.description || 'เลือกเสียงที่ต้องการ'}
               </p>
             </div>
           </div>
@@ -262,7 +263,7 @@ export function TTSSettings({ isDark }: TTSSettingsProps) {
               "focus:outline-none focus:ring-2 focus:ring-primary/50"
             )}
           >
-            {VAJA_SPEAKERS.map((speaker) => (
+            {BOTNOI_SPEAKERS.map((speaker) => (
               <option key={speaker.id} value={speaker.id} className={isDark ? "bg-gray-900" : ""}>
                 {speaker.name} - {speaker.description}
               </option>

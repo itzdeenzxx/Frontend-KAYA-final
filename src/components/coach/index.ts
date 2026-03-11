@@ -11,4 +11,8 @@ export {
   TonAvatar,
   BankAvatar,
   KaiAvatar,
+  PhuyaiLeeAvatar,
+  AlanAvatar,
+  HomchanAvatar,
+  ManeeAvatar,
 } from './CoachAvatars';

@@ -574,7 +574,6 @@ export const useDailyStats = () => {
       
       // Sync water challenge progress with actual water intake
       await syncWaterChallengeProgress(lineProfile.userId, newWater);
-      
       return newWater;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to remove water');

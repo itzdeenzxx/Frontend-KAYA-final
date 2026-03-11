@@ -39,10 +39,31 @@ export default function WorkoutIntro() {
 
   const [isReady, setIsReady] = useState(false);
 
+  // Read AI workout summary if available (from Gemma3 recommendation)
+  const aiWorkoutSummary = (() => {
+    if (selectedStyleId === 'ai-personalized') {
+      try {
+        const saved = localStorage.getItem('kaya_ai_workout_summary');
+        if (saved) return JSON.parse(saved) as { 
+          total_exercises: number; 
+          estimated_duration_minutes: number; 
+          estimated_calories: number; 
+          difficulty_label: string; 
+          personalized_message: string; 
+        };
+      } catch { /* ignore */ }
+    }
+    return null;
+  })();
+
   // Calculate total workout info
-  const totalDuration = exercises.reduce((sum, ex) => sum + (ex.duration || 30), 0);
+  const totalDuration = aiWorkoutSummary 
+    ? aiWorkoutSummary.estimated_duration_minutes * 60 
+    : exercises.reduce((sum, ex) => sum + (ex.duration || 30), 0);
   const totalExercises = exercises.length;
-  const estimatedCalories = Math.round(totalDuration * 0.15); // rough estimate
+  const estimatedCalories = aiWorkoutSummary 
+    ? aiWorkoutSummary.estimated_calories 
+    : Math.round(totalDuration * 0.15);
 
   // If no style selected, redirect back
   useEffect(() => {
