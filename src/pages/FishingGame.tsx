@@ -6,6 +6,7 @@ import { MapSelectionScreen } from '@/components/fishing/MapSelectionScreen';
 import { ShopScreen } from '@/components/fishing/ShopScreen';
 import { GameplayScreen } from '@/components/fishing/GameplayScreen';
 import { SellSummaryScreen } from '@/components/fishing/SellSummaryScreen';
+import { BIOME_MAPS } from '@/lib/biomeDatabase';
 import { Loader2 } from 'lucide-react';
 
 export default function FishingGamePage() {
@@ -81,9 +82,7 @@ export default function FishingGamePage() {
           player={gameState.playerProgress}
           onSelectMap={handleSelectMap}
           onUnlockMap={(biomeId) => {
-            const biome = require('@/lib/biomeDatabase').BIOME_MAPS.find(
-              (b: any) => b.id === biomeId
-            );
+            const biome = BIOME_MAPS.find((b) => b.id === biomeId);
             if (biome) {
               handleUnlockMap(biomeId, biome.unlockPrice);
             }

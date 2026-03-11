@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PlayerProgress, ShopCategory, Rarity } from '@/types/fishing';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -42,6 +42,7 @@ export function ShopScreen({
 }) {
   const [activeTab, setActiveTab] = useState<ShopCategory>('rods');
   const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [baitQuantityToBuy, setBaitQuantityToBuy] = useState<number>(1);
 
   const isRodOwned = (rodId: string) => player.ownedRods.includes(rodId);
   const isBaitOwned = (baitId: string) => (player.ownedBaits[baitId] || 0) > 0;
@@ -99,7 +100,9 @@ export function ShopScreen({
     if (selectedItem.type === 'rod') {
       onBuyRod(selectedItem.id, selectedItem.price);
     } else if (selectedItem.type === 'bait') {
-      onBuyBait(selectedItem.id, selectedItem.quantity, selectedItem.price);
+      const totalPrice = selectedItem.price * baitQuantityToBuy;
+      onBuyBait(selectedItem.id, baitQuantityToBuy, totalPrice);
+      setBaitQuantityToBuy(1); // Reset after purchase
     } else if (selectedItem.type === 'boat') {
       onBuyBoat(selectedItem.id, selectedItem.price);
     }
@@ -117,12 +120,81 @@ export function ShopScreen({
     }
   };
 
+  const getTotalPrice = () => {
+    if (!selectedItem) return 0;
+    if (selectedItem.type === 'bait') {
+      return selectedItem.price * baitQuantityToBuy;
+    }
+    return selectedItem.price;
+  };
+
   const canBuySelected = () => {
-    if (!selectedItem || selectedItem.owned) return false;
-    return player.coins >= selectedItem.price && player.level >= selectedItem.requiredLevel;
+    if (!selectedItem) return false;
+    
+    // Allow baits to be purchased multiple times (consumable)
+    if (selectedItem.type !== 'bait' && selectedItem.owned) return false;
+    
+    // Calculate total price (for baits, multiply by quantity)
+    const totalPrice = getTotalPrice();
+    
+    // Check coins and level (if requiredLevel exists)
+    const hasEnoughCoins = player.coins >= totalPrice;
+    const meetsLevelRequirement = selectedItem.requiredLevel ? player.level >= selectedItem.requiredLevel : true;
+    
+    return hasEnoughCoins && meetsLevelRequirement;
   };
 
   const currentItems = getCurrentItems();
+
+  // Reset bait quantity when changing selected item
+  useEffect(() => {
+    setBaitQuantityToBuy(1);
+  }, [selectedItem?.id]);
+
+  // Update selectedItem when player data changes (after buy/equip)
+  useEffect(() => {
+    if (!selectedItem) return;
+    
+    // Manually update selectedItem based on its type
+    let updatedItem;
+    if (selectedItem.type === 'rod') {
+      const rod = FISHING_RODS.find(r => r.id === selectedItem.id);
+      if (rod) {
+        updatedItem = {
+          ...rod,
+          type: 'rod',
+          owned: isRodOwned(rod.id),
+          equipped: player.equippedRod === rod.id,
+        };
+      }
+    } else if (selectedItem.type === 'bait') {
+      const bait = BAITS.find(b => b.id === selectedItem.id);
+      if (bait) {
+        updatedItem = {
+          ...bait,
+          type: 'bait',
+          owned: isBaitOwned(bait.id),
+          equipped: player.equippedBait === bait.id,
+          quantity: player.ownedBaits[bait.id] || 0,
+        };
+      }
+    } else if (selectedItem.type === 'boat') {
+      const boat = BOATS.find(b => b.id === selectedItem.id);
+      if (boat) {
+        updatedItem = {
+          ...boat,
+          type: 'boat',
+          owned: isBoatOwned(boat.id),
+          equipped: player.equippedBoat === boat.id,
+        };
+      }
+    }
+    
+    if (updatedItem) {
+      setSelectedItem(updatedItem);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [player.ownedRods, player.ownedBaits, player.ownedBoats, player.equippedRod, player.equippedBait, player.equippedBoat]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-800 to-black relative overflow-hidden">
@@ -341,20 +413,6 @@ export function ShopScreen({
               <p className="text-sm text-purple-200">{selectedItem.description}</p>
             </div>
 
-            {/* Level Bar */}
-            <div className="mb-6">
-              <div className="flex justify-between mb-2">
-                <span className="text-yellow-400 font-bold text-sm">LEVEL</span>
-                <span className="text-white font-bold">{selectedItem.requiredLevel}/80</span>
-              </div>
-              <div className="h-8 bg-gray-900/50 rounded-lg overflow-hidden border-2 border-purple-600">
-                <div
-                  className="h-full bg-gradient-to-r from-purple-600 to-pink-500"
-                  style={{ width: `${(selectedItem.requiredLevel / 80) * 100}%` }}
-                />
-              </div>
-            </div>
-
             {/* Stars */}
             <div className="mb-6">
               <div className="flex justify-center space-x-2 mb-4">
@@ -402,12 +460,33 @@ export function ShopScreen({
                   </div>
                 </>
               )}
+              
+              {/* Bait Quantity Input */}
+              {selectedItem.type === 'bait' && (
+                <div className="mb-4 bg-gray-900/50 rounded-lg p-4 border-2 border-purple-600">
+                  <label className="block text-purple-300 text-sm mb-2">จำนวนที่ต้องการซื้อ:</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="9999"
+                    value={baitQuantityToBuy}
+                    onChange={(e) => setBaitQuantityToBuy(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-full bg-gray-800 border-2 border-purple-500 rounded-lg px-4 py-3 text-white text-center text-2xl font-bold focus:outline-none focus:border-purple-400"
+                  />
+                  <p className="text-gray-400 text-xs text-center mt-2">
+                    ราคาต่อชิ้น: {selectedItem.price.toLocaleString()} coins
+                  </p>
+                </div>
+              )}
+              
               {selectedItem.price > 0 && (
                 <div className="flex justify-between border-t border-purple-500 pt-3">
-                  <span className="text-purple-300 text-sm">Price:</span>
+                  <span className="text-purple-300 text-sm">
+                    {selectedItem.type === 'bait' ? 'Total Price:' : 'Price:'}
+                  </span>
                   <span className="text-yellow-400 font-bold flex items-center">
                     <Coins className="h-4 w-4 mr-1" />
-                    {selectedItem.price.toLocaleString()}
+                    {getTotalPrice().toLocaleString()}
                   </span>
                 </div>
               )}
@@ -426,7 +505,7 @@ export function ShopScreen({
 
             {/* Actions */}
             <div className="space-y-3">
-              {selectedItem.owned ? (
+              {selectedItem.owned && selectedItem.type !== 'bait' ? (
                 selectedItem.equipped ? (
                   <Button
                     className="w-full h-14 bg-yellow-600 hover:bg-yellow-500 text-white font-black text-lg"
@@ -467,6 +546,26 @@ export function ShopScreen({
                   <Coins className="h-5 w-5 mr-2" />
                   NOT ENOUGH COINS
                 </Button>
+              )}
+              
+              {/* For baits: show EQUIP button separately if owned */}
+              {selectedItem.owned && selectedItem.type === 'bait' && (
+                selectedItem.equipped ? (
+                  <Button
+                    className="w-full h-14 bg-yellow-600 text-white font-black text-lg"
+                    disabled
+                  >
+                    <CheckCircle2 className="h-5 w-5 mr-2" />
+                    EQUIPPED
+                  </Button>
+                ) : (
+                  <Button
+                    className="w-full h-14 bg-green-600 hover:bg-green-500 text-white font-black text-lg"
+                    onClick={handleEquipItem}
+                  >
+                    EQUIP
+                  </Button>
+                )
               )}
             </div>
           </div>

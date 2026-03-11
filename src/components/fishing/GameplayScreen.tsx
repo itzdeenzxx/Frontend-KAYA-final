@@ -27,6 +27,24 @@ import {
 import { BIOME_NAMES_TH, RARITY_COLORS, RARITY_NAMES_TH } from '@/types/fishing';
 import { useFishingGame } from '@/hooks/useFishingGame';
 
+// Import biome background images
+import OceanBg from '@/assets/Ocean.png';
+import RiverBg from '@/assets/River.png';
+import BeachBg from '@/assets/Beach.png';
+import IceBg from '@/assets/Ice.png';
+import PondBg from '@/assets/Pond.png';
+import SwampBg from '@/assets/Swam.png';
+
+// Biome background mapping
+const BIOME_BACKGROUNDS: Record<BiomeType, string> = {
+  ocean: OceanBg,
+  river: RiverBg,
+  lake: BeachBg,
+  ice: IceBg,
+  pond: PondBg,
+  swamp: SwampBg,
+};
+
 type FishingPhase = 'idle' | 'casting' | 'waiting' | 'bite' | 'pulling' | 'caught' | 'full';
 
 export function GameplayScreen({
@@ -176,13 +194,12 @@ export function GameplayScreen({
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-sky-300 via-blue-300 to-blue-400 relative overflow-hidden">
-      {/* Background decorations */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-20 left-10 text-9xl opacity-10">🎣</div>
-        <div className="absolute top-40 right-20 text-8xl opacity-10">🐟</div>
-        <div className="absolute bottom-20 left-1/4 text-7xl opacity-10">🌊</div>
-      </div>
+    <div 
+      className="min-h-screen relative overflow-hidden bg-cover bg-center bg-no-repeat"
+      style={{ backgroundImage: `url(${BIOME_BACKGROUNDS[session.biome]})` }}
+    >
+      {/* Overlay for better text readability */}
+      <div className="absolute inset-0 bg-black/10" />
 
       {/* Video & Canvas for gesture detection - Top Right Corner */}
       <div className="absolute right-2 sm:right-4 top-24 sm:top-28 z-20">
