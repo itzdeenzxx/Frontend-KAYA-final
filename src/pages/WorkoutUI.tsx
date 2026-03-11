@@ -1098,13 +1098,19 @@ export default function WorkoutUI() {
       setDisplayRep(kayaAnalysis.reps);
       setShowRepCounter(true);
       
-      // Speak rep count for milestones (1,5,9,10); halfway once; others get light encouragement
+      // Speak rep count for milestones (1,5,9,10); halfway once (deferred retry if busy)
       const halfwayThreshold = Math.floor(targetReps / 2) + 1; // first rep > 50%
       if (REP_MESSAGES[kayaAnalysis.reps]) {
         speakRepCount(kayaAnalysis.reps);
-      } else if (kayaAnalysis.reps === halfwayThreshold && !halfwayPlayedRef.current && !isTtsSpeakingRef.current) {
-        halfwayPlayedRef.current = true;
-        playCoachAudioRef.current('halfway');
+        // If this milestone IS the halfway rep, mark it so we don't also try halfway
+        if (kayaAnalysis.reps === halfwayThreshold) halfwayPlayedRef.current = true;
+      } else if (kayaAnalysis.reps >= halfwayThreshold && !halfwayPlayedRef.current) {
+        // Try to play halfway — deferred: retry on next rep if audio is busy now
+        if (!isTtsSpeakingRef.current && !isCountingRepRef.current) {
+          halfwayPlayedRef.current = true;
+          playCoachAudioRef.current('halfway');
+        }
+        // If busy, don't set halfwayPlayedRef — next rep will retry
       }
       
       // Hide after animation
