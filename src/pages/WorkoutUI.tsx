@@ -168,6 +168,8 @@ export default function WorkoutUI() {
   const navigatedRef = useRef(false);
   // Global "stopped" flag — set by handleStop to prevent any new audio from playing
   const stoppedRef = useRef(false);
+  // True while rep-count audio is playing — blocks ALL other audio except danger warnings
+  const isCountingRepRef = useRef(false);
   // Pending timeout IDs that must be cancelled on stop/unmount
   const pendingTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   // Stable ref to playCoachAudio — filled in after stopAllTTS is defined below
@@ -644,7 +646,7 @@ export default function WorkoutUI() {
   useEffect(() => {
     if (!currentExerciseIsTimeBased || exerciseCompleted) return;
     const exerciseDuration = exercises[currentExercise]?.duration ?? 0;
-    if (!isTtsSpeakingRef.current) {
+    if (!isTtsSpeakingRef.current && !isCountingRepRef.current) {
       // Only play 30s milestone if total duration > 35s (avoid firing at start of 30s sets)
       if (timeLeft === 30 && !timeMilestone30Ref.current && exerciseDuration > 35) {
         timeMilestone30Ref.current = true;
@@ -665,7 +667,7 @@ export default function WorkoutUI() {
     const now = Date.now();
     if (now - lastTempoAudioTimeRef.current < 10000) return; // throttle 10s (was 8s)
     if (quality === lastTempoQualityRef.current && now - lastTempoAudioTimeRef.current < 20000) return; // same quality: 20s extra cooldown
-    if (isTtsSpeakingRef.current) return;
+    if (isTtsSpeakingRef.current || isCountingRepRef.current) return;
     const TEMPO_MAP: Partial<Record<string, AudioCategory>> = {
       too_fast: 'tempo_too_fast',
       too_slow: 'tempo_too_slow',
@@ -693,7 +695,7 @@ export default function WorkoutUI() {
       if (bodyInvisibleSinceRef.current === 0) return; // body became visible again
       const now = Date.now();
       if (now - lastVisibilityAudioTimeRef.current < 10000) return; // throttle 10s
-      if (isTtsSpeakingRef.current) return;
+      if (isTtsSpeakingRef.current || isCountingRepRef.current) return;
       lastVisibilityAudioTimeRef.current = now;
       playCoachAudioRef.current('move_closer'); // "ขยับตัวเข้า(กล้อง)"
     }, 3000);
@@ -706,7 +708,7 @@ export default function WorkoutUI() {
     const { isMoving, smoothness } = kayaAnalysis.motionQuality;
     const now = Date.now();
     if (now - lastMotionAudioTimeRef.current < 8000) return;
-    if (isTtsSpeakingRef.current) return;
+    if (isTtsSpeakingRef.current || isCountingRepRef.current) return;
     // Only fire move_more when user has had reps (body visible and clearly not moving after doing some reps)
     if (!isMoving && kayaAnalysis.reps > 0) {
       lastMotionAudioTimeRef.current = now;
@@ -795,9 +797,13 @@ export default function WorkoutUI() {
   }, []);
 
   // Play a pre-recorded coach audio clip by category (reads from refs — no stale closure)
+  // Categories that represent danger / injury risk — allowed to interrupt rep counting
+  const DANGER_CATEGORIES = new Set<AudioCategory>(['form_correction']);
   const playCoachAudio = useCallback((category: AudioCategory, onEnd?: () => void): void => {
     if (stoppedRef.current) return; // don't play anything after handleStop
     if (!ttsEnabledRef.current) { onEnd?.(); return; }
+    // While counting reps, block everything except danger warnings
+    if (isCountingRepRef.current && !DANGER_CATEGORIES.has(category)) { onEnd?.(); return; }
     // Fallback to 'coach-aiko' when ttsCoach hasn't loaded yet (async Firestore load)
     const coachId = ttsCoachRef.current?.id ?? 'coach-aiko';
     // If coach lacks this audio category (e.g. new coaches missing timer_15s/timer_30s), fall back to aiko
@@ -857,6 +863,7 @@ export default function WorkoutUI() {
       }
       isTtsSpeakingRef.current = false;
       speakTTSInProgressRef.current = false;
+      isCountingRepRef.current = false;
       // Release the AICoachPopup gate and stop its audio
       setWorkoutUIAudioPlaying(false);
       stopCoachPopupAudio();
@@ -1033,15 +1040,17 @@ export default function WorkoutUI() {
           console.log(`🔊 [RepCount] Playing local audio for rep ${rep}:`, localUrl);
           try {
             stopAllTTS();
+            isCountingRepRef.current = true; // lock — block all non-danger audio
             isTtsSpeakingRef.current = true;
             setWorkoutUIAudioPlaying(true);
             return new Promise<void>((resolve) => {
               const audio = new Audio(localUrl);
               ttsAudioRef.current = audio;
               audio.playbackRate = ttsSpeedRef.current || 1.0;
-              audio.onended = () => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; setWorkoutUIAudioPlaying(false); resolve(); };
-              audio.onerror = () => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; setWorkoutUIAudioPlaying(false); resolve(); };
-              audio.play().catch(() => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; setWorkoutUIAudioPlaying(false); resolve(); });
+              const releaseCount = () => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; isCountingRepRef.current = false; setWorkoutUIAudioPlaying(false); resolve(); };
+              audio.onended = releaseCount;
+              audio.onerror = releaseCount;
+              audio.play().catch(releaseCount);
             });
           } catch {
             console.warn('🔊 [RepCount] Local audio failed, falling back to API');
@@ -1060,7 +1069,7 @@ export default function WorkoutUI() {
     const score = kayaAnalysis.formScore;
     const now = Date.now();
     // Don't interrupt rep count or other audio in progress
-    if (isTtsSpeakingRef.current) return;
+    if (isTtsSpeakingRef.current || isCountingRepRef.current) return;
     // Throttle: play form audio at most once every 8 seconds (was 5s — too frequent)
     if (now - lastFormAudioTimeRef.current < 8000) return;
     if (quality === 'bad' && score < 50) {
@@ -1628,6 +1637,7 @@ export default function WorkoutUI() {
 
   const handleStop = () => {
     stoppedRef.current = true;    // prevent any new audio from starting
+    isCountingRepRef.current = false; // release counting lock
     navigatedRef.current = true;  // prevent finishWorkout's fallback timeout from navigating
     // Clear all pending timeouts (rest announcement, finishWorkout fallback, etc.)
     for (const t of pendingTimeoutsRef.current) clearTimeout(t);
