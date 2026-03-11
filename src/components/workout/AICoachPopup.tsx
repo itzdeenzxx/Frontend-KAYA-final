@@ -53,14 +53,26 @@ interface TTSState {
 
 /**
  * Event types that should ONLY show as popup — NO TTS.
- * These are already spoken by WorkoutUI (local audio or Botnoi API),
+ * These are already spoken by WorkoutUI (local pre-recorded audio),
  * so AICoachPopup must not speak them to avoid duplicate/overlapping speech.
  */
 const POPUP_ONLY_TYPES = new Set<CoachEventType>([
-  'rep_completed',      // WorkoutUI speakRepCount handles reps 1,5,9,10
-  'rep_counted_audio',  // same
-  'exercise_start',     // WorkoutUI speakExerciseInstruction handles this
-  'session_start',      // WorkoutUI speakCoachIntroduction handles this
+  'rep_completed',        // WorkoutUI speakRepCount handles reps 1,5,9,10
+  'rep_counted_audio',    // same
+  'exercise_start',       // WorkoutUI speakExerciseInstruction handles this
+  'session_start',        // WorkoutUI speakCoachIntroduction handles this
+  'target_reps_reached',  // WorkoutUI plays 'set_complete' audio
+  'good_form',            // WorkoutUI form feedback effect handles these
+  'warn_form',            // WorkoutUI plays 'form_check' / 'stretch_up'
+  'bad_form',             // WorkoutUI plays 'form_correction' / 'stretch_up'
+  'hold_form',            // WorkoutUI handles hold guidance
+  'halfway',              // WorkoutUI plays 'halfway' audio
+  'almost_done',          // WorkoutUI plays 'session_almost_done' audio
+  'movement_too_fast',    // WorkoutUI plays 'tempo_too_fast'
+  'movement_too_slow',    // WorkoutUI plays 'tempo_too_slow'
+  'movement_jerky',       // WorkoutUI plays 'movement_jerky'
+  'movement_smooth',      // no separate audio needed
+  'no_motion',            // WorkoutUI plays 'move_more'
 ]);
 
 const ttsState: TTSState = {
