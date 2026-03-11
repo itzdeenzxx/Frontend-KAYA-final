@@ -842,7 +842,6 @@ export default function WorkoutUI() {
   }, [stopAllTTS]);
   // Keep refs updated so non-reactive code (setTimeout, useEffect) always has latest
   useEffect(() => { playCoachAudioRef.current = playCoachAudio; }, [playCoachAudio]);
-  useEffect(() => { handleNextRef.current = handleNext; }, [handleNext]);
 
   // Stop all audio when component unmounts (e.g. back button, navigate away)
   useEffect(() => {
@@ -1627,6 +1626,9 @@ export default function WorkoutUI() {
     }
   }, [currentExercise, exercises, isKayaWorkout, kayaAnalysis, saveCurrentExerciseResult, finishWorkout, stopAllTTS]);
 
+  // Keep handleNextRef updated so non-reactive code always has latest
+  useEffect(() => { handleNextRef.current = handleNext; }, [handleNext]);
+
   const handlePrevious = useCallback(() => {
     if (currentExercise > 0) {
       stopAllTTS();
@@ -2030,6 +2032,19 @@ export default function WorkoutUI() {
                 {showSkeleton ? <Bone className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
               </button>
             )}
+            {/* Visual Pose Guide Toggle - Desktop */}
+            {isKayaWorkout && cameraEnabled && (
+              <button
+                onClick={() => setShowVisualGuide(!showVisualGuide)}
+                className={cn(
+                  "w-10 h-10 rounded-full backdrop-blur-sm flex items-center justify-center transition-colors",
+                  showVisualGuide ? "bg-orange-500 text-white" : "bg-black/30 text-white/70 hover:bg-black/50"
+                )}
+                title={showVisualGuide ? "ซ่อนไกด์ท่า" : "แสดงไกด์ท่า"}
+              >
+                <Target className="w-4 h-4" />
+              </button>
+            )}
             {/* Music Toggle */}
             <button
               onClick={() => setShowMusicPlayer(!showMusicPlayer)}
@@ -2357,6 +2372,19 @@ export default function WorkoutUI() {
                   title={showSkeleton ? "ซ่อนโครงกระดูก" : "แสดงโครงกระดูก"}
                 >
                   {showSkeleton ? <Bone className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                </button>
+              )}
+              {/* Visual Pose Guide Toggle for Mobile */}
+              {isKayaWorkout && cameraEnabled && (
+                <button 
+                  onClick={() => setShowVisualGuide(!showVisualGuide)}
+                  className={cn(
+                    "w-9 h-9 rounded-xl backdrop-blur-sm flex items-center justify-center transition-colors",
+                    showVisualGuide ? "bg-orange-500/80 text-white" : "bg-white/10 text-white/60"
+                  )}
+                  title={showVisualGuide ? "ซ่อนไกด์ท่า" : "แสดงไกด์ท่า"}
+                >
+                  <Target className="w-4 h-4" />
                 </button>
               )}
               {/* Screenshot Button for Mobile */}

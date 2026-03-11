@@ -13,7 +13,10 @@ import { cn } from '@/lib/utils';
 import { 
   BIOME_MAPS, 
 } from '@/lib/biomeDatabase';
-import { BIOME_EMOJIS, BIOME_NAMES_TH } from '@/types/fishing';
+import { BIOME_NAMES_TH } from '@/types/fishing';
+import {
+  WaveIcon, FishIcon as FishSvgIcon, CoinIcon, BiomeIcons,
+} from './FishingIcons';
 
 export function MapSelectionScreen({
   player,
@@ -58,8 +61,8 @@ export function MapSelectionScreen({
 
       {/* Decorative Elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-20 left-10 text-9xl opacity-10 animate-float">🌊</div>
-        <div className="absolute bottom-20 right-20 text-8xl opacity-10 animate-float-slow">🐟</div>
+        <div className="absolute top-20 left-10 opacity-10 animate-float"><WaveIcon className="w-40 h-20" /></div>
+        <div className="absolute bottom-20 right-20 opacity-10 animate-float-slow"><FishSvgIcon className="w-32 h-20" /></div>
       </div>
 
       <div className="relative z-10 p-6">
@@ -124,8 +127,11 @@ export function MapSelectionScreen({
 
                     {/* Biome Emoji/Logo */}
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="text-9xl animate-float drop-shadow-2xl">
-                        {BIOME_EMOJIS[biome.id]}
+                      <div className="animate-float drop-shadow-2xl">
+                        {(() => {
+                          const BiomeIcon = BiomeIcons[biome.id];
+                          return BiomeIcon ? <BiomeIcon className="w-32 h-32" /> : <WaveIcon className="w-32 h-32" />;
+                        })()}
                       </div>
                     </div>
 
@@ -143,7 +149,7 @@ export function MapSelectionScreen({
                         {/* Stats */}
                         <div className="flex items-center justify-between mb-3 text-sm">
                           <div className="flex items-center space-x-2">
-                            <span className="text-gray-400">🐟 Fish:</span>
+                            <span className="text-gray-400 flex items-center gap-1"><FishSvgIcon className="w-4 h-3 inline" /> Fish:</span>
                             <span className="text-white font-bold">{fishCaught}</span>
                           </div>
                           <div className="flex items-center space-x-2">
@@ -179,10 +185,10 @@ export function MapSelectionScreen({
                           <div className="flex items-center justify-between">
                             <span className="text-gray-400">Price:</span>
                             <span className={cn(
-                              'font-bold',
+                              'font-bold flex items-center gap-1',
                               player.coins >= biome.unlockPrice ? 'text-green-400' : 'text-red-400'
                             )}>
-                              💰 {biome.unlockPrice.toLocaleString()}
+                              <CoinIcon className="w-4 h-4 inline" /> {biome.unlockPrice.toLocaleString()}
                             </span>
                           </div>
                         </div>

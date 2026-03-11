@@ -29,6 +29,9 @@ import type { WorkoutResults } from '@/types/workout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { addWorkoutToDailyStats, incrementChallengeProgress, updateUserPoints, updateUserStreak, saveWorkoutSession } from '@/lib/firestore';
+import { storage } from '@/lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import liff from '@line/liff';
 
 // Calculate calories based on workout intensity and duration
 function calculateCalories(
@@ -118,6 +121,7 @@ export default function WorkoutComplete() {
   const [copied, setCopied] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
+  const [isLineSharing, setIsLineSharing] = useState(false);
   const { lineProfile, refreshUser } = useAuth();
 
   // Get workout results from location state or use mock data
@@ -248,7 +252,7 @@ export default function WorkoutComplete() {
       // Dynamic import html2canvas to avoid SSR issues
       const html2canvas = (await import('html2canvas')).default;
       const canvas = await html2canvas(shareCardRef.current, {
-        backgroundColor: null,
+        backgroundColor: '#1a1a2e',
         scale: 2,
         useCORS: true,
       });
@@ -269,6 +273,160 @@ export default function WorkoutComplete() {
       link.download = `kaya-workout-${Date.now()}.png`;
       link.href = dataUrl;
       link.click();
+    }
+  };
+
+  // Share to LINE via shareTargetPicker with stats image
+  const handleShareLine = async () => {
+    setShowShareMenu(false);
+    setIsLineSharing(true);
+
+    try {
+      // 1. Capture the share card as image
+      const dataUrl = await captureShareCard();
+      if (!dataUrl) throw new Error('Failed to capture share card');
+
+      // 2. Upload to Firebase Storage to get a public URL
+      const blob = await (await fetch(dataUrl)).blob();
+      const userId = lineProfile?.userId || 'anonymous';
+      const fileName = `workout-${Date.now()}.png`;
+      const storageRef = ref(storage, `workout-shares/${userId}/${fileName}`);
+      await uploadBytes(storageRef, blob, { contentType: 'image/png' });
+      const imageUrl = await getDownloadURL(storageRef);
+
+      // 3. Check if shareTargetPicker is available
+      if (!liff.isApiAvailable('shareTargetPicker')) {
+        // Fallback: open LINE share URL
+        const shareText = `🎯 เพิ่งออกกำลังกายกับ KAYA เสร็จ!\n💪 ${results.totalReps} ครั้ง\n🔥 ${results.caloriesBurned} แคลอรี่\n⭐ ฟอร์ม ${results.averageFormScore}%`;
+        window.open(
+          `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(window.location.origin)}&text=${encodeURIComponent(shareText)}`,
+          '_blank'
+        );
+        return;
+      }
+
+      // 4. Build Flex Message with image
+      const appUrl = "https://miniapp.line.me/2008680520-UNJtwcRg";
+      const profileName = lineProfile?.displayName || 'KAYA User';
+
+      const flexMessage: any = {
+        type: 'flex',
+        altText: `🎯 ${profileName} เพิ่งออกกำลังกายกับ KAYA! 💪 ${results.totalReps} ครั้ง 🔥 ${results.caloriesBurned} แคลอรี่`,
+        contents: {
+          type: 'bubble',
+          size: 'mega',
+          hero: {
+            type: 'image',
+            url: imageUrl,
+            size: 'full',
+            aspectRatio: '1:1',
+            aspectMode: 'cover',
+          },
+          body: {
+            type: 'box',
+            layout: 'vertical',
+            contents: [
+              {
+                type: 'text',
+                text: `${profileName} ออกกำลังกายเสร็จแล้ว! 🎉`,
+                weight: 'bold',
+                size: 'lg',
+                color: '#ffffff',
+                wrap: true,
+              },
+              {
+                type: 'text',
+                text: results.styleNameTh,
+                size: 'sm',
+                color: '#aaaaaa',
+                margin: 'sm',
+              },
+              {
+                type: 'separator',
+                margin: 'lg',
+                color: '#333333',
+              },
+              {
+                type: 'box',
+                layout: 'horizontal',
+                contents: [
+                  {
+                    type: 'box',
+                    layout: 'vertical',
+                    contents: [
+                      { type: 'text', text: String(results.totalReps), size: 'xl', weight: 'bold', color: '#dd6e53', align: 'center' },
+                      { type: 'text', text: 'ครั้ง', size: 'xxs', color: '#888888', align: 'center' },
+                    ],
+                    flex: 1,
+                  },
+                  { type: 'separator', color: '#444444' },
+                  {
+                    type: 'box',
+                    layout: 'vertical',
+                    contents: [
+                      { type: 'text', text: `🔥 ${results.caloriesBurned}`, size: 'xl', weight: 'bold', color: '#ff8c00', align: 'center' },
+                      { type: 'text', text: 'แคลอรี่', size: 'xxs', color: '#888888', align: 'center' },
+                    ],
+                    flex: 1,
+                  },
+                  { type: 'separator', color: '#444444' },
+                  {
+                    type: 'box',
+                    layout: 'vertical',
+                    contents: [
+                      { type: 'text', text: `${results.averageFormScore}%`, size: 'xl', weight: 'bold', color: '#4CAF50', align: 'center' },
+                      { type: 'text', text: 'ฟอร์ม', size: 'xxs', color: '#888888', align: 'center' },
+                    ],
+                    flex: 1,
+                  },
+                ],
+                margin: 'lg',
+                paddingTop: 'md',
+                paddingBottom: 'md',
+              },
+              {
+                type: 'text',
+                text: '💪 มาออกกำลังกายด้วยกัน!',
+                size: 'md',
+                color: '#ffffff',
+                align: 'center',
+                margin: 'lg',
+                weight: 'bold',
+              },
+            ],
+            backgroundColor: '#1a1a2e',
+            paddingAll: '20px',
+          },
+          footer: {
+            type: 'box',
+            layout: 'vertical',
+            contents: [
+              {
+                type: 'button',
+                action: { type: 'uri', label: 'เข้าใช้งาน KAYA', uri: appUrl },
+                style: 'primary',
+                color: '#dd6e53',
+                height: 'sm',
+              },
+            ],
+            backgroundColor: '#1a1a2e',
+            paddingAll: '15px',
+            paddingTop: '0px',
+          },
+        },
+      };
+
+      await liff.shareTargetPicker([flexMessage]);
+    } catch (error) {
+      console.error('LINE share failed:', error);
+      // Fallback to URL-based share
+      const shareText = `🎯 เพิ่งออกกำลังกายกับ KAYA เสร็จ!\n💪 ${results.totalReps} ครั้ง\n🔥 ${results.caloriesBurned} แคลอรี่`;
+      window.open(
+        `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(window.location.origin)}&text=${encodeURIComponent(shareText)}`,
+        '_blank'
+      );
+    } finally {
+      setIsLineSharing(false);
     }
   };
 
@@ -305,12 +463,6 @@ export default function WorkoutComplete() {
       case 'facebook':
         window.open(
           `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}&quote=${encodeURIComponent(shareText)}`,
-          '_blank'
-        );
-        break;
-      case 'line':
-        window.open(
-          `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareText)}`,
           '_blank'
         );
         break;
@@ -353,7 +505,8 @@ export default function WorkoutComplete() {
         {/* Share Card (Capture Area) */}
         <div
           ref={shareCardRef}
-          className="max-w-md mx-auto mb-8 p-6 rounded-3xl bg-gradient-to-br from-primary/20 via-background to-orange-500/20 border border-primary/20 shadow-2xl"
+          className="max-w-md mx-auto mb-8 p-6 rounded-3xl shadow-2xl"
+          style={{ backgroundColor: '#1a1a2e', color: '#ffffff' }}
         >
           {/* Card Header */}
           <div className="flex items-center gap-3 mb-6">
@@ -361,27 +514,27 @@ export default function WorkoutComplete() {
               <Sparkles className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h2 className="font-bold text-lg">KAYA Fitness</h2>
-              <p className="text-sm text-muted-foreground">{results.styleNameTh}</p>
+              <h2 className="font-bold text-lg" style={{ color: '#ffffff' }}>KAYA Fitness</h2>
+              <p className="text-sm" style={{ color: '#aaaaaa' }}>{results.styleNameTh}</p>
             </div>
           </div>
 
           {/* Main Stats */}
           <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="text-center p-3 rounded-2xl bg-background/50 backdrop-blur">
-              <div className="text-3xl font-bold text-primary">{results.totalReps}</div>
-              <div className="text-xs text-muted-foreground">ครั้ง</div>
+            <div className="text-center p-3 rounded-2xl" style={{ backgroundColor: '#2a2a4a' }}>
+              <div className="text-3xl font-bold" style={{ color: '#ff6b6b' }}>{results.totalReps}</div>
+              <div className="text-xs" style={{ color: '#aaaaaa' }}>ครั้ง</div>
             </div>
-            <div className="text-center p-3 rounded-2xl bg-background/50 backdrop-blur">
+            <div className="text-center p-3 rounded-2xl" style={{ backgroundColor: '#2a2a4a' }}>
               <div className="flex items-center justify-center gap-1">
                 <Flame className="w-5 h-5 text-orange-500" />
                 <span className="text-3xl font-bold text-orange-500">{results.caloriesBurned}</span>
               </div>
-              <div className="text-xs text-muted-foreground">แคลอรี่</div>
+              <div className="text-xs" style={{ color: '#aaaaaa' }}>แคลอรี่</div>
             </div>
-            <div className="text-center p-3 rounded-2xl bg-background/50 backdrop-blur">
-              <div className="text-3xl font-bold text-blue-500">{formatTime(results.totalTime)}</div>
-              <div className="text-xs text-muted-foreground">เวลา</div>
+            <div className="text-center p-3 rounded-2xl" style={{ backgroundColor: '#2a2a4a' }}>
+              <div className="text-3xl font-bold" style={{ color: '#4ecdc4' }}>{formatTime(results.totalTime)}</div>
+              <div className="text-xs" style={{ color: '#aaaaaa' }}>เวลา</div>
             </div>
           </div>
 
@@ -390,10 +543,10 @@ export default function WorkoutComplete() {
             {/* Completion */}
             <div>
               <div className="flex justify-between text-sm mb-2">
-                <span className="text-muted-foreground">ความสำเร็จ</span>
+                <span style={{ color: '#cccccc' }}>ความสำเร็จ</span>
                 <span className="font-bold text-primary">{results.completionPercentage}%</span>
               </div>
-              <div className="h-3 bg-muted rounded-full overflow-hidden">
+              <div className="h-3 rounded-full overflow-hidden" style={{ backgroundColor: '#333355' }}>
                 <div
                   className="h-full bg-gradient-to-r from-primary to-orange-500 rounded-full transition-all duration-1000"
                   style={{ width: `${results.completionPercentage}%` }}
@@ -404,12 +557,12 @@ export default function WorkoutComplete() {
             {/* Form Score */}
             <div>
               <div className="flex justify-between text-sm mb-2">
-                <span className="text-muted-foreground">คะแนนฟอร์ม</span>
+                <span style={{ color: '#cccccc' }}>คะแนนฟอร์ม</span>
                 <span className={cn("font-bold", getFormColor(results.averageFormScore))}>
                   {results.averageFormScore}% - {getFormText(results.averageFormScore)}
                 </span>
               </div>
-              <div className="h-3 bg-muted rounded-full overflow-hidden">
+              <div className="h-3 rounded-full overflow-hidden" style={{ backgroundColor: '#333355' }}>
                 <div
                   className={cn(
                     "h-full rounded-full transition-all duration-1000",
@@ -425,7 +578,7 @@ export default function WorkoutComplete() {
           {/* Achievements */}
           {earnedAchievements.length > 0 && (
             <div className="mb-4">
-              <p className="text-sm text-muted-foreground mb-3">🏆 รางวัลที่ได้รับ</p>
+              <p className="text-sm mb-3" style={{ color: '#cccccc' }}>🏆 รางวัลที่ได้รับ</p>
               <div className="flex flex-wrap gap-2">
                 {earnedAchievements.slice(0, 4).map((achievement) => (
                   <div
@@ -444,9 +597,9 @@ export default function WorkoutComplete() {
           )}
 
           {/* Branding */}
-          <div className="text-center pt-4 border-t border-border/50">
-            <p className="text-xs text-muted-foreground">
-              Powered by <span className="font-bold text-primary">KAYA</span> AI Fitness
+          <div className="text-center pt-4" style={{ borderTop: '1px solid #333355' }}>
+            <p className="text-xs" style={{ color: '#888888' }}>
+              Powered by <span className="font-bold" style={{ color: '#ff6b6b' }}>KAYA</span> AI Fitness
             </p>
           </div>
         </div>
@@ -551,13 +704,18 @@ export default function WorkoutComplete() {
                     </button>
                   )}
                   <button
-                    onClick={() => handleShare('line')}
+                    onClick={handleShareLine}
+                    disabled={isLineSharing}
                     className="flex flex-col items-center gap-1 p-2 rounded-xl hover:bg-muted transition-colors"
                   >
                     <div className="w-10 h-10 rounded-full bg-[#00B900] flex items-center justify-center">
-                      <span className="text-white font-bold text-sm">LINE</span>
+                      {isLineSharing ? (
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <span className="text-white font-bold text-sm">LINE</span>
+                      )}
                     </div>
-                    <span className="text-xs">LINE</span>
+                    <span className="text-xs">{isLineSharing ? 'กำลังส่ง...' : 'LINE'}</span>
                   </button>
                   <button
                     onClick={() => handleShare('facebook')}

@@ -3,6 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useState, useEffect } from 'react';
 
 import Dashboard from "./pages/Dashboard";
 import WorkoutSelection from "./pages/WorkoutSelection";
@@ -38,9 +39,21 @@ const queryClient = new QueryClient();
 const AppRoutes = () => {
   const { isInitialized, isLoading, isAuthenticated, isNewUser, lineProfile, completeOnboarding } = useAuth();
   const { showThemeSelector, setShowThemeSelector, isThemeLoaded, theme } = useTheme();
+  const [loadingTimedOut, setLoadingTimedOut] = useState(false);
 
-  // Show loading while initializing
-  if (!isInitialized || isLoading || !isThemeLoaded) {
+  // Global loading timeout safety net - force through after 12 seconds
+  useEffect(() => {
+    if (!isInitialized || isLoading || !isThemeLoaded) {
+      const timer = setTimeout(() => {
+        console.warn('Loading timed out, forcing app to render');
+        setLoadingTimedOut(true);
+      }, 12000);
+      return () => clearTimeout(timer);
+    }
+  }, [isInitialized, isLoading, isThemeLoaded]);
+
+  // Show loading while initializing (with timeout fallback)
+  if ((!isInitialized || isLoading || !isThemeLoaded) && !loadingTimedOut) {
     return <RunningLoader message="กำลังเตรียมแอพพลิเคชัน..." />;
   }
 

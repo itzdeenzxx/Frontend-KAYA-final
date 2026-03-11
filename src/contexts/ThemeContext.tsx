@@ -40,36 +40,50 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   // Load theme from Firestore or localStorage
   const loadTheme = useCallback(async () => {
     try {
-      // First check localStorage for quick loading
-      const localTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
-      const themeSelected = localStorage.getItem(THEME_SELECTED_KEY);
+      // First check localStorage for quick loading (with try/catch for tracking prevention)
+      let localTheme: ThemeMode | null = null;
+      let themeSelected: string | null = null;
+      try {
+        localTheme = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
+        themeSelected = localStorage.getItem(THEME_SELECTED_KEY);
+      } catch {
+        console.warn('localStorage blocked by browser');
+      }
       
       if (localTheme) {
         setThemeState(localTheme);
         applyTheme(localTheme);
       }
 
-      // If user is authenticated, sync with Firestore
+      // If user is authenticated, sync with Firestore (with timeout to prevent hanging)
       if (isAuthenticated && lineProfile?.userId) {
-        const userSettingsRef = doc(db, 'userSettings', lineProfile.userId);
-        const settingsSnap = await getDoc(userSettingsRef);
-        
-        if (settingsSnap.exists()) {
-          const data = settingsSnap.data();
-          const firestoreTheme = data.theme as ThemeMode | undefined;
+        try {
+          const userSettingsRef = doc(db, 'userSettings', lineProfile.userId);
+          const settingsSnap = await Promise.race([
+            getDoc(userSettingsRef),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 8000)),
+          ]);
           
-          if (firestoreTheme) {
-            setThemeState(firestoreTheme);
-            applyTheme(firestoreTheme);
-            localStorage.setItem(THEME_STORAGE_KEY, firestoreTheme);
-            localStorage.setItem(THEME_SELECTED_KEY, 'true');
+          if (settingsSnap.exists()) {
+            const data = settingsSnap.data();
+            const firestoreTheme = data.theme as ThemeMode | undefined;
+            
+            if (firestoreTheme) {
+              setThemeState(firestoreTheme);
+              applyTheme(firestoreTheme);
+              try { localStorage.setItem(THEME_STORAGE_KEY, firestoreTheme); } catch {}
+              try { localStorage.setItem(THEME_SELECTED_KEY, 'true'); } catch {}
+            } else if (!themeSelected) {
+              setShowThemeSelector(true);
+            }
           } else if (!themeSelected) {
-            // User has settings but no theme, show selector
             setShowThemeSelector(true);
           }
-        } else if (!themeSelected) {
-          // New user, show theme selector
-          setShowThemeSelector(true);
+        } catch (firestoreError) {
+          console.warn('Theme Firestore error:', firestoreError);
+          if (!themeSelected) {
+            setShowThemeSelector(true);
+          }
         }
       } else if (!themeSelected && isInitialized) {
         // Not authenticated but first visit
@@ -109,8 +123,8 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     try {
       setThemeState(newTheme);
       applyTheme(newTheme);
-      localStorage.setItem(THEME_STORAGE_KEY, newTheme);
-      localStorage.setItem(THEME_SELECTED_KEY, 'true');
+      try { localStorage.setItem(THEME_STORAGE_KEY, newTheme); } catch {}
+      try { localStorage.setItem(THEME_SELECTED_KEY, 'true'); } catch {}
 
       // Save to Firestore if authenticated
       if (isAuthenticated && lineProfile?.userId) {

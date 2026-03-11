@@ -94,13 +94,13 @@ export function useFishingGameState() {
       }));
 
       toast({
-        title: '🎣 ยินดีต้อนรับ!',
+        title: 'ยินดีต้อนรับ!',
         description: 'เริ่มต้นการผจญภัยตกปลาของคุณ',
       });
     } catch (error) {
       console.error('Error creating new player:', error);
       toast({
-        title: '❌ เกิดข้อผิดพลาด',
+        title: 'เกิดข้อผิดพลาด',
         description: 'ไม่สามารถสร้างผู้เล่นใหม่ได้',
         variant: 'destructive',
       });
@@ -126,7 +126,7 @@ export function useFishingGameState() {
         // ตรวจสอบเงิน
         if (gameState.playerProgress.coins < price) {
           toast({
-            title: '❌ เงินไม่พอ',
+            title: 'เงินไม่พอ',
             description: `ต้องการ ${price.toLocaleString()} เหรียญ`,
             variant: 'destructive',
           });
@@ -150,13 +150,13 @@ export function useFishingGameState() {
         }));
 
         toast({
-          title: '✨ ปลดล็อคสำเร็จ!',
+          title: 'ปลดล็อคสำเร็จ!',
           description: 'คุณสามารถเข้าถึงพื้นที่ใหม่แล้ว',
         });
       } catch (error) {
         console.error('Error unlocking map:', error);
         toast({
-          title: '❌ เกิดข้อผิดพลาด',
+          title: 'เกิดข้อผิดพลาด',
           description: 'ไม่สามารถปลดล็อคพื้นที่ได้',
           variant: 'destructive',
         });
@@ -190,7 +190,7 @@ export function useFishingGameState() {
       }));
 
       toast({
-        title: '🎣 เริ่มตกปลา!',
+        title: 'เริ่มตกปลา!',
         description: 'ขว้างเบ็ดแล้วรอปลาติด',
       });
     },
@@ -209,7 +209,7 @@ export function useFishingGameState() {
         const success = await spendCoins(lineProfile.userId, price);
         if (!success) {
           toast({
-            title: '❌ เงินไม่พอ',
+            title: 'เงินไม่พอ',
             variant: 'destructive',
           });
           return;
@@ -220,13 +220,13 @@ export function useFishingGameState() {
         setGameState((prev) => ({ ...prev, playerProgress: updatedPlayer }));
 
         toast({
-          title: '✅ ซื้อสำเร็จ!',
+          title: 'ซื้อสำเร็จ!',
           description: 'คุณได้คันเบ็ดใหม่แล้ว',
         });
       } catch (error) {
         console.error('Error buying rod:', error);
         toast({
-          title: '❌ เกิดข้อผิดพลาด',
+          title: 'เกิดข้อผิดพลาด',
           variant: 'destructive',
         });
       }
@@ -242,7 +242,7 @@ export function useFishingGameState() {
         const success = await spendCoins(lineProfile.userId, price);
         if (!success) {
           toast({
-            title: '❌ เงินไม่พอ',
+            title: 'เงินไม่พอ',
             variant: 'destructive',
           });
           return;
@@ -253,13 +253,13 @@ export function useFishingGameState() {
         setGameState((prev) => ({ ...prev, playerProgress: updatedPlayer }));
 
         toast({
-          title: '✅ ซื้อสำเร็จ!',
+          title: 'ซื้อสำเร็จ!',
           description: `ได้เหยื่อ ${quantity} ชิ้น`,
         });
       } catch (error) {
         console.error('Error buying bait:', error);
         toast({
-          title: '❌ เกิดข้อผิดพลาด',
+          title: 'เกิดข้อผิดพลาด',
           variant: 'destructive',
         });
       }
@@ -275,7 +275,7 @@ export function useFishingGameState() {
         const success = await spendCoins(lineProfile.userId, price);
         if (!success) {
           toast({
-            title: '❌ เงินไม่พอ',
+            title: 'เงินไม่พอ',
             variant: 'destructive',
           });
           return;
@@ -286,13 +286,13 @@ export function useFishingGameState() {
         setGameState((prev) => ({ ...prev, playerProgress: updatedPlayer }));
 
         toast({
-          title: '✅ ซื้อสำเร็จ!',
+          title: 'ซื้อสำเร็จ!',
           description: 'คุณได้เรือใหม่แล้ว',
         });
       } catch (error) {
         console.error('Error buying boat:', error);
         toast({
-          title: '❌ เกิดข้อผิดพลาด',
+          title: 'เกิดข้อผิดพลาด',
           variant: 'destructive',
         });
       }
@@ -310,7 +310,7 @@ export function useFishingGameState() {
         setGameState((prev) => ({ ...prev, playerProgress: updatedPlayer }));
 
         toast({
-          title: '✅ สวมใส่แล้ว!',
+          title: 'สวมใส่แล้ว!',
           description: 'คันเบ็ดถูกสวมใส่แล้ว',
         });
       } catch (error) {
@@ -330,7 +330,7 @@ export function useFishingGameState() {
         setGameState((prev) => ({ ...prev, playerProgress: updatedPlayer }));
 
         toast({
-          title: '✅ สวมใส่แล้ว!',
+          title: 'สวมใส่แล้ว!',
           description: 'เหยื่อถูกสวมใส่แล้ว',
         });
       } catch (error) {
@@ -350,7 +350,7 @@ export function useFishingGameState() {
         setGameState((prev) => ({ ...prev, playerProgress: updatedPlayer }));
 
         toast({
-          title: '✅ สวมใส่แล้ว!',
+          title: 'สวมใส่แล้ว!',
           description: 'เรือถูกสวมใส่แล้ว',
         });
       } catch (error) {
@@ -384,7 +384,7 @@ export function useFishingGameState() {
 
         if (leveledUp) {
           toast({
-            title: '🎉 Level Up!',
+            title: 'Level Up!',
             description: `คุณเลื่อนเป็น Level ${newLevel}`,
           });
         }
@@ -404,7 +404,7 @@ export function useFishingGameState() {
         });
 
         toast({
-          title: '🐟 จับปลาได้!',
+          title: 'จับปลาได้!',
           description: `${fish.weight.toFixed(2)} kg`,
         });
       } catch (error) {
@@ -436,13 +436,13 @@ export function useFishingGameState() {
       }));
 
       toast({
-        title: '💰 ขายปลาสำเร็จ!',
+        title: 'ขายปลาสำเร็จ!',
         description: `ได้เงิน ${totalEarnings.toLocaleString()} เหรียญ`,
       });
     } catch (error) {
       console.error('Error finishing fishing:', error);
       toast({
-        title: '❌ เกิดข้อผิดพลาด',
+        title: 'เกิดข้อผิดพลาด',
         variant: 'destructive',
       });
     }

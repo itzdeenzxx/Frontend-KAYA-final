@@ -81,22 +81,33 @@ export default async function handler(req: Request): Promise<Response> {
     const usdaData = (await usdaRes.json()) as { foods: USDAFood[] };
     const usdaFoods = usdaData.foods || [];
 
-    // Step 2: Search Unsplash per food item for more accurate images
+    // Step 2: Search Unsplash per food item — fetch multiple candidates to avoid duplicates
     const imagePromises = usdaFoods.map((food) => {
-      // Strip brand name (part before first comma) for cleaner image search
-      // e.g. "McDONALD'S, Hamburger" → "Hamburger food"
       const parts = food.description.split(',');
       const searchTerm = (parts.length > 1 ? parts.slice(1).join(' ').trim() : parts[0].trim()) + ' food';
       return fetch(
-        `https://api.unsplash.com/search/photos?query=${encodeURIComponent(searchTerm)}&per_page=1&orientation=landscape`,
+        `https://api.unsplash.com/search/photos?query=${encodeURIComponent(searchTerm)}&per_page=5&orientation=landscape`,
         { headers: { Authorization: `Client-ID ${unsplashKey}` } }
       )
         .then(r => r.ok ? r.json() : { results: [] })
-        .then((d: { results: UnsplashPhoto[] }) => d.results[0] || null)
-        .catch(() => null);
+        .then((d: { results: UnsplashPhoto[] }) => d.results || [])
+        .catch(() => [] as UnsplashPhoto[]);
     });
 
-    const images = await Promise.all(imagePromises);
+    const allCandidates = await Promise.all(imagePromises);
+
+    // Pick unique images: track used raw URLs, skip duplicates
+    const usedUrls = new Set<string>();
+    const images = allCandidates.map((candidates) => {
+      for (const photo of candidates) {
+        if (!usedUrls.has(photo.urls.raw)) {
+          usedUrls.add(photo.urls.raw);
+          return photo;
+        }
+      }
+      // All candidates were duplicates — fall back to first if available
+      return candidates[0] || null;
+    });
 
     const foods = usdaFoods.map((food: USDAFood, idx: number) => {
       const photo = images[idx];

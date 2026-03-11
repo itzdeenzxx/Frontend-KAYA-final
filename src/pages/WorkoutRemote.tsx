@@ -58,6 +58,14 @@ export default function WorkoutRemote() {
   const [skeletonEnabled, setSkeletonEnabled] = useState(true);
   const [showMusicPlayer, setShowMusicPlayer] = useState(false);
 
+  // Local timer / stats (runs independently, syncs on exercise change)
+  const [localExerciseIndex, setLocalExerciseIndex] = useState(0);
+  const [localTimeLeft, setLocalTimeLeft] = useState(0);
+  const [localTotalTime, setLocalTotalTime] = useState(0);
+  const [localIsPaused, setLocalIsPaused] = useState(false);
+  const [localReps, setLocalReps] = useState(0);
+  const lastSyncedExerciseRef = useRef<number>(-1);
+
   // Voice Coach state
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
   const [isRecording, setIsRecording] = useState(false);
@@ -120,18 +128,32 @@ export default function WorkoutRemote() {
       return;
     }
 
-    console.log('WorkoutRemote: Subscribing to session', pairingCode);
-
     const unsubscribe = subscribeToSession(pairingCode, (updatedSession) => {
-      console.log('WorkoutRemote: Session updated', updatedSession);
       if (updatedSession) {
         setSession(updatedSession);
-        // Consider connected if status is waiting (just created), connected, or active
         const connected = ['waiting', 'connected', 'active'].includes(updatedSession.status);
         setIsConnected(connected);
         setConnectionError('');
 
-        // Check if session ended
+        // Sync local state when exercise changes on desktop
+        const remoteIdx = updatedSession.currentExercise ?? 0;
+        if (remoteIdx !== lastSyncedExerciseRef.current) {
+          lastSyncedExerciseRef.current = remoteIdx;
+          setLocalExerciseIndex(remoteIdx);
+          setLocalReps(0);
+          // Reset timer for the new exercise
+          const exs = getExercisesForStyle(updatedSession.workoutStyle || localStorage.getItem('kaya_workout_style'));
+          setLocalTimeLeft(exs[remoteIdx]?.duration || 0);
+        }
+
+        // Sync pause state from desktop
+        setLocalIsPaused(updatedSession.isPaused ?? false);
+
+        // Sync reps from desktop (BigScreen sends occasionally)
+        if (typeof updatedSession.reps === 'number') {
+          setLocalReps(updatedSession.reps);
+        }
+
         if (updatedSession.status === 'ended') {
           navigate('/dashboard');
         }
@@ -143,6 +165,16 @@ export default function WorkoutRemote() {
 
     return () => unsubscribe();
   }, [pairingCode, navigate]);
+
+  // Local timer – counts down exercise time & counts up total time independently
+  useEffect(() => {
+    if (localIsPaused || !isConnected) return;
+    const interval = setInterval(() => {
+      setLocalTotalTime((prev) => prev + 1);
+      setLocalTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [localIsPaused, isConnected]);
 
   // Send action to Big Screen
   const sendAction = async (type: 'play' | 'pause' | 'next' | 'previous' | 'end' | 'toggleSkeleton') => {
@@ -562,10 +594,16 @@ export default function WorkoutRemote() {
     sendAction('end');
   };
 
-  const currentExerciseIndex = session?.currentExercise ?? 0;
+  const currentExerciseIndex = localExerciseIndex;
   const exercise = exercises[currentExerciseIndex];
   const progress = ((currentExerciseIndex + 1) / exercises.length) * 100;
-  const isPaused = session?.isPaused ?? false;
+  const isPaused = localIsPaused;
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   // Show error state
   if (connectionError) {
@@ -677,11 +715,19 @@ export default function WorkoutRemote() {
           <p className="text-sm text-primary-foreground/70 mb-2">
             {exercise?.name}
           </p>
-          <p className="text-primary-foreground/80">
-            {exercise?.duration
-              ? `${exercise.duration} วินาที`
-              : `${exercise?.reps ?? 0} ครั้ง`}
-          </p>
+          <div className="flex items-center gap-4 mt-1">
+            {exercise?.duration ? (
+              <p className="text-3xl font-bold text-primary-foreground">
+                {formatTime(localTimeLeft)}
+                <span className="text-sm font-normal text-primary-foreground/70 ml-2">เหลือ</span>
+              </p>
+            ) : (
+              <p className="text-3xl font-bold text-primary-foreground">
+                {localReps}
+                <span className="text-sm font-normal text-primary-foreground/70 ml-1">/ {exercise?.reps ?? 10} ครั้ง</span>
+              </p>
+            )}
+          </div>
 
           {/* Pause indicator */}
           {isPaused && (
@@ -714,16 +760,16 @@ export default function WorkoutRemote() {
         <h3 className="text-sm text-background/60 mb-4">สถิติ</h3>
         <div className="grid grid-cols-3 gap-4">
           <div className="bg-background/10 rounded-xl p-4 text-center">
-            <p className="text-2xl font-bold">12:34</p>
-            <p className="text-xs text-background/60">เวลา</p>
+            <p className="text-2xl font-bold">{formatTime(localTotalTime)}</p>
+            <p className="text-xs text-background/60">เวลารวม</p>
           </div>
           <div className="bg-background/10 rounded-xl p-4 text-center">
-            <p className="text-2xl font-bold">156</p>
-            <p className="text-xs text-background/60">แคลอรี่</p>
+            <p className="text-2xl font-bold">{localReps}</p>
+            <p className="text-xs text-background/60">ครั้ง</p>
           </div>
           <div className="bg-background/10 rounded-xl p-4 text-center">
-            <p className="text-2xl font-bold">124</p>
-            <p className="text-xs text-background/60">BPM</p>
+            <p className="text-2xl font-bold">{exercise?.duration ? formatTime(localTimeLeft) : '-'}</p>
+            <p className="text-xs text-background/60">เวลาเหลือ</p>
           </div>
         </div>
       </div>

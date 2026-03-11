@@ -303,14 +303,40 @@ export function useExerciseAnalysis(
   const getTargetStage = useCallback((exercise: ExerciseType, current: ExerciseStage): ExerciseStage => {
     const stages = EXERCISES[exercise].stages;
     
-    if (exercise === 'torso_twist') {
-      // For torso twist, alternate: center -> left -> center -> right -> center
-      if (current === 'center') return 'left';
-      return 'center';
+    switch (exercise) {
+      case 'torso_twist':
+        // center -> left -> center -> right -> center
+        if (current === 'center') return 'left';
+        return 'center';
+
+      case 'static_lunge':
+      case 'plank_hold':
+        // Time-based: always target 'hold'
+        return 'hold' as ExerciseStage;
+
+      case 'jump_squat':
+        // squat -> jump -> down -> squat
+        if (current === 'down') return 'squat' as ExerciseStage;
+        if (current === 'squat') return 'jump' as ExerciseStage;
+        if (current === 'jump') return 'down';
+        return 'squat' as ExerciseStage;
+
+      case 'mountain_climber':
+        // left_up -> down -> right_up -> down
+        if (current === 'down') return 'left_up' as ExerciseStage;
+        return 'down';
+
+      case 'pushup_shoulder_tap':
+        // down -> up -> tap -> down
+        if (current === 'down') return 'up';
+        if (current === 'up') return 'tap' as ExerciseStage;
+        if (current === 'tap' || current === 'tap_left' || current === 'tap_right') return 'down';
+        return 'down';
+
+      default:
+        // arm_raise, knee_raise, squat_arm_raise, push_up, pistol_squat, burpee: up/down
+        return current === 'up' ? 'down' : 'up';
     }
-    
-    // For arm_raise and knee_raise, alternate up/down
-    return current === 'up' ? 'down' : 'up';
   }, []);
 
   // Controls
