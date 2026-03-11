@@ -13,6 +13,7 @@ import { Loader2 } from 'lucide-react';
 export default function FishingGamePage() {
   const navigate = useNavigate();
   const bgmRef = useRef<HTMLAudioElement | null>(null);
+  const seaSoundRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     const audio = new Audio('/assets/music/fishing-game.mp3');
@@ -20,9 +21,17 @@ export default function FishingGamePage() {
     audio.volume = 0.18;
     bgmRef.current = audio;
 
+    const seaAudio = new Audio('/assets/sound/fishing/sea-sound.mp3');
+    seaAudio.loop = true;
+    seaAudio.volume = 0.12;
+    seaSoundRef.current = seaAudio;
+
     const tryPlay = () => {
       if (bgmRef.current && bgmRef.current.paused) {
         bgmRef.current.play().catch(() => {});
+      }
+      if (seaSoundRef.current && seaSoundRef.current.paused) {
+        seaSoundRef.current.play().catch(() => {});
       }
     };
 
@@ -35,6 +44,8 @@ export default function FishingGamePage() {
       events.forEach(e => document.removeEventListener(e, tryPlay));
       audio.pause();
       audio.src = '';
+      seaAudio.pause();
+      seaAudio.src = '';
     };
   }, []);
 

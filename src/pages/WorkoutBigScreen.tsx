@@ -56,8 +56,11 @@ import {
   clearTTSState,
   updateRepsCount,
   endSession,
+  updateVoiceMessageStatus,
+  clearVoiceMessage,
   WorkoutSession,
   RemoteAction,
+  VoiceMessage,
 } from "@/lib/session";
 
 // Rep count messages
@@ -931,7 +934,9 @@ export default function WorkoutBigScreen() {
   // Use refs for handlers to avoid re-subscribing on every render
   const handleRemoteActionRef = useRef<(action: RemoteAction) => void>(() => {});
   const playRemoteTTSAudioRef = useRef<(audioBase64: string) => void>(() => {});
+  const handleRemoteVoiceMessageRef = useRef<(vm: VoiceMessage) => void>(() => {});
   const lastActionTimestampRef = useRef<number>(0);
+  const lastVoiceMessageTimestampRef = useRef<number>(0);
 
   const handleRemoteAction = useCallback(async (action: RemoteAction) => {
     setShowActionIndicator(true);
@@ -943,12 +948,88 @@ export default function WorkoutBigScreen() {
       case "previous": handlePrevious(); break;
       case "end": handleStop(); break;
       case "toggleSkeleton": setShowSkeleton((prev) => !prev); break;
+      case "toggleCamera": setCameraEnabled((prev) => !prev); break;
+      case "toggleVisualGuide": setShowVisualGuide((prev) => !prev); break;
+      case "toggleTTS": { const next = !ttsEnabledRef.current; setTtsEnabled(next); ttsEnabledRef.current = next; if (!next) stopAllTTS(); break; }
+      case "captureScreenshot": captureScreenshot(); break;
     }
     if (pairingCode) await clearRemoteAction(pairingCode);
-  }, [pairingCode, handleNext, handlePrevious, handleStop]);
+  }, [pairingCode, handleNext, handlePrevious, handleStop, captureScreenshot, stopAllTTS]);
 
   useEffect(() => { handleRemoteActionRef.current = handleRemoteAction; }, [handleRemoteAction]);
   useEffect(() => { playRemoteTTSAudioRef.current = playRemoteTTSAudio; }, [playRemoteTTSAudio]);
+
+  // Handle voice message from Remote: capture screenshot → LLM → TTS → play audio locally
+  const handleRemoteVoiceMessage = useCallback(async (voiceMessage: VoiceMessage) => {
+    if (!pairingCode) return;
+    
+    try {
+      console.log('Processing remote voice message:', voiceMessage.transcript.substring(0, 50));
+      
+      // Update status to "thinking" so Remote shows progress
+      setVoiceStatus("thinking");
+      await updateVoiceMessageStatus(pairingCode, 'thinking');
+      
+      // Capture screenshot from BigScreen's camera for visual analysis
+      const screenshot = captureScreenshotForVoice();
+      
+      // Build enhanced context including what BigScreen knows
+      const ex = exercises[currentExercise];
+      const enrichedUserContext = {
+        ...(voiceMessage.userContext || {}),
+        currentExercise: ex?.nameTh || ex?.name,
+        reps: isKayaWorkout ? kayaAnalysis.reps : undefined,
+        targetReps: ex?.reps || 10,
+        nextExercises: exercises.slice(currentExercise + 1).map((e) => e.nameTh || e.name),
+      };
+      
+      // Send to LLM with screenshot (BigScreen advantage: has the camera!)
+      const llmRes = await fetch("/api/gemma/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: voiceMessage.transcript,
+          imageBase64: screenshot,
+          userContext: enrichedUserContext,
+          coachId: voiceMessage.coachId || ttsCoachId,
+          customCoach: voiceMessage.customCoach || customCoachForLLM || undefined,
+        }),
+      });
+      
+      if (!llmRes.ok) throw new Error("LLM failed");
+      const llmResult = await llmRes.json();
+      const response = llmResult?.response || "ขอโทษครับ ผมไม่เข้าใจคำถาม";
+      console.log('LLM response for remote voice:', response.substring(0, 50) + '...');
+      
+      // Update status to "speaking" and include response text
+      setVoiceStatus("speaking");
+      await updateVoiceMessageStatus(pairingCode, 'speaking', response);
+      
+      // Play TTS audio directly on BigScreen
+      await speakTTS(response, true);
+      
+      // Mark as done and clean up
+      setVoiceStatus("idle");
+      await updateVoiceMessageStatus(pairingCode, 'done');
+      
+      // Clear voice message after a short delay
+      setTimeout(async () => {
+        try { await clearVoiceMessage(pairingCode); } catch { /* ignore */ }
+      }, 1000);
+      
+    } catch (error) {
+      console.error('Failed to process remote voice message:', error);
+      setVoiceStatus("idle");
+      if (pairingCode) {
+        await updateVoiceMessageStatus(pairingCode, 'done').catch(() => {});
+        setTimeout(async () => {
+          try { await clearVoiceMessage(pairingCode); } catch { /* ignore */ }
+        }, 1000);
+      }
+    }
+  }, [pairingCode, captureScreenshotForVoice, exercises, currentExercise, isKayaWorkout, kayaAnalysis.reps, speakTTS, ttsCoachId, customCoachForLLM]);
+
+  useEffect(() => { handleRemoteVoiceMessageRef.current = handleRemoteVoiceMessage; }, [handleRemoteVoiceMessage]);
 
   // Subscribe to session – only depends on pairingCode to avoid re-subscribing
   useEffect(() => {
@@ -965,6 +1046,11 @@ export default function WorkoutBigScreen() {
         if (updatedSession.ttsState && updatedSession.ttsState.timestamp !== lastTtsTimestampRef.current && updatedSession.ttsState.audioBase64) {
           lastTtsTimestampRef.current = updatedSession.ttsState.timestamp;
           playRemoteTTSAudioRef.current(updatedSession.ttsState.audioBase64);
+        }
+        // Handle voice message from Remote (transcript for BigScreen to process via LLM)
+        if (updatedSession.voiceMessage && updatedSession.voiceMessage.status === 'pending' && updatedSession.voiceMessage.timestamp !== lastVoiceMessageTimestampRef.current) {
+          lastVoiceMessageTimestampRef.current = updatedSession.voiceMessage.timestamp;
+          handleRemoteVoiceMessageRef.current(updatedSession.voiceMessage);
         }
       }
     });
