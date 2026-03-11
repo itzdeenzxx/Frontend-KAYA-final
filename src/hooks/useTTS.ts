@@ -250,6 +250,11 @@ export function useTTS(userId?: string, coachId?: string): UseTTSReturn {
       return;
     }
 
+    // Deduplicate: skip if identical text is already the last queued item
+    // (prevents double-queuing from rapid re-renders or repeated callers)
+    const lastInQueue = queueRef.current[queueRef.current.length - 1];
+    if (lastInQueue === text) return;
+
     queueRef.current.push(text);
     processQueue();
   }, [settings.enabled, processQueue]);
