@@ -132,6 +132,9 @@ export default function GameMode() {
 
   // Helper to get high score for a game
   const getHighScore = (gameId: string): number => {
+    // Don't show fishing scores
+    if (gameId === 'fishing') return 0;
+    
     const gameIdMap: Record<string, keyof AllGameBests> = {
       'mouse-running': 'mouseRunning',
       'whack-a-mole': 'whackAMole',
@@ -142,8 +145,8 @@ export default function GameMode() {
   };
 
   // Computed stats
-  const totalScore = highScores.mouseRunning + highScores.whackAMole + highScores.fishing;
-  const gamesPlayed = [highScores.mouseRunning, highScores.whackAMole, highScores.fishing].filter(s => s > 0).length;
+  const totalScore = highScores.mouseRunning + highScores.whackAMole;
+  const gamesPlayed = [highScores.mouseRunning, highScores.whackAMole].filter(s => s > 0).length;
   const starsEarned = gamesPlayed; // 1 star per game with a high score
 
   const handleGameSelect = (gameId: string) => {
