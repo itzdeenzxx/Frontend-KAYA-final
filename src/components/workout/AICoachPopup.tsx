@@ -72,6 +72,26 @@ const ttsState: TTSState = {
   ttsSpeed: 1.0,
 };
 
+// Generation counter: incremented each time stopCoachPopupAudio() is called.
+// In-flight fetch/play functions compare against this to detect cancellation.
+let _stopGeneration = 0;
+// AbortController for the currently in-flight Botnoi API fetch (if any).
+let _ttsAbortController: AbortController | null = null;
+// Set to true by WorkoutUI while it is playing audio — AICoachPopup waits.
+let _workoutUIAudioPlaying = false;
+
+/**
+ * Called by WorkoutUI to prevent AICoachPopup from talking over workout audio.
+ * When `playing` goes from true → false, the queued items are retried.
+ */
+export function setWorkoutUIAudioPlaying(playing: boolean): void {
+  _workoutUIAudioPlaying = playing;
+  // When WorkoutUI finishes, kick the popup queue so pending items can play.
+  if (!playing && !ttsState.isSpeaking && ttsState.queue.length > 0) {
+    setTimeout(() => processQueue(), 150);
+  }
+}
+
 /**
  * Play audio from base64 and wait until finished (with timeout protection)
  */
@@ -84,6 +104,7 @@ function playAudio(base64Audio: string): Promise<void> {
     // Timeout 10 seconds to prevent hanging
     const timeout = setTimeout(() => {
       console.warn('⚠️ Audio playback timeout');
+      audio.pause();
       ttsState.currentAudio = null;
       resolve();
     }, 10000);
@@ -114,7 +135,8 @@ function playAudio(base64Audio: string): Promise<void> {
  * Process TTS queue - speak one message at a time
  */
 async function processQueue(): Promise<void> {
-  if (ttsState.isSpeaking || ttsState.queue.length === 0) {
+  // Wait if WorkoutUI is currently playing or if we're already processing
+  if (ttsState.isSpeaking || ttsState.queue.length === 0 || _workoutUIAudioPlaying) {
     return;
   }
   
@@ -122,6 +144,9 @@ async function processQueue(): Promise<void> {
   if (!item) return;
   
   if (!item.text) return;
+
+  // Capture generation — if it changes during async ops, discard the result
+  const myGeneration = _stopGeneration;
   
   ttsState.isSpeaking = true;
 
@@ -136,6 +161,7 @@ async function processQueue(): Promise<void> {
       await new Promise<void>((resolve) => {
         const timeout = setTimeout(() => {
           console.warn('⚠️ Local audio playback timeout');
+          audio.pause();
           ttsState.currentAudio = null;
           resolve();
         }, 10000);
@@ -146,24 +172,26 @@ async function processQueue(): Promise<void> {
       });
     } catch (e) {
       console.warn('🔊 [CoachPopup] Local audio failed, falling back to API:', e);
-      // Fall through to API below
-      await processQueueItemAPI(item.text);
+      if (_stopGeneration === myGeneration && !_workoutUIAudioPlaying) {
+        await processQueueItemAPI(item.text, myGeneration);
+      }
     }
     ttsState.isSpeaking = false;
-    setTimeout(() => processQueue(), 100);
+    if (_stopGeneration === myGeneration) setTimeout(() => processQueue(), 100);
     return;
   }
 
   // ── Path B: Call Botnoi TTS API ──────────────────────────────────────
-  await processQueueItemAPI(item.text);
+  await processQueueItemAPI(item.text, myGeneration);
   ttsState.isSpeaking = false;
-  setTimeout(() => processQueue(), 100);
+  if (_stopGeneration === myGeneration) setTimeout(() => processQueue(), 100);
 }
 
 /**
- * Call Botnoi TTS API and play the result (fallback path)
+ * Call Botnoi TTS API and play the result (fallback path).
+ * myGeneration is compared after each await to detect cancellation.
  */
-async function processQueueItemAPI(text: string): Promise<void> {
+async function processQueueItemAPI(text: string, myGeneration: number): Promise<void> {
   console.log(`🔊 [CoachPopup] Botnoi speaking: "${text}" | speaker: ${ttsState.speaker}`);
   
   try {
@@ -172,6 +200,7 @@ async function processQueueItemAPI(text: string): Promise<void> {
     // Call Botnoi TTS API
     try {
       const controller = new AbortController();
+      _ttsAbortController = controller;
       const timeoutId = setTimeout(() => controller.abort(), 12000);
       const botnoiRes = await fetch('/api/aift/tts', {
         method: 'POST',
@@ -180,6 +209,11 @@ async function processQueueItemAPI(text: string): Promise<void> {
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
+      _ttsAbortController = null;
+
+      // Abort if stopCoachPopupAudio() or WorkoutUI took over while we were fetching
+      if (_stopGeneration !== myGeneration || _workoutUIAudioPlaying) return;
+
       if (botnoiRes.ok) {
         const result = await botnoiRes.json();
         if (result.success && result.audio_base64) {
@@ -190,9 +224,14 @@ async function processQueueItemAPI(text: string): Promise<void> {
         console.warn(`🔊 [CoachPopup] Botnoi TTS failed: ${botnoiRes.status}`);
       }
     } catch (e: unknown) {
-      const errMsg = e instanceof Error ? (e.name === 'AbortError' ? 'timeout' : e.message) : 'unknown';
+      _ttsAbortController = null;
+      const errMsg = e instanceof Error ? (e.name === 'AbortError' ? 'cancelled' : e.message) : 'unknown';
       console.warn('🔊 [CoachPopup] Botnoi TTS error:', errMsg);
+      return; // abort or timeout — don't play anything
     }
+
+    // Final generation/gate check before playing
+    if (_stopGeneration !== myGeneration || _workoutUIAudioPlaying) return;
 
     // Play audio if we got it, otherwise skip silently
     if (audioBase64) {
@@ -246,10 +285,15 @@ function speakText(text: string, speaker?: string, eventType?: CoachEventType): 
 }
 
 /**
- * Clear TTS queue and stop current audio.
+ * Clear TTS queue, abort any in-flight fetch, and stop current audio.
  * Called by WorkoutUI before it starts speaking (exercise instruction, rep count, etc.)
  */
 export function stopCoachPopupAudio(): void {
+  _stopGeneration++;           // invalidate all in-flight processQueue / processQueueItemAPI
+  if (_ttsAbortController) {   // cancel in-flight Botnoi API fetch immediately
+    _ttsAbortController.abort();
+    _ttsAbortController = null;
+  }
   ttsState.queue = [];
   if (ttsState.currentAudio) {
     ttsState.currentAudio.pause();
@@ -259,15 +303,10 @@ export function stopCoachPopupAudio(): void {
 }
 
 /**
- * Clear TTS queue and stop current audio.
+ * Clear TTS queue and stop current audio (internal use).
  */
 function clearTTSQueue(): void {
-  ttsState.queue = [];
-  if (ttsState.currentAudio) {
-    ttsState.currentAudio.pause();
-    ttsState.currentAudio = null;
-  }
-  ttsState.isSpeaking = false;
+  stopCoachPopupAudio();
 }
 
 export function AICoachPopup({

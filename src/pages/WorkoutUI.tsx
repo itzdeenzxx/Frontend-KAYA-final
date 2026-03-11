@@ -9,7 +9,7 @@ import { getWorkoutStyle, getExercisesForStyle, WorkoutExercise } from "@/lib/wo
 import MusicPlayer from "@/components/music/MusicPlayer";
 import { useExerciseAnalysis } from "@/hooks/useExerciseAnalysis";
 import { VisualPoseGuide, StageIndicator, BeatCounter } from "@/components/workout/VisualPoseGuide";
-import { AICoachPopup, stopCoachPopupAudio } from "@/components/workout/AICoachPopup";
+import { AICoachPopup, stopCoachPopupAudio, setWorkoutUIAudioPlaying } from "@/components/workout/AICoachPopup";
 import { ExerciseType, EXERCISES } from "@/lib/exerciseConfig";
 import { getExerciseStartAudioUrl, getRepAudioUrl, getGreetingAudioUrl, getLocalAudioUrl } from "@/lib/coachAudio";
 import type { AudioCategory } from "@/lib/coachAudio";
@@ -162,8 +162,14 @@ export default function WorkoutUI() {
   const isTtsSpeakingRef = useRef(false);
   // Prevent concurrent speakTTS (LLM voice) calls from overlapping each other
   const speakTTSInProgressRef = useRef(false);
+  // AbortController for the currently in-flight speakTTS fetch — aborted by stopAllTTS
+  const speakTTSAbortRef = useRef<AbortController | null>(null);
   // Prevent double-navigation when speaking session_complete before navigate
   const navigatedRef = useRef(false);
+  // Global "stopped" flag — set by handleStop to prevent any new audio from playing
+  const stoppedRef = useRef(false);
+  // Pending timeout IDs that must be cancelled on stop/unmount
+  const pendingTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   // Stable ref to playCoachAudio — filled in after stopAllTTS is defined below
   const playCoachAudioRef = useRef<(category: AudioCategory, onEnd?: () => void) => void>(() => {});
   // Stable ref to speakCoachIntroduction — avoids adding it to useEffect deps
@@ -585,7 +591,8 @@ export default function WorkoutUI() {
     playCoachAudioRef.current('session_complete', () => {
       playCoachAudioRef.current('amazing', doNavigate);
     });
-    setTimeout(doNavigate, 9000);
+    const fallback = setTimeout(doNavigate, 9000);
+    pendingTimeoutsRef.current.push(fallback);
   }, [navigate, saveCurrentExerciseResult, selectedStyle, totalTime]);
 
   // Show rest screen between exercises
@@ -595,7 +602,8 @@ export default function WorkoutUI() {
     setIsPaused(true);
     // 💤 Announce rest — randomly alternate between 'rest' and 'dont_forget_rest'
     const restCategory = Math.random() < 0.5 ? 'rest' : 'dont_forget_rest';
-    setTimeout(() => playCoachAudioRef.current(restCategory), 200);
+    const t = setTimeout(() => playCoachAudioRef.current(restCategory), 200);
+    pendingTimeoutsRef.current.push(t);
   }, []);
 
   // Skip rest and go to next exercise
@@ -768,6 +776,11 @@ export default function WorkoutUI() {
 
   // Stop ALL audio immediately (WorkoutUI + AICoachPopup)
   const stopAllTTS = useCallback(() => {
+    // Abort any in-flight speakTTS API fetch so it doesn't play after stop
+    if (speakTTSAbortRef.current) {
+      speakTTSAbortRef.current.abort();
+      speakTTSAbortRef.current = null;
+    }
     // Stop WorkoutUI audio
     if (ttsAudioRef.current) {
       ttsAudioRef.current.pause();
@@ -777,12 +790,15 @@ export default function WorkoutUI() {
     isTtsSpeakingRef.current = false;
     // Release speakTTS concurrent guard whenever audio is externally stopped
     speakTTSInProgressRef.current = false;
+    // Notify AICoachPopup that WorkoutUI audio has stopped
+    setWorkoutUIAudioPlaying(false);
     // Stop AICoachPopup audio (separate audio element)
     stopCoachPopupAudio();
   }, []);
 
   // Play a pre-recorded coach audio clip by category (reads from refs — no stale closure)
   const playCoachAudio = useCallback((category: AudioCategory, onEnd?: () => void): void => {
+    if (stoppedRef.current) return; // don't play anything after handleStop
     if (!ttsEnabledRef.current) { onEnd?.(); return; }
     // Fallback to 'coach-aiko' when ttsCoach hasn't loaded yet (async Firestore load)
     const coachId = ttsCoachRef.current?.id ?? 'coach-aiko';
@@ -790,7 +806,8 @@ export default function WorkoutUI() {
     const url = getLocalAudioUrl(coachId, category) ?? getLocalAudioUrl('coach-aiko', category);
     if (!url) { onEnd?.(); return; }
     stopAllTTS();
-    isTtsSpeakingRef.current = true; // mark speaking so other audio effects respect this
+    isTtsSpeakingRef.current = true;
+    setWorkoutUIAudioPlaying(true); // block AICoachPopup queue while WorkoutUI is playing
     const audio = new Audio(url);
     ttsAudioRef.current = audio;
     audio.playbackRate = ttsSpeedRef.current || 1.0;
@@ -802,7 +819,18 @@ export default function WorkoutUI() {
       audioEnded = true;
       ttsAudioRef.current = null;
       isTtsSpeakingRef.current = false;
-      onEnd?.();
+      // Call chain callback BEFORE releasing popup gate.
+      // If onEnd starts new audio (e.g. amazing after set_complete),
+      // playCoachAudio sets the flag back to true — so we don't release prematurely.
+      if (onEnd) {
+        onEnd();
+        // Only release if onEnd didn't start new audio
+        if (!isTtsSpeakingRef.current) {
+          setWorkoutUIAudioPlaying(false);
+        }
+      } else {
+        setWorkoutUIAudioPlaying(false);
+      }
     };
     audio.onended = handleAudioEnd;
     audio.onerror = handleAudioEnd;
@@ -815,10 +843,24 @@ export default function WorkoutUI() {
   // Stop all audio when component unmounts (e.g. back button, navigate away)
   useEffect(() => {
     return () => {
+      stoppedRef.current = true; // prevent any new audio from starting
+      // Clear all pending timeouts
+      for (const t of pendingTimeoutsRef.current) clearTimeout(t);
+      pendingTimeoutsRef.current = [];
+      // Abort any in-flight speakTTS API fetch
+      if (speakTTSAbortRef.current) {
+        speakTTSAbortRef.current.abort();
+        speakTTSAbortRef.current = null;
+      }
+      // Stop any playing WorkoutUI audio
       if (ttsAudioRef.current) {
         ttsAudioRef.current.pause();
         ttsAudioRef.current = null;
       }
+      isTtsSpeakingRef.current = false;
+      speakTTSInProgressRef.current = false;
+      // Release the AICoachPopup gate and stop its audio
+      setWorkoutUIAudioPlaying(false);
       stopCoachPopupAudio();
     };
   }, []);
@@ -832,6 +874,8 @@ export default function WorkoutUI() {
   // Speak text using TTS (returns Promise)
   // forcePlay = true will play even if user is recording (used for LLM response)
   const speakTTS = useCallback(async (text: string, forcePlay: boolean = false): Promise<void> => {
+    // Don't speak after workout has been stopped
+    if (stoppedRef.current) return;
     // Don't speak if TTS is disabled in settings
     if (!ttsEnabledRef.current) {
       console.log('🔇 [TTS] Skipped: TTS is disabled in settings');
@@ -880,6 +924,7 @@ export default function WorkoutUI() {
 
       // Call Botnoi TTS API (12s timeout — fallback to Web Speech if slow)
       const controller = new AbortController();
+      speakTTSAbortRef.current = controller;
       const timeout = setTimeout(() => controller.abort(), 12000);
       const response = await fetch('/api/aift/tts', {
         method: 'POST',
@@ -888,6 +933,7 @@ export default function WorkoutUI() {
         signal: controller.signal,
       });
       clearTimeout(timeout);
+      speakTTSAbortRef.current = null;
       
       if (!response?.ok) {
         console.error('🔊 [TTS] Botnoi API error:', response.status);
@@ -924,9 +970,15 @@ export default function WorkoutUI() {
       // Stop any existing audio and mark speaking — do this right before playback,
       // NOT at the start of the function, so we don't block feedback audio during API call.
       // Note: stopAllTTS() also resets speakTTSInProgressRef — re-arm it after.
+      // If stopAllTTS() was called while we awaited the fetch, bail out now.
+      if (!speakTTSInProgressRef.current) {
+        isTtsSpeakingRef.current = false;
+        return;
+      }
       stopAllTTS();
       isTtsSpeakingRef.current = true;
       speakTTSInProgressRef.current = true;
+      setWorkoutUIAudioPlaying(true);
       
       return new Promise((resolve) => {
         const audio = new Audio(audioUrl);
@@ -940,18 +992,21 @@ export default function WorkoutUI() {
           ttsAudioRef.current = null;
           isTtsSpeakingRef.current = false;
           speakTTSInProgressRef.current = false;
+          setWorkoutUIAudioPlaying(false);
           resolve();
         };
         
         audio.onerror = () => {
           isTtsSpeakingRef.current = false;
           speakTTSInProgressRef.current = false;
+          setWorkoutUIAudioPlaying(false);
           resolve();
         };
         
         audio.play().catch(() => {
           isTtsSpeakingRef.current = false;
           speakTTSInProgressRef.current = false;
+          setWorkoutUIAudioPlaying(false);
           resolve();
         });
       });
@@ -964,6 +1019,7 @@ export default function WorkoutUI() {
 
   // Speak rep count (only 1,3,5,7,9,10)
   const speakRepCount = useCallback(async (rep: number) => {
+    if (stoppedRef.current) return; // don't play after stop
     const message = REP_MESSAGES[rep];
     if (message && rep > lastSpokenRepRef.current) {
       lastSpokenRepRef.current = rep;
@@ -980,13 +1036,14 @@ export default function WorkoutUI() {
           try {
             stopAllTTS();
             isTtsSpeakingRef.current = true;
+            setWorkoutUIAudioPlaying(true);
             return new Promise<void>((resolve) => {
               const audio = new Audio(localUrl);
               ttsAudioRef.current = audio;
               audio.playbackRate = ttsSpeedRef.current || 1.0;
-              audio.onended = () => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; resolve(); };
-              audio.onerror = () => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; resolve(); };
-              audio.play().catch(() => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; resolve(); });
+              audio.onended = () => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; setWorkoutUIAudioPlaying(false); resolve(); };
+              audio.onerror = () => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; setWorkoutUIAudioPlaying(false); resolve(); };
+              audio.play().catch(() => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; setWorkoutUIAudioPlaying(false); resolve(); });
             });
           } catch {
             console.warn('🔊 [RepCount] Local audio failed, falling back to API');
@@ -1372,6 +1429,9 @@ export default function WorkoutUI() {
   const speakExerciseInstruction = useCallback(async (exercise: WorkoutExercise) => {
     if (!exercise) return;
 
+    // Don't speak after workout has been stopped
+    if (stoppedRef.current) return;
+
     // Skip if TTS disabled
     if (!ttsEnabledRef.current) {
       console.log('🔇 [TTS] Exercise instruction skipped: TTS disabled');
@@ -1389,6 +1449,7 @@ export default function WorkoutUI() {
         console.log(`🔊 [ExerciseInstruction] Playing local audio for ${exercise.kayaExercise}:`, localUrl);
         try {
           isTtsSpeakingRef.current = true;
+          setWorkoutUIAudioPlaying(true);
           return new Promise<void>((resolve) => {
             const audio = new Audio(localUrl);
             ttsAudioRef.current = audio;
@@ -1396,15 +1457,17 @@ export default function WorkoutUI() {
             audio.onended = () => {
               ttsAudioRef.current = null;
               isTtsSpeakingRef.current = false;
+              setWorkoutUIAudioPlaying(false);
               resolve();
             };
-            audio.onerror = () => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; resolve(); };
+            audio.onerror = () => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; setWorkoutUIAudioPlaying(false); resolve(); };
             audio.play().then(() => {
               console.log('🔊 [ExerciseInstruction] Local audio playing at speed:', audio.playbackRate);
-            }).catch(() => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; resolve(); });
+            }).catch(() => { ttsAudioRef.current = null; isTtsSpeakingRef.current = false; setWorkoutUIAudioPlaying(false); resolve(); });
           });
         } catch {
           isTtsSpeakingRef.current = false;
+          setWorkoutUIAudioPlaying(false);
           console.warn('🔊 [ExerciseInstruction] Local audio failed, falling back to API');
         }
       }
@@ -1457,13 +1520,16 @@ export default function WorkoutUI() {
 
     // Wait for TTS settings to load before speaking intro
     // This prevents race condition where coach speaker ref is still default
+    let cancelled = false;
     const waitAndSpeak = async () => {
       // Wait up to 3 seconds for settings to load
       let waited = 0;
       while (!ttsSettingsLoadedRef.current && waited < 3000) {
         await new Promise(r => setTimeout(r, 100));
         waited += 100;
+        if (cancelled) return; // stop polling if component unmounted or effect re-ran
       }
+      if (cancelled) return;
       console.log('🔊 [CoachIntro] Settings loaded after', waited, 'ms, speaker:', ttsCoachRef.current?.voiceId || ttsSpeakerRef.current);
       // Use ref so we always call the latest speakCoachIntroduction without
       // adding it to this effect's dependency array (which would cause re-fires)
@@ -1474,7 +1540,7 @@ export default function WorkoutUI() {
       waitAndSpeak();
     }, 500);
     
-    return () => clearTimeout(timeout);
+    return () => { cancelled = true; clearTimeout(timeout); };
   }, [showLoader]);
 
   // Speak instruction when exercise changes
@@ -1572,6 +1638,11 @@ export default function WorkoutUI() {
   }, [currentExercise, exercises, isKayaWorkout, kayaAnalysis, stopAllTTS]);
 
   const handleStop = () => {
+    stoppedRef.current = true;    // prevent any new audio from starting
+    navigatedRef.current = true;  // prevent finishWorkout's fallback timeout from navigating
+    // Clear all pending timeouts (rest announcement, finishWorkout fallback, etc.)
+    for (const t of pendingTimeoutsRef.current) clearTimeout(t);
+    pendingTimeoutsRef.current = [];
     stopAllTTS();
     navigate("/dashboard");
   };
