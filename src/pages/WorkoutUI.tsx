@@ -587,11 +587,9 @@ export default function WorkoutUI() {
       navigate('/workout-complete', { state: { results: navState } });
     };
 
-    // 🏆 Speak session_complete → amazing → navigate (fallback after 9s for both clips)
-    playCoachAudioRef.current('session_complete', () => {
-      playCoachAudioRef.current('amazing', doNavigate);
-    });
-    const fallback = setTimeout(doNavigate, 9000);
+    // 🏆 Speak session_complete → navigate (fallback after 6s)
+    playCoachAudioRef.current('session_complete', doNavigate);
+    const fallback = setTimeout(doNavigate, 6000);
     pendingTimeoutsRef.current.push(fallback);
   }, [navigate, saveCurrentExerciseResult, selectedStyle, totalTime]);
 
@@ -1098,13 +1096,6 @@ export default function WorkoutUI() {
       } else if (kayaAnalysis.reps === halfwayThreshold && !halfwayPlayedRef.current && !isTtsSpeakingRef.current) {
         halfwayPlayedRef.current = true;
         playCoachAudioRef.current('halfway');
-      } else if (
-        kayaAnalysis.reps < targetReps &&
-        !isTtsSpeakingRef.current &&
-        currentKayaExercise !== 'arm_raise' && // arm_raise has its own hold countdown
-        kayaAnalysis.reps % 3 === 0 // only every 3rd non-milestone rep to avoid over-coaching
-      ) {
-        playCoachAudioRef.current('good_job');
       }
       
       // Hide after animation
@@ -1592,14 +1583,12 @@ export default function WorkoutUI() {
       // ✅ Wait for rep-10 audio to finish (rep count audio plays ~1s), then speak set_complete
       const timeout = setTimeout(() => {
         playCoachAudioRef.current('set_complete', () => {
-          playCoachAudioRef.current('amazing', () => {
-            if (currentExercise < exercises.length - 1) {
-              // Show 30s rest period — skipRest() handles the actual exercise transition
-              showRestPeriod();
-            } else {
-              finishWorkout();
-            }
-          });
+          if (currentExercise < exercises.length - 1) {
+            // Show 30s rest period — skipRest() handles the actual exercise transition
+            showRestPeriod();
+          } else {
+            finishWorkout();
+          }
         });
       }, 1500); // Allow rep-10 audio (~1s) to finish before set_complete fires
       return () => clearTimeout(timeout);
