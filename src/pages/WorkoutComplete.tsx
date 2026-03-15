@@ -24,14 +24,17 @@ import {
   Link,
   Check,
   Zap,
+  Brain,
+  Loader2,
 } from 'lucide-react';
-import type { WorkoutResults } from '@/types/workout';
+import type { WorkoutResults, ExerciseAIScoreResult } from '@/types/workout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { addWorkoutToDailyStats, incrementChallengeProgress, updateUserPoints, updateUserStreak, saveWorkoutSession } from '@/lib/firestore';
 import { storage } from '@/lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import liff from '@line/liff';
+import { scoreExerciseReps, isScoringSupported } from '@/lib/poseScoring';
 
 // Calculate calories based on workout intensity and duration
 function calculateCalories(
@@ -66,7 +69,7 @@ const ACHIEVEMENTS: Achievement[] = [
   {
     id: 'perfect_form',
     name: 'Perfect Form',
-    nameTh: 'ฟอร์มเพอร์เฟค',
+    nameTh: 'ท่าทางเพอร์เฟค',
     icon: <Star className="w-6 h-6" />,
     color: 'from-yellow-400 to-orange-500',
     condition: (r) => r.averageFormScore >= 90,
@@ -149,6 +152,81 @@ export default function WorkoutComplete() {
       results.averageFormScore
     );
   }
+
+  // AI Pose Scoring state
+  const [aiScores, setAiScores] = useState<Record<number, ExerciseAIScoreResult>>({});
+  const [aiScoringLoading, setAiScoringLoading] = useState(false);
+  const [aiScoringDone, setAiScoringDone] = useState(false);
+  const [overallAIScore, setOverallAIScore] = useState<{ lstm: number; cnn: number; avg: number } | null>(null);
+
+  // Call AI scoring API for exercises that have repFrames
+  useEffect(() => {
+    if (aiScoringDone) return;
+
+    console.log('[AI Scoring] Checking exercises for scoring...');
+    results.exercises.forEach((ex, idx) => {
+      console.log(`  [${idx}] ${ex.name}: kayaExercise=${ex.kayaExercise}, repFrames=${ex.repFrames?.length || 0} reps, supported=${ex.kayaExercise ? isScoringSupported(ex.kayaExercise) : false}`);
+    });
+
+    const exercisesWithFrames = results.exercises
+      .map((ex, idx) => ({ ex, idx }))
+      .filter(({ ex }) => ex.repFrames && ex.repFrames.length > 0 && ex.kayaExercise && isScoringSupported(ex.kayaExercise));
+
+    console.log(`[AI Scoring] Found ${exercisesWithFrames.length} exercises with frames to score`);
+
+    if (exercisesWithFrames.length === 0) {
+      setAiScoringDone(true);
+      return;
+    }
+
+    setAiScoringLoading(true);
+
+    const scoreAll = async () => {
+      const scoreMap: Record<number, ExerciseAIScoreResult> = {};
+
+      // Score each exercise (each exercise scores its reps one-by-one inside scoreExerciseReps)
+      for (const { ex, idx } of exercisesWithFrames) {
+        console.log(`\n🏋️ [AI Scoring] Scoring exercise [${idx}] ${ex.name} (${ex.kayaExercise}) — ${ex.repFrames!.length} reps / target ${ex.targetReps}`);
+        const result = await scoreExerciseReps(ex.kayaExercise!, ex.repFrames!, ex.targetReps);
+        if (result) {
+          scoreMap[idx] = {
+            lstmScore: result.avgLstmScore,
+            cnnScore: result.avgCnnScore,
+            avgScore: result.avgScore,
+            repScores: result.repScores,
+          };
+          console.log(`✅ [AI Scoring] Exercise [${idx}] ${ex.name} → avg_score=${result.avgScore}% (CNN=${result.avgCnnScore}%, LSTM=${result.avgLstmScore}%)`);
+          console.log(`   Per-rep scores:`, result.repScores.map(r => `Rep${r.repIndex + 1}=${r.avg_score}%`).join(' | '));
+        } else {
+          console.warn(`⚠️ [AI Scoring] Exercise [${idx}] ${ex.name} — no score returned`);
+        }
+      }
+
+      setAiScores(scoreMap);
+
+      // Calculate overall AI score across all exercises
+      const scored = Object.values(scoreMap);
+      if (scored.length > 0) {
+        const avgLstm = Math.round(scored.reduce((s, v) => s + v.lstmScore, 0) / scored.length * 10) / 10;
+        const avgCnn = Math.round(scored.reduce((s, v) => s + v.cnnScore, 0) / scored.length * 10) / 10;
+        const avgAll = Math.round(scored.reduce((s, v) => s + v.avgScore, 0) / scored.length * 10) / 10;
+        setOverallAIScore({ lstm: avgLstm, cnn: avgCnn, avg: avgAll });
+
+        console.log(
+          `\n🏆 [AI Scoring] === OVERALL WORKOUT AI SCORE ===\n` +
+          `   LSTM avg : ${avgLstm}%\n` +
+          `   CNN  avg : ${avgCnn}%\n` +
+          `   Overall  : ${avgAll}% (cnn×0.7 + lstm×0.3)\n` +
+          `   Exercises scored: ${scored.length}/${results.exercises.length}`
+        );
+      }
+
+      setAiScoringLoading(false);
+      setAiScoringDone(true);
+    };
+
+    scoreAll();
+  }, [results.exercises, aiScoringDone]);
 
   // Save workout data to Firebase
   useEffect(() => {
@@ -297,7 +375,7 @@ export default function WorkoutComplete() {
       // 3. Check if shareTargetPicker is available
       if (!liff.isApiAvailable('shareTargetPicker')) {
         // Fallback: open LINE share URL
-        const shareText = `🎯 เพิ่งออกกำลังกายกับ KAYA เสร็จ!\n💪 ${results.totalReps} ครั้ง\n🔥 ${results.caloriesBurned} แคลอรี่\n⭐ ฟอร์ม ${results.averageFormScore}%`;
+        const shareText = `🎯 เพิ่งออกกำลังกายกับ KAYA เสร็จ!\n💪 ${results.totalReps} ครั้ง\n🔥 ${results.caloriesBurned} แคลอรี่\n⭐ ท่าทาง ${results.averageFormScore}%`;
         window.open(
           `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(window.location.origin)}&text=${encodeURIComponent(shareText)}`,
           '_blank'
@@ -375,7 +453,7 @@ export default function WorkoutComplete() {
                     layout: 'vertical',
                     contents: [
                       { type: 'text', text: `${results.averageFormScore}%`, size: 'xl', weight: 'bold', color: '#4CAF50', align: 'center' },
-                      { type: 'text', text: 'ฟอร์ม', size: 'xxs', color: '#888888', align: 'center' },
+                      { type: 'text', text: 'ท่าทาง', size: 'xxs', color: '#888888', align: 'center' },
                     ],
                     flex: 1,
                   },
@@ -432,7 +510,7 @@ export default function WorkoutComplete() {
 
   // Share functions
   const handleShare = async (platform: string) => {
-    const shareText = `🎯 เพิ่งออกกำลังกายกับ KAYA เสร็จ!\n💪 ${results.totalReps} ครั้ง\n🔥 ${results.caloriesBurned} แคลอรี่\n⭐ ฟอร์ม ${results.averageFormScore}%\n\n#KAYAFitness #ออกกำลังกาย`;
+    const shareText = `🎯 เพิ่งออกกำลังกายกับ KAYA เสร็จ!\n💪 ${results.totalReps} ครั้ง\n🔥 ${results.caloriesBurned} แคลอรี่\n⭐ ท่าทาง ${results.averageFormScore}%\n\n#KAYAFitness #ออกกำลังกาย`;
     const shareUrl = window.location.origin;
 
     switch (platform) {
@@ -557,7 +635,7 @@ export default function WorkoutComplete() {
             {/* Form Score */}
             <div>
               <div className="flex justify-between text-sm mb-2">
-                <span style={{ color: '#cccccc' }}>คะแนนฟอร์ม</span>
+                <span style={{ color: '#cccccc' }}>คะแนนท่าทาง</span>
                 <span className={cn("font-bold", getFormColor(results.averageFormScore))}>
                   {results.averageFormScore}% - {getFormText(results.averageFormScore)}
                 </span>
@@ -574,6 +652,56 @@ export default function WorkoutComplete() {
               </div>
             </div>
           </div>
+
+          {/* AI Pose Score */}
+          {(aiScoringLoading || overallAIScore) && (
+            <div className="mb-6">
+              <div className="flex items-center gap-2 mb-3">
+                <Brain className="w-4 h-4" style={{ color: '#a78bfa' }} />
+                <span className="text-sm font-semibold" style={{ color: '#cccccc' }}>AI ประเมินท่า <span style={{ fontWeight: 400, fontSize: '0.95em' }}>(จากการวิเคราะห์ 10 ครั้ง)</span></span>
+              </div>
+              {aiScoringLoading ? (
+                <div className="flex items-center justify-center gap-2 py-4">
+                  <Loader2 className="w-5 h-5 animate-spin" style={{ color: '#a78bfa' }} />
+                  <span className="text-sm" style={{ color: '#aaaaaa' }}>กำลังวิเคราะห์ท่าออกกำลังกาย...</span>
+                </div>
+              ) : overallAIScore && (
+                <div className="space-y-3">
+                  {/* Overall AI Score */}
+                  <div className="p-3 rounded-xl" style={{ backgroundColor: '#2a2a4a' }}>
+                    <div className="text-center mb-2">
+                      <span className="text-3xl font-bold" style={{ color: '#a78bfa' }}>
+                        {overallAIScore.avg}%
+                      </span>
+                      <p className="text-xs mt-1" style={{ color: '#aaaaaa' }}>คะแนนความถูกต้องเฉลี่ย</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 mt-3">
+                      <div className="text-center p-2 rounded-lg" style={{ backgroundColor: '#1a1a2e' }}>
+                        <div className="text-lg font-bold" style={{ color: '#60a5fa' }}>{overallAIScore.cnn}%</div>
+                        <div className="text-xs" style={{ color: '#888888' }}>ฟอร์มถูกต้อง</div>
+                      </div>
+                      <div className="text-center p-2 rounded-lg" style={{ backgroundColor: '#1a1a2e' }}>
+                        <div className="text-lg font-bold" style={{ color: '#34d399' }}>{overallAIScore.lstm}%</div>
+                        <div className="text-xs" style={{ color: '#888888' }}>จังหวะถูกต้อง</div>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Score bar */}
+                  <div>
+                    <div className="h-3 rounded-full overflow-hidden" style={{ backgroundColor: '#333355' }}>
+                      <div
+                        className="h-full rounded-full transition-all duration-1000"
+                        style={{
+                          width: `${overallAIScore.avg}%`,
+                          background: 'linear-gradient(to right, #a78bfa, #8b5cf6)',
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Achievements */}
           {earnedAchievements.length > 0 && (
@@ -614,25 +742,75 @@ export default function WorkoutComplete() {
             {results.exercises.map((exercise, idx) => (
               <div
                 key={idx}
-                className="flex items-center justify-between p-4 rounded-2xl bg-card border border-border/50"
+                className="p-4 rounded-2xl bg-card border border-border/50"
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                    <span className="text-lg font-bold text-primary">{idx + 1}</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                      <span className="text-lg font-bold text-primary">{idx + 1}</span>
+                    </div>
+                    <div>
+                      <p className="font-medium text-black">{exercise.nameTh}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {exercise.reps}/{exercise.targetReps} ครั้ง
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-medium text-black">{exercise.nameTh}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {exercise.reps}/{exercise.targetReps} ครั้ง
-                    </p>
+                  <div className="text-right">
+                    <div className={cn("font-bold", getFormColor(exercise.formScore))}>
+                      {exercise.formScore}%
+                    </div>
+                    <div className="text-xs text-muted-foreground">ท่าทาง</div>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className={cn("font-bold", getFormColor(exercise.formScore))}>
-                    {exercise.formScore}%
-                  </div>  
-                  <div className="text-xs text-muted-foreground">ฟอร์ม</div>
-                </div>
+                {/* AI Score per exercise */}
+                {aiScores[idx] && (
+                  <div className="mt-3 pt-3 border-t border-border/30">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Brain className="w-3.5 h-3.5 text-purple-500" />
+                      <span className="text-xs font-medium text-purple-500">AI ประเมินท่า <span style={{ fontWeight: 400, fontSize: '0.95em' }}>(จากการวิเคราะห์ 10 ครั้ง)</span></span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="text-center p-1.5 rounded-lg bg-purple-500/10">
+                        <div className="text-sm font-bold text-purple-500">{aiScores[idx].avgScore}%</div>
+                        <div className="text-[10px] text-muted-foreground">เฉลี่ย</div>
+                      </div>
+                      <div className="text-center p-1.5 rounded-lg bg-blue-500/10">
+                        <div className="text-sm font-bold text-blue-500">{aiScores[idx].cnnScore}%</div>
+                        <div className="text-[10px] text-muted-foreground">ท่าถูกต้อง</div>
+                      </div>
+                      <div className="text-center p-1.5 rounded-lg bg-green-500/10">
+                        <div className="text-sm font-bold text-green-500">{aiScores[idx].lstmScore}%</div>
+                        <div className="text-[10px] text-muted-foreground">จังหวะถูกต้อง</div>
+                      </div>
+                    </div>
+                    {/* Per-rep breakdown */}
+                    {aiScores[idx].repScores.length > 1 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {aiScores[idx].repScores.map((rep, repIdx) => (
+                          <span
+                            key={repIdx}
+                            className={cn(
+                              "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
+                              rep.avg_score >= 80 ? "bg-green-500/15 text-green-600" :
+                              rep.avg_score >= 50 ? "bg-yellow-500/15 text-yellow-600" :
+                              "bg-red-500/15 text-red-600"
+                            )}
+                          >
+                            ครั้งที่ {rep.repIndex + 1}: {Math.round(rep.avg_score)}%
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* Loading indicator for this exercise */}
+                {aiScoringLoading && exercise.kayaExercise && isScoringSupported(exercise.kayaExercise) && !aiScores[idx] && (
+                  <div className="mt-3 pt-3 border-t border-border/30 flex items-center gap-2">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-500" />
+                    <span className="text-xs text-muted-foreground">กำลังวิเคราะห์...</span>
+                  </div>
+                )}
               </div>
             ))}
           </div>

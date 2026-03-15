@@ -17,6 +17,7 @@ import { WorkoutLoader } from "@/components/shared/WorkoutLoader";
 import { useAuth } from "@/contexts/AuthContext";
 import { getUserSettings, DEFAULT_TTS_SETTINGS } from "@/lib/firestore";
 import { getCoachById, Coach, migrateSpeakerId, migrateCoachId } from "@/lib/coachConfig";
+import { REP_FRAME_COUNT } from "@/lib/poseScoring";
 
 // Rep count messages - only speak at 1, 5, 9, 10
 const REP_MESSAGES: Record<number, string> = {
@@ -202,9 +203,16 @@ export default function WorkoutUI() {
     targetReps: number;
     formScore: number;
     duration: number;
+    kayaExercise?: string;
+    repFrames?: [number, number][][][];
   }>>([]);
   const exerciseStartTimeRef = useRef(Date.now());
   const screenshotsRef = useRef<string[]>([]);
+
+  // Frame collection for AI pose scoring — rolling buffer, capture on rep complete
+  const frameBufferRef = useRef<[number, number][][]>([]); // rolling buffer of recent frames
+  const allRepFramesRef = useRef<[number, number][][][]>([]); // saved frames per completed rep
+  const lastCollectedRepRef = useRef(0);
   
   // Simple loading state - auto skip after 3 seconds
   const [showLoader, setShowLoader] = useState(true);
@@ -526,6 +534,11 @@ export default function WorkoutUI() {
     const targetReps = exerciseData.reps || 10;
     const formScore = isKayaWorkout ? kayaAnalysis.formScore : 80;
     
+    const kayaExType = (exerciseData as any).kayaExercise as string | undefined;
+
+    // Only save rep frames if reps were actually completed (no movement = no score)
+    const repFramesToSave = allRepFramesRef.current.length > 0 ? [...allRepFramesRef.current] : undefined;
+
     exerciseResultsRef.current[currentExercise] = {
       name: exerciseData.name,
       nameTh: exerciseData.nameTh,
@@ -533,15 +546,23 @@ export default function WorkoutUI() {
       targetReps,
       formScore,
       duration,
+      kayaExercise: kayaExType,
+      repFrames: repFramesToSave,
     };
-    
+
     // Log exercise completion
     console.log('\n✅ ======== EXERCISE SAVED ========');
     console.log(`🏋️ ท่า: ${exerciseData.nameTh || exerciseData.name}`);
     console.log(`🔢 Rep: ${reps}/${targetReps}`);
     console.log(`⭐ คะแนนฟอร์ม: ${formScore}%`);
     console.log(`⏱️ เวลา: ${duration} วินาที`);
-    
+    console.log(`📐 AI Frames: ${repFramesToSave?.length || 0} reps captured, total frames: ${repFramesToSave?.reduce((s, r) => s + r.length, 0) || 0}`);
+
+    // Reset frame collection for next exercise
+    frameBufferRef.current = [];
+    allRepFramesRef.current = [];
+    lastCollectedRepRef.current = 0;
+
     // Reset timer for next exercise
     exerciseStartTimeRef.current = Date.now();
   }, [currentExercise, exercises, isKayaWorkout, kayaAnalysis]);
@@ -1122,6 +1143,38 @@ export default function WorkoutUI() {
     }
   }, [isKayaWorkout, kayaAnalysis.reps, kayaAnalysis.formScore, currentExercise, exercises, speakRepCount]);
 
+  // Collect landmark frames into rolling buffer for AI pose scoring
+  useEffect(() => {
+    if (!isKayaWorkout || !landmarks || landmarks.length !== 33) return;
+    const frame: [number, number][] = landmarks.map(lm => [lm.x, lm.y]);
+    frameBufferRef.current.push(frame);
+    // Keep buffer capped at 200 frames to limit memory
+    if (frameBufferRef.current.length > 200) {
+      frameBufferRef.current = frameBufferRef.current.slice(-200);
+    }
+  }, [isKayaWorkout, landmarks]);
+
+  // When a rep completes → capture last N frames from buffer (backwards capture)
+  useEffect(() => {
+    if (!isKayaWorkout) return;
+    if (kayaAnalysis.reps > lastCollectedRepRef.current && kayaAnalysis.reps > 0) {
+      const kayaExType = exercises[currentExercise]?.kayaExercise as string | undefined;
+      const frameCount = kayaExType ? (REP_FRAME_COUNT[kayaExType] || 45) : 45;
+      const buffer = frameBufferRef.current;
+
+      if (buffer.length >= 2) {
+        // Take the last N frames from the rolling buffer
+        const repFrames = buffer.slice(-frameCount);
+        allRepFramesRef.current.push(repFrames);
+        console.log(
+          `📐 [FrameCapture] Rep ${kayaAnalysis.reps} complete → captured ${repFrames.length}/${frameCount} frames (buffer had ${buffer.length})`
+        );
+      }
+
+      lastCollectedRepRef.current = kayaAnalysis.reps;
+    }
+  }, [isKayaWorkout, kayaAnalysis.reps, currentExercise, exercises]);
+
   // Reset rep refs and halfway flag when exercise changes
   useEffect(() => {
     lastRepRef.current = 0;
@@ -1139,6 +1192,10 @@ export default function WorkoutUI() {
     stageUpEnteredTimeRef.current = 0;
     holdCountdownRef.current = 4;
     holdAnnouncedRef.current = false;
+    // Reset frame collection for new exercise
+    frameBufferRef.current = [];
+    allRepFramesRef.current = [];
+    lastCollectedRepRef.current = 0;
   }, [currentExercise]);
 
   // Capture screenshot for voice interaction
