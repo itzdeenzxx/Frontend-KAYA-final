@@ -213,6 +213,8 @@ export default function WorkoutUI() {
   const frameBufferRef = useRef<[number, number][][]>([]); // rolling buffer of recent frames
   const allRepFramesRef = useRef<[number, number][][][]>([]); // saved frames per completed rep
   const lastCollectedRepRef = useRef(0);
+  // Track which exercises have been finalized (saved with frames) — prevent overwrite
+  const finalizedExercisesRef = useRef<Set<number>>(new Set());
   
   // Simple loading state - auto skip after 3 seconds
   const [showLoader, setShowLoader] = useState(true);
@@ -502,9 +504,11 @@ export default function WorkoutUI() {
         if (shouldCountDown) {
           setTimeLeft((prev) => {
             if (prev <= 1) {
-              // Call via ref so the updater stays pure (no captured-closure side-effects)
-              // and handleNext is always the latest version without adding it to deps.
-              handleNextRef.current();
+              // For KAYA rep-based exercises, auto-advance handles the transition
+              // — don't let the timer also call handleNext (causes double-save)
+              if (!isKayaWorkout || currentExerciseIsTimeBased) {
+                handleNextRef.current();
+              }
               return 0;
             }
             return prev - 1;
@@ -529,11 +533,17 @@ export default function WorkoutUI() {
     const exerciseData = exercises[currentExercise];
     if (!exerciseData) return;
 
+    // If this exercise was already finalized (saved with frames), skip entirely
+    if (finalizedExercisesRef.current.has(currentExercise)) {
+      console.log(`⏭️ [SaveExercise] Exercise ${currentExercise} already finalized, skipping`);
+      return;
+    }
+
     const duration = Math.floor((Date.now() - exerciseStartTimeRef.current) / 1000);
     const reps = isKayaWorkout ? kayaAnalysis.reps : (exerciseData.reps || 0);
     const targetReps = exerciseData.reps || 10;
     const formScore = isKayaWorkout ? kayaAnalysis.formScore : 80;
-    
+
     const kayaExType = (exerciseData as any).kayaExercise as string | undefined;
 
     // Only save rep frames if reps were actually completed (no movement = no score)
@@ -550,6 +560,11 @@ export default function WorkoutUI() {
       repFrames: repFramesToSave,
     };
 
+    // Lock this exercise if it has frames — no future saves can overwrite
+    if (repFramesToSave && repFramesToSave.length > 0) {
+      finalizedExercisesRef.current.add(currentExercise);
+    }
+
     // Log exercise completion
     console.log('\n✅ ======== EXERCISE SAVED ========');
     console.log(`🏋️ ท่า: ${exerciseData.nameTh || exerciseData.name}`);
@@ -557,11 +572,7 @@ export default function WorkoutUI() {
     console.log(`⭐ คะแนนฟอร์ม: ${formScore}%`);
     console.log(`⏱️ เวลา: ${duration} วินาที`);
     console.log(`📐 AI Frames: ${repFramesToSave?.length || 0} reps captured, total frames: ${repFramesToSave?.reduce((s, r) => s + r.length, 0) || 0}`);
-
-    // Reset frame collection for next exercise
-    frameBufferRef.current = [];
-    allRepFramesRef.current = [];
-    lastCollectedRepRef.current = 0;
+    console.log(`🔒 Finalized: ${finalizedExercisesRef.current.has(currentExercise)}`);
 
     // Reset timer for next exercise
     exerciseStartTimeRef.current = Date.now();

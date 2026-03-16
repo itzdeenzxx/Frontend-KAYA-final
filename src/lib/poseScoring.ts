@@ -144,17 +144,18 @@ export async function scoreExerciseReps(
 
   // Average = sum / targetReps (not actual reps)
   // Reps not completed count as 0 → user must finish all reps for full score
+  // Cap at 100% even if user did more reps than target
   const divisor = Math.max(targetReps, 1);
 
-  const avgLstmScore = Math.round(
+  const avgLstmScore = Math.min(100, Math.round(
     (repScores.reduce((sum, r) => sum + r.lstm_score, 0) / divisor) * 10
-  ) / 10;
-  const avgCnnScore = Math.round(
+  ) / 10);
+  const avgCnnScore = Math.min(100, Math.round(
     (repScores.reduce((sum, r) => sum + r.cnn_score, 0) / divisor) * 10
-  ) / 10;
-  const avgScore = Math.round(
+  ) / 10);
+  const avgScore = Math.min(100, Math.round(
     (repScores.reduce((sum, r) => sum + r.avg_score, 0) / divisor) * 10
-  ) / 10;
+  ) / 10);
 
   console.log(
     `\n✅ [PoseScoring] === ${exerciseType} result (${repScores.length} scored / ${targetReps} target) ===\n` +

@@ -190,9 +190,9 @@ export default function WorkoutComplete() {
         const result = await scoreExerciseReps(ex.kayaExercise!, ex.repFrames!, ex.targetReps);
         if (result) {
           scoreMap[idx] = {
-            lstmScore: result.avgLstmScore,
-            cnnScore: result.avgCnnScore,
-            avgScore: result.avgScore,
+            lstmScore: Math.min(100, result.avgLstmScore),
+            cnnScore: Math.min(100, result.avgCnnScore),
+            avgScore: Math.min(100, result.avgScore),
             repScores: result.repScores,
           };
           console.log(`✅ [AI Scoring] Exercise [${idx}] ${ex.name} → avg_score=${result.avgScore}% (CNN=${result.avgCnnScore}%, LSTM=${result.avgLstmScore}%)`);
@@ -207,9 +207,9 @@ export default function WorkoutComplete() {
       // Calculate overall AI score across all exercises
       const scored = Object.values(scoreMap);
       if (scored.length > 0) {
-        const avgLstm = Math.round(scored.reduce((s, v) => s + v.lstmScore, 0) / scored.length * 10) / 10;
-        const avgCnn = Math.round(scored.reduce((s, v) => s + v.cnnScore, 0) / scored.length * 10) / 10;
-        const avgAll = Math.round(scored.reduce((s, v) => s + v.avgScore, 0) / scored.length * 10) / 10;
+        const avgLstm = Math.min(100, Math.round(scored.reduce((s, v) => s + v.lstmScore, 0) / scored.length * 10) / 10);
+        const avgCnn = Math.min(100, Math.round(scored.reduce((s, v) => s + v.cnnScore, 0) / scored.length * 10) / 10);
+        const avgAll = Math.min(100, Math.round(scored.reduce((s, v) => s + v.avgScore, 0) / scored.length * 10) / 10);
         setOverallAIScore({ lstm: avgLstm, cnn: avgCnn, avg: avgAll });
 
         console.log(
@@ -329,12 +329,32 @@ export default function WorkoutComplete() {
     try {
       // Dynamic import html2canvas to avoid SSR issues
       const html2canvas = (await import('html2canvas')).default;
-      const canvas = await html2canvas(shareCardRef.current, {
+      const rawCanvas = await html2canvas(shareCardRef.current, {
         backgroundColor: '#1a1a2e',
         scale: 2,
         useCORS: true,
       });
-      return canvas.toDataURL('image/png');
+
+      // Resize to 1024x1024 for LINE shareTargetPicker compatibility
+      const MAX = 1024;
+      const resized = document.createElement('canvas');
+      resized.width = MAX;
+      resized.height = MAX;
+      const ctx = resized.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(0, 0, MAX, MAX);
+        // Fit the captured card into the square, centered
+        const srcW = rawCanvas.width;
+        const srcH = rawCanvas.height;
+        const ratio = Math.min(MAX / srcW, MAX / srcH);
+        const dstW = Math.round(srcW * ratio);
+        const dstH = Math.round(srcH * ratio);
+        const offsetX = Math.round((MAX - dstW) / 2);
+        const offsetY = Math.round((MAX - dstH) / 2);
+        ctx.drawImage(rawCanvas, offsetX, offsetY, dstW, dstH);
+      }
+      return resized.toDataURL('image/png');
     } catch (error) {
       console.error('Error capturing share card:', error);
       return null;
