@@ -312,6 +312,12 @@ export interface FirestoreUserSettings {
     customVoiceRefText?: string;     // Reference text matching the audio   (legacy single)
     customCoachName?: string;        // User-defined coach name
   };
+  // LINE Notification settings
+  lineNotification?: {
+    accepted: boolean;   // set by backend when user adds the LINE OA
+    enabled: boolean;    // set by frontend when user activates
+    notifyHour: number;  // 0-23 – hour of day for daily workout reminder
+  };
   // Custom coach data (full custom coach with avatar, personality, multi-ref voices)
   customCoach?: {
     name: string;
@@ -1133,8 +1139,13 @@ export const initializeUserSettings = async (userId: string): Promise<void> => {
       referenceAudioUrl: '',
       referenceText: '',
     },
+    lineNotification: {
+      accepted: false,
+      enabled: false,
+      notifyHour: 7,
+    },
   };
-  
+
   await saveUserSettings(userId, defaultSettings);
 };
 
@@ -1180,6 +1191,20 @@ export const updateSelectedCoach = async (
 export const getSelectedCoachId = async (userId: string): Promise<string | null> => {
   const settings = await getUserSettings(userId);
   return settings?.selectedCoachId || null;
+};
+
+// Update LINE notification settings only
+export const updateLineNotificationSettings = async (
+  userId: string,
+  lineNotification: Partial<NonNullable<FirestoreUserSettings['lineNotification']>>
+): Promise<void> => {
+  const settingsRef = doc(db, COLLECTIONS.SETTINGS, userId);
+  const existing = await getUserSettings(userId);
+  const current = existing?.lineNotification ?? { accepted: false, enabled: false, notifyHour: 7 };
+  await updateDoc(settingsRef, {
+    lineNotification: { ...current, ...lineNotification },
+    updatedAt: serverTimestamp(),
+  });
 };
 
 // Check if user has selected a coach
