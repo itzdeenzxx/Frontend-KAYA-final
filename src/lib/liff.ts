@@ -134,6 +134,99 @@ export const shareBadgeAchievement = async (
     `📊 รวมที่ปลดล็อกครั้งนี้: ${totalBadgeCount} เหรียญ\n` +
     `มาฟิตไปด้วยกันที่ KAYA!`;
 
+  const flexMessage = {
+    type: 'flex',
+    altText: `${displayName} ปลดล็อก ${totalBadgeCount} เหรียญใน KAYA`,
+    contents: {
+      type: 'bubble',
+      size: 'mega',
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: '#121418',
+        paddingAll: '16px',
+        contents: [
+          {
+            type: 'text',
+            text: 'KAYA Achievement',
+            color: '#F3F4F6',
+            size: 'sm',
+            weight: 'bold',
+          },
+          {
+            type: 'text',
+            text: '🏆 ปลดล็อกเหรียญใหม่',
+            color: '#FB923C',
+            size: 'xl',
+            weight: 'bold',
+            margin: 'md',
+          },
+        ],
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: '#1F2937',
+        paddingAll: '16px',
+        spacing: 'md',
+        contents: [
+          {
+            type: 'text',
+            text: `ผู้ใช้: ${displayName}`,
+            color: '#E5E7EB',
+            size: 'sm',
+          },
+          {
+            type: 'text',
+            text: `รวมที่ปลดล็อก: ${totalBadgeCount} เหรียญ`,
+            color: '#FDBA74',
+            size: 'md',
+            weight: 'bold',
+          },
+          {
+            type: 'separator',
+            color: '#374151',
+            margin: 'sm',
+          },
+          {
+            type: 'text',
+            text: badgeList,
+            color: '#D1D5DB',
+            wrap: true,
+            size: 'sm',
+          },
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        paddingAll: '12px',
+        backgroundColor: '#111827',
+        contents: [
+          {
+            type: 'text',
+            text: 'มาฟิตไปด้วยกันที่ KAYA',
+            color: '#F59E0B',
+            align: 'center',
+            size: 'sm',
+            weight: 'bold',
+          },
+        ],
+      },
+    },
+  } as const;
+
+  try {
+    if (liff.isApiAvailable('shareTargetPicker')) {
+      const result = await liff.shareTargetPicker([flexMessage as any]);
+      if (result !== false) {
+        return true;
+      }
+    }
+  } catch (error) {
+    console.warn('Flex message share failed, fallback to text:', error);
+  }
+
   return shareMessage(message);
 };
 

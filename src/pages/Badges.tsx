@@ -108,7 +108,7 @@ export default function BadgesPage() {
   };
 
   return (
-    <div className={cn('min-h-screen pb-24', isDark ? 'bg-black text-white' : 'bg-gray-50 text-gray-900')}>
+    <div className={cn('min-h-screen pb-24', isDark ? 'bg-[#090c12] text-white' : 'bg-gray-50 text-gray-900')}>
       <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
         <div className="flex items-center justify-between">
           <Link
@@ -123,7 +123,7 @@ export default function BadgesPage() {
           </Link>
         </div>
 
-        <div className={cn('rounded-2xl border p-5', isDark ? 'bg-white/5 border-white/10' : 'bg-white border-gray-200')}>
+        <div className={cn('rounded-2xl border p-5', isDark ? 'bg-[#11151e] border-orange-500/20' : 'bg-white border-gray-200')}>
           <div className="flex items-center justify-between mb-2 gap-3">
             <div className="flex items-center gap-2">
               <Star className="w-5 h-5 text-yellow-500" />
@@ -163,7 +163,7 @@ export default function BadgesPage() {
         {(['workout', 'game', 'nutrition'] as const).map((category) => (
           <section
             key={category}
-            className={cn('rounded-2xl border p-5', isDark ? 'bg-white/5 border-white/10' : 'bg-white border-gray-200')}
+            className={cn('rounded-2xl border p-5', isDark ? 'bg-[#11151e] border-orange-500/20' : 'bg-white border-gray-200')}
           >
             <div className="flex items-center gap-2 mb-4">
               {categoryMeta[category].icon}

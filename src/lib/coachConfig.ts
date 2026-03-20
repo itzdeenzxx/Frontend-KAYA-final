@@ -53,7 +53,7 @@ export function migrateSpeakerId(speaker: string | undefined | null): string {
  */
 export function migrateCoachId(coachId: string | undefined | null): string {
   if (!coachId) return DEFAULT_COACH_ID;
-  if (coachId === 'coach-custom') return coachId;
+  if (coachId === 'coach-custom') return DEFAULT_COACH_ID;
   if (LEGACY_COACH_MAP[coachId]) return LEGACY_COACH_MAP[coachId];
   return coachId; // already valid or unknown
 }

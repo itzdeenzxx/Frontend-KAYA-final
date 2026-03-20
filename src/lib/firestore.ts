@@ -404,6 +404,12 @@ export const createOrUpdateUserFromLine = async (
       lastLoginAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+
+    // Ensure login-related badges are evaluated on every successful login.
+    await evaluateAndAwardBadges(lineUserId).catch((error) => {
+      console.warn('Badge evaluation on login failed:', error);
+    });
+
     return { ...userSnap.data(), id: lineUserId } as FirestoreUserProfile;
   } else {
     // Create new user
@@ -420,6 +426,12 @@ export const createOrUpdateUserFromLine = async (
       lastLoginAt: serverTimestamp() as Timestamp,
     };
     await setDoc(userRef, newUser);
+
+    // New users should immediately receive first-login badge.
+    await evaluateAndAwardBadges(lineUserId).catch((error) => {
+      console.warn('Badge evaluation on new user create failed:', error);
+    });
+
     return { ...newUser, id: lineUserId } as FirestoreUserProfile;
   }
 };
@@ -1098,6 +1110,8 @@ const badgeTargetById = new Map(BADGE_DEFINITIONS.map((badge) => [badge.id, badg
 
 export const getBadgeCurrentProgress = (badgeId: string, snapshot: BadgeProgressSnapshot): number => {
   switch (badgeId) {
+    case 'welcome_first_login':
+      return 1;
     case 'workout_first':
     case 'workout_7_sessions':
     case 'workout_15_sessions':

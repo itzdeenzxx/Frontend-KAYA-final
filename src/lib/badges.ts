@@ -16,6 +16,16 @@ export interface BadgeDefinition {
 // Central badge catalog for the app (Workout / Game / Nutrition)
 export const BADGE_DEFINITIONS: BadgeDefinition[] = [
   {
+    id: 'welcome_first_login',
+    nameEn: 'KAYA First Light',
+    nameTh: 'แสงแรกแห่ง KAYA',
+    description: 'Celebrate your very first login and the start of your wellness journey',
+    icon: '🌟',
+    requirement: 'เข้าสู่ระบบครั้งแรก',
+    category: 'workout',
+    target: 1,
+  },
+  {
     id: 'workout_first',
     nameEn: 'First Workout',
     nameTh: 'ออกกำลังกายครั้งแรก',
