@@ -268,6 +268,8 @@ export const useBadges = () => {
   const hasEnsuredCatalogRef = useRef(false);
   const hasMigratedLegacyRef = useRef(false);
 
+  const normalizeBadgeId = (value: string | undefined): string => (value || '').trim();
+
   const fetchBadges = useCallback(async () => {
     if (!lineProfile?.userId) return;
     
@@ -276,12 +278,20 @@ export const useBadges = () => {
     
     try {
       if (!hasEnsuredCatalogRef.current) {
-        await ensureBadgeCatalogSeeded();
+        try {
+          await ensureBadgeCatalogSeeded();
+        } catch (seedError) {
+          console.warn('Badge catalog seed skipped:', seedError);
+        }
         hasEnsuredCatalogRef.current = true;
       }
 
       if (!hasMigratedLegacyRef.current) {
-        await migrateLegacyBadgesForUser(lineProfile.userId);
+        try {
+          await migrateLegacyBadgesForUser(lineProfile.userId);
+        } catch (migrationError) {
+          console.warn('Legacy badge migration skipped:', migrationError);
+        }
         hasMigratedLegacyRef.current = true;
       }
 
@@ -289,9 +299,16 @@ export const useBadges = () => {
       const snapshot = await getBadgeProgressSnapshot(lineProfile.userId).catch(() => emptyBadgeProgressSnapshot);
       setEarnedBadges(data);
 
-      const earnedMap = new Map(data.map((badge) => [badge.badgeId, badge]));
+      const earnedMap = new Map<string, FirestoreUserBadge>();
+      for (const badge of data) {
+        const byBadgeId = normalizeBadgeId(badge.badgeId);
+        const byDocId = normalizeBadgeId(badge.id);
+        if (byBadgeId) earnedMap.set(byBadgeId, badge);
+        if (byDocId) earnedMap.set(byDocId, badge);
+      }
+
       const mergedBadges: Badge[] = BADGE_DEFINITIONS.map((definition) => {
-        const earned = earnedMap.get(definition.id);
+        const earned = earnedMap.get(normalizeBadgeId(definition.id));
         const earnedAt = parseEarnedAt(earned?.earnedAt);
 
         return {

@@ -1254,18 +1254,43 @@ export const getUserBadges = async (userId: string): Promise<FirestoreUserBadge[
     );
 
     const querySnap = await getDocs(q);
-    return querySnap.docs.map(doc => ({
+    const userBadges = querySnap.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
     })) as FirestoreUserBadge[];
+    if (userBadges.length > 0) {
+      return userBadges;
+    }
   } catch {
+    // Continue to fallback reads below.
+  }
+
+  try {
     // Fallback to an unordered read so badge rendering still works.
     const querySnap = await getDocs(badgeRef);
-    return querySnap.docs.map(doc => ({
+    const userBadges = querySnap.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
     })) as FirestoreUserBadge[];
+    if (userBadges.length > 0) {
+      return userBadges;
+    }
+  } catch {
+    // Continue to legacy fallback below.
   }
+
+  const legacyRef = getLegacyBadgesCollectionRef();
+  const legacySnap = await getDocs(query(legacyRef, where('userId', '==', userId)));
+  return legacySnap.docs
+    .map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    }))
+    .sort((a, b) => {
+      const aDate = (a as FirestoreUserBadge).earnedAt?.toDate?.()?.getTime?.() || 0;
+      const bDate = (b as FirestoreUserBadge).earnedAt?.toDate?.()?.getTime?.() || 0;
+      return bDate - aDate;
+    }) as FirestoreUserBadge[];
 };
 
 // ==================== LEADERBOARD OPERATIONS ====================
