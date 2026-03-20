@@ -23,19 +23,35 @@ export default function BadgesPage() {
   const { badges, isLoading, error } = useBadges();
   const [isSharing, setIsSharing] = useState(false);
 
+  const normalizedBadges = useMemo(() => {
+    const definitionMap = new Map(BADGE_DEFINITIONS.map((b) => [b.id, b]));
+
+    return badges.map((badge) => {
+      const definition = definitionMap.get(badge.id);
+
+      return {
+        ...badge,
+        nameEn: badge.nameEn || definition?.nameEn || badge.id,
+        nameTh: badge.nameTh || definition?.nameTh || badge.nameEn || badge.id,
+        requirement: badge.requirement || definition?.requirement || '-',
+        icon: badge.icon || definition?.icon || 'default',
+      };
+    });
+  }, [badges]);
+
   const byCategory = useMemo(() => {
     const definitionMap = new Map(BADGE_DEFINITIONS.map((b) => [b.id, b]));
 
     return {
-      workout: badges.filter((badge) => definitionMap.get(badge.id)?.category === 'workout'),
-      game: badges.filter((badge) => definitionMap.get(badge.id)?.category === 'game'),
-      nutrition: badges.filter((badge) => definitionMap.get(badge.id)?.category === 'nutrition'),
+      workout: normalizedBadges.filter((badge) => definitionMap.get(badge.id)?.category === 'workout'),
+      game: normalizedBadges.filter((badge) => definitionMap.get(badge.id)?.category === 'game'),
+      nutrition: normalizedBadges.filter((badge) => definitionMap.get(badge.id)?.category === 'nutrition'),
     };
-  }, [badges]);
+  }, [normalizedBadges]);
 
-  const earnedCount = badges.filter((badge) => !!badge.earnedAt).length;
-  const totalCount = badges.length;
-  const earnedBadges = badges.filter((badge) => !!badge.earnedAt);
+  const earnedCount = normalizedBadges.filter((badge) => !!badge.earnedAt).length;
+  const totalCount = normalizedBadges.length;
+  const earnedBadges = normalizedBadges.filter((badge) => !!badge.earnedAt);
 
   const handleShareBadges = async () => {
     if (earnedBadges.length === 0) {

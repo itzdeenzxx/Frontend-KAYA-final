@@ -91,8 +91,8 @@ export function BadgeGrid({ badges, variant = 'grid', isDark = false }: BadgeGri
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: index * 0.05 }}
           className={cn(
-            'rounded-2xl border p-4 text-center shadow-sm',
-            isDark ? 'bg-[#13151b] border-white/15 text-white' : 'bg-white border-gray-200 text-gray-900',
+            'rounded-2xl border p-4 text-center shadow-sm min-h-[132px] flex flex-col items-center justify-center',
+            isDark ? 'bg-slate-950/95 border-slate-700 text-white' : 'bg-white border-gray-200 text-gray-900',
             !badge.earnedAt && 'opacity-50 grayscale'
           )}
         >
@@ -104,10 +104,10 @@ export function BadgeGrid({ badges, variant = 'grid', isDark = false }: BadgeGri
           )}>
             {getIcon(badge.icon)}
           </div>
-          <p className={cn('text-sm font-semibold mb-1', isDark ? 'text-gray-100' : 'text-gray-900')}>
-            {i18n.language === 'th' ? badge.nameTh : badge.nameEn}
+          <p className={cn('text-sm font-semibold mb-1 leading-tight', isDark ? 'text-white' : 'text-gray-900')}>
+            {(i18n.language === 'th' ? badge.nameTh : badge.nameEn) || badge.id}
           </p>
-          <p className={cn('text-sm font-medium', isDark ? 'text-gray-200' : 'text-gray-800')}>
+          <p className={cn('text-xs font-medium', isDark ? 'text-slate-200' : 'text-gray-800')}>
             {badge.earnedAt 
               ? new Date(badge.earnedAt).toLocaleDateString() 
               : badge.requirement
