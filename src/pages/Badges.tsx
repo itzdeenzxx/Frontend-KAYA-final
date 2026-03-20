@@ -19,7 +19,8 @@ const categoryMeta: Record<BadgeCategory, { title: string; icon: React.ReactNode
 export default function BadgesPage() {
   const { lineProfile } = useAuth();
   const { theme } = useTheme();
-  const isDark = theme === 'dark';
+  const isDocumentDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+  const isDark = theme === 'dark' || isDocumentDark;
   const { badges, isLoading, error } = useBadges();
   const [isSharing, setIsSharing] = useState(false);
 
