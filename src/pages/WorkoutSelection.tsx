@@ -43,7 +43,7 @@ const workoutStyles: WorkoutStyle[] = [
     color: 'text-green-400',
     bgGradient: 'from-green-600/90 via-emerald-600/80 to-teal-800/90',
     duration: '10-20 นาที',
-    calories: '80-150',
+    calories: '30-60',
     level: 'ง่าย',
     features: ['AI Coach', 'TTS Voice', 'Pose Guide'],
     image: 'https://images.unsplash.com/photo-1518611012118-696072aa579a?w=800&q=80',

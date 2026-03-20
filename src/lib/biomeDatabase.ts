@@ -69,8 +69,8 @@ export const BIOME_MAPS: BiomeMap[] = [
   {
     id: 'swamp',
     name: 'Swamp',
-    nameTh: 'บึง',
-    description: 'บึงชื้นแฉะที่มีปลาดุร้ายและหายาก รวมถึงปลายักษ์โบราณ',
+    nameTh: 'หนองน้ำ',
+    description: 'หนองน้ำที่ชื้นแฉะที่มีปลาดุร้ายและหายาก รวมถึงปลายักษ์โบราณ',
     unlockPrice: 30000,
     requiredLevel: 20,
     background: '/images/maps/swamp-bg.jpg',
