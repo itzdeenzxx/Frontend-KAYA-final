@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Share2, Star, Trophy, Gamepad2, Salad } from 'lucide-react';
+import { ArrowLeft, Share2, Star, Trophy, Gamepad2, Salad, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -9,6 +9,7 @@ import type { BadgeCategory } from '@/lib/badges';
 import { BadgeGrid } from '@/components/gamification/BadgeGrid';
 import { shareBadgeAchievement } from '@/lib/liff';
 import { toast } from '@/components/ui/sonner';
+import type { Badge } from '@/lib/types';
 
 const categoryMeta: Record<BadgeCategory, { title: string; icon: React.ReactNode }> = {
   workout: { title: 'Workout Badges', icon: <Trophy className="w-4 h-4" /> },
@@ -23,6 +24,7 @@ export default function BadgesPage() {
   const isDark = theme === 'dark' || isDocumentDark;
   const { badges, isLoading, error } = useBadges();
   const [isSharing, setIsSharing] = useState(false);
+  const [selectedBadge, setSelectedBadge] = useState<Badge | null>(null);
 
   const normalizedBadges = useMemo(() => {
     return badges.map((badge) => {
@@ -62,6 +64,25 @@ export default function BadgesPage() {
 
     if (shared) {
       toast.success('แชร์ความสำเร็จไปที่ LINE แล้ว');
+    } else {
+      toast.error('ไม่สามารถแชร์ได้ในขณะนี้ (ลองเปิดใน LINE อีกครั้ง)');
+    }
+  };
+
+  const handleShareSingleBadge = async () => {
+    if (!selectedBadge) return;
+    if (!selectedBadge.earnedAt) {
+      toast.error('ปลดล็อกเหรียญนี้ก่อนจึงจะแชร์ได้');
+      return;
+    }
+
+    setIsSharing(true);
+    const badgeLabel = selectedBadge.nameTh || selectedBadge.nameEn || selectedBadge.id;
+    const shared = await shareBadgeAchievement(lineProfile?.displayName || 'ผู้ใช้ KAYA', [badgeLabel], 1);
+    setIsSharing(false);
+
+    if (shared) {
+      toast.success('แชร์เหรียญนี้ไปที่ LINE แล้ว');
     } else {
       toast.error('ไม่สามารถแชร์ได้ในขณะนี้ (ลองเปิดใน LINE อีกครั้ง)');
     }
@@ -170,23 +191,98 @@ export default function BadgesPage() {
 
             {isLoading ? (
               <p className={cn('text-sm', isDark ? 'text-gray-400' : 'text-gray-500')}>กำลังโหลด badges...</p>
-            ) : earnedByCategory[category].length === 0 ? (
-              <div className="space-y-1">
-                <p className={cn('text-sm', isDark ? 'text-gray-400' : 'text-gray-500')}>
-                  ยังไม่มีเหรียญที่ปลดล็อกในหมวดนี้ (มีทั้งหมด {byCategory[category].length} เหรียญ)
-                </p>
+            ) : byCategory[category].length === 0 ? (
+              <p className={cn('text-sm', isDark ? 'text-gray-400' : 'text-gray-500')}>ยังไม่มี badge ในหมวดนี้</p>
+            ) : (
+              <div className="space-y-2">
+                <BadgeGrid
+                  badges={byCategory[category]}
+                  variant="grid"
+                  isDark={isDark}
+                  onBadgeClick={setSelectedBadge}
+                />
                 {nextLockedByCategory[category] && (
                   <p className={cn('text-xs', isDark ? 'text-gray-500' : 'text-gray-500')}>
                     ใกล้ปลดล็อกที่สุด: {nextLockedByCategory[category].nameTh} ({formatProgressText(nextLockedByCategory[category])})
                   </p>
                 )}
               </div>
-            ) : (
-              <BadgeGrid badges={earnedByCategory[category]} variant="grid" isDark={isDark} />
             )}
           </section>
         ))}
       </div>
+
+      {selectedBadge && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/70"
+            onClick={() => setSelectedBadge(null)}
+            aria-label="Close badge details"
+          />
+          <div className={cn(
+            'relative z-[111] w-full max-w-md rounded-2xl border p-5 shadow-2xl',
+            isDark ? 'bg-[#11151e] border-orange-500/20 text-white' : 'bg-white border-gray-200 text-gray-900'
+          )}>
+            <button
+              type="button"
+              onClick={() => setSelectedBadge(null)}
+              className={cn(
+                'absolute right-3 top-3 rounded-full p-2 transition-colors',
+                isDark ? 'hover:bg-white/10' : 'hover:bg-gray-100'
+              )}
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="pr-10">
+              <p className={cn('text-xs uppercase tracking-wide', isDark ? 'text-orange-300' : 'text-orange-600')}>Badge Detail</p>
+              <h3 className="mt-1 text-xl font-bold">{selectedBadge.nameTh || selectedBadge.nameEn || selectedBadge.id}</h3>
+              <p className={cn('text-sm mt-1', isDark ? 'text-gray-300' : 'text-gray-600')}>{selectedBadge.nameEn}</p>
+            </div>
+
+            <div className={cn('mt-4 rounded-xl border p-3', isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50')}>
+              <p className={cn('text-sm', isDark ? 'text-gray-200' : 'text-gray-700')}>{selectedBadge.description}</p>
+              <p className={cn('mt-2 text-xs', isDark ? 'text-gray-400' : 'text-gray-500')}>เงื่อนไข: {selectedBadge.requirement}</p>
+              <p className={cn('mt-1 text-xs', isDark ? 'text-gray-400' : 'text-gray-500')}>
+                ความคืบหน้า: {formatProgressText(selectedBadge)}
+              </p>
+              <p className={cn('mt-1 text-xs font-medium', selectedBadge.earnedAt ? 'text-green-500' : (isDark ? 'text-amber-300' : 'text-amber-700'))}>
+                {selectedBadge.earnedAt
+                  ? `ปลดล็อกแล้ว: ${new Date(selectedBadge.earnedAt).toLocaleString()}`
+                  : 'ยังไม่ปลดล็อก'}
+              </p>
+            </div>
+
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedBadge(null)}
+                className={cn(
+                  'flex-1 rounded-xl px-3 py-2 text-sm border',
+                  isDark ? 'bg-white/5 border-white/10 hover:bg-white/10' : 'bg-white border-gray-200 hover:bg-gray-100'
+                )}
+              >
+                ปิด
+              </button>
+              <button
+                type="button"
+                onClick={handleShareSingleBadge}
+                disabled={isSharing || !selectedBadge.earnedAt}
+                className={cn(
+                  'flex-1 rounded-xl px-3 py-2 text-sm font-medium inline-flex items-center justify-center gap-2',
+                  selectedBadge.earnedAt
+                    ? 'bg-gradient-to-r from-orange-500 to-yellow-500 text-white hover:opacity-90'
+                    : (isDark ? 'bg-white/10 text-gray-400 cursor-not-allowed' : 'bg-gray-100 text-gray-400 cursor-not-allowed')
+                )}
+              >
+                <Share2 className="w-4 h-4" />
+                {isSharing ? 'กำลังแชร์...' : 'แชร์เหรียญนี้'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

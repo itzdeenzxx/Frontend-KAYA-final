@@ -42,9 +42,10 @@ interface BadgeGridProps {
   badges: Badge[];
   variant?: 'grid' | 'horizontal';
   isDark?: boolean;
+  onBadgeClick?: (badge: Badge) => void;
 }
 
-export function BadgeGrid({ badges, variant = 'grid', isDark = false }: BadgeGridProps) {
+export function BadgeGrid({ badges, variant = 'grid', isDark = false, onBadgeClick }: BadgeGridProps) {
   const { i18n } = useTranslation();
 
   const getIcon = (iconKey: string) => {
@@ -93,8 +94,10 @@ export function BadgeGrid({ badges, variant = 'grid', isDark = false }: BadgeGri
           className={cn(
             'rounded-2xl border p-4 text-center shadow-sm min-h-[132px] flex flex-col items-center justify-center',
             isDark ? 'bg-zinc-950 border-orange-500/40 text-orange-100' : 'bg-white border-gray-200 text-black',
+            onBadgeClick && 'cursor-pointer hover:scale-[1.01] transition-transform',
             !badge.earnedAt && 'opacity-50 grayscale'
           )}
+          onClick={() => onBadgeClick?.(badge)}
         >
           <div className={cn(
             'w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-3',

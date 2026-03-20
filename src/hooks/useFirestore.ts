@@ -261,6 +261,8 @@ const emptyBadgeProgressSnapshot: BadgeProgressSnapshot = {
   totalNutritionLogs: 0,
   totalGamesPlayed: 0,
   hydrationGoalDays: 0,
+  currentWorkoutStreak24h: 0,
+  bestWorkoutStreak24h: 0,
 };
 
 const parseEarnedAt = (value: unknown): Date | undefined => {

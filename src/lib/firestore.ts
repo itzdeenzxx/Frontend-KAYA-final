@@ -1045,6 +1045,8 @@ export interface BadgeProgressSnapshot {
   totalNutritionLogs: number;
   totalGamesPlayed: number;
   hydrationGoalDays: number;
+  currentWorkoutStreak24h: number;
+  bestWorkoutStreak24h: number;
 }
 
 const emitBadgesEarnedEvent = (detail: BadgesEarnedEventDetail): void => {
@@ -1156,6 +1158,14 @@ export const getBadgeCatalog = async (): Promise<FirestoreBadgeCatalogItem[]> =>
 };
 
 export const getBadgeProgressSnapshot = async (userId: string): Promise<BadgeProgressSnapshot> => {
+  const workoutHistoryPromise = getDocs(
+    query(
+      collection(db, COLLECTIONS.WORKOUT_HISTORY),
+      where('userId', '==', userId),
+      orderBy('completedAt', 'desc')
+    )
+  );
+
   const hydrationGoalPromise = getDocs(
     query(
       collection(db, COLLECTIONS.DAILY_STATS),
@@ -1164,13 +1174,60 @@ export const getBadgeProgressSnapshot = async (userId: string): Promise<BadgePro
     )
   ).catch(() => null);
 
-  const [workoutStats, cumulativeStats, nutritionSnap, gameStatsSnap, hydrationGoalSnap] = await Promise.all([
+  const [workoutStats, cumulativeStats, nutritionSnap, gameStatsSnap, hydrationGoalSnap, workoutHistorySnap] = await Promise.all([
     getUserWorkoutStats(userId),
     getCumulativeStats(userId),
     getDocs(query(collection(db, COLLECTIONS.NUTRITION_LOGS), where('userId', '==', userId))),
     getDoc(doc(db, COLLECTIONS.USER_GAME_STATS, userId)),
     hydrationGoalPromise,
+    workoutHistoryPromise,
   ]);
+
+  const workoutTimes = workoutHistorySnap.docs
+    .map((item) => {
+      const completedAt = item.data().completedAt as Timestamp | { toDate?: () => Date } | undefined;
+      if (!completedAt) return null;
+      if (typeof (completedAt as { toDate?: () => Date }).toDate === 'function') {
+        return (completedAt as { toDate: () => Date }).toDate().getTime();
+      }
+      return null;
+    })
+    .filter((value): value is number => typeof value === 'number')
+    .sort((a, b) => b - a);
+
+  const WINDOW_MS = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+
+  let currentWorkoutStreak24h = 0;
+  if (workoutTimes.length > 0 && now - workoutTimes[0] <= WINDOW_MS) {
+    currentWorkoutStreak24h = 1;
+    for (let i = 0; i < workoutTimes.length - 1; i += 1) {
+      const gap = workoutTimes[i] - workoutTimes[i + 1];
+      if (gap <= WINDOW_MS) {
+        currentWorkoutStreak24h += 1;
+      } else {
+        break;
+      }
+    }
+  }
+
+  let bestWorkoutStreak24h = 0;
+  let running = 0;
+  for (let i = 0; i < workoutTimes.length; i += 1) {
+    if (i === 0) {
+      running = 1;
+      bestWorkoutStreak24h = Math.max(bestWorkoutStreak24h, running);
+      continue;
+    }
+
+    const gap = workoutTimes[i - 1] - workoutTimes[i];
+    if (gap <= WINDOW_MS) {
+      running += 1;
+    } else {
+      running = 1;
+    }
+    bestWorkoutStreak24h = Math.max(bestWorkoutStreak24h, running);
+  }
 
   return {
     totalWorkouts: workoutStats.totalWorkouts || 0,
@@ -1179,6 +1236,8 @@ export const getBadgeProgressSnapshot = async (userId: string): Promise<BadgePro
     totalNutritionLogs: nutritionSnap.size,
     totalGamesPlayed: gameStatsSnap.exists() ? (gameStatsSnap.data().totalGamesPlayed || 0) : 0,
     hydrationGoalDays: hydrationGoalSnap?.size || 0,
+    currentWorkoutStreak24h,
+    bestWorkoutStreak24h,
   };
 };
 
@@ -1200,6 +1259,12 @@ export const getBadgeCurrentProgress = (badgeId: string, snapshot: BadgeProgress
     case 'workout_1000_calories':
     case 'workout_5000_calories':
       return snapshot.totalCaloriesBurned;
+    case 'workout_streak_current_3':
+    case 'workout_streak_current_7':
+      return snapshot.currentWorkoutStreak24h;
+    case 'workout_streak_record_10':
+    case 'workout_streak_record_30':
+      return snapshot.bestWorkoutStreak24h;
     case 'game_first':
     case 'game_5_sessions':
     case 'game_25_sessions':
