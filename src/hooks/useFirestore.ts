@@ -29,6 +29,7 @@ import {
   getCumulativeStats,
   getBadgeProgressSnapshot,
   getBadgeCurrentProgress,
+  evaluateAndAwardBadges,
   ensureBadgeCatalogSeeded,
   migrateLegacyBadgesForUser,
   type FirestoreHealthData,
@@ -294,6 +295,9 @@ export const useBadges = () => {
         }
         hasMigratedLegacyRef.current = true;
       }
+
+      // Re-evaluate unlock conditions so eligible users receive badges immediately.
+      await evaluateAndAwardBadges(lineProfile.userId).catch(() => []);
 
       const data = await getUserBadges(lineProfile.userId);
       const snapshot = await getBadgeProgressSnapshot(lineProfile.userId).catch(() => emptyBadgeProgressSnapshot);

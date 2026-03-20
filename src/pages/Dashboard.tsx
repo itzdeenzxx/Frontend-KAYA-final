@@ -481,7 +481,7 @@ export default function Dashboard() {
                   </Link>
                 </div>
                 {earnedBadges.length > 0 ? (
-                  <BadgeGrid badges={earnedBadges} variant="horizontal" />
+                  <BadgeGrid badges={earnedBadges} variant="horizontal" isDark={isDark} />
                 ) : (
                   <p className={cn('text-sm', isDark ? 'text-gray-400' : 'text-gray-500')}>
                     ยังไม่มีเหรียญที่ปลดล็อก ({earnedBadgeDocs.length}/{badges.length})
@@ -842,7 +842,7 @@ export default function Dashboard() {
                 : "bg-white border-gray-200 shadow-sm"
             )}>
               {earnedBadges.length > 0 ? (
-                <BadgeGrid badges={earnedBadges} variant="horizontal" />
+                <BadgeGrid badges={earnedBadges} variant="horizontal" isDark={isDark} />
               ) : (
                 <p className={cn('text-sm', isDark ? 'text-gray-400' : 'text-gray-500')}>
                   ยังไม่มีเหรียญที่ปลดล็อก ({earnedBadgeDocs.length}/{badges.length})

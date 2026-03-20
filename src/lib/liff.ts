@@ -86,18 +86,33 @@ export const closeLiff = (): void => {
 
 // Share message via LINE shareTargetPicker
 export const shareMessage = async (text: string): Promise<boolean> => {
-  if (!liff.isApiAvailable('shareTargetPicker')) {
-    return false;
-  }
-
   try {
-    await liff.shareTargetPicker([
-      {
-        type: 'text',
-        text,
-      },
-    ]);
-    return true;
+    if (liff.isApiAvailable('shareTargetPicker')) {
+      const result = await liff.shareTargetPicker([
+        {
+          type: 'text',
+          text,
+        },
+      ]);
+      if (result !== false) {
+        return true;
+      }
+    }
+
+    // Fallback for browsers outside LIFF client.
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      await navigator.share({ text });
+      return true;
+    }
+
+    // Final fallback: open LINE share URL for forwarding to chats.
+    if (typeof window !== 'undefined') {
+      const shareUrl = `https://line.me/R/share?text=${encodeURIComponent(text)}`;
+      window.open(shareUrl, '_blank', 'noopener,noreferrer');
+      return true;
+    }
+
+    return false;
   } catch (error) {
     console.error('Failed to share message:', error);
     return false;

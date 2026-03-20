@@ -20,7 +20,7 @@ export default function BadgesPage() {
   const { lineProfile } = useAuth();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const { badges, earnedBadges: earnedBadgeDocs, isLoading, error } = useBadges();
+  const { badges, isLoading, error } = useBadges();
   const [isSharing, setIsSharing] = useState(false);
 
   const byCategory = useMemo(() => {
@@ -141,9 +141,6 @@ export default function BadgesPage() {
               โหลดข้อมูลความคืบหน้าบางส่วนไม่สำเร็จ แต่ยังแสดงเหรียญที่ปลดล็อกแล้วได้
             </p>
           )}
-          <div className={cn('mt-3 text-[11px] break-all', isDark ? 'text-gray-500' : 'text-gray-500')}>
-            debug userId={lineProfile?.userId || '-'} docs={earnedBadgeDocs.length} merged={badges.length} earned={earnedCount}{error ? ` err=${error}` : ''}
-          </div>
         </div>
 
         {(['workout', 'game', 'nutrition'] as const).map((category) => (
@@ -173,7 +170,7 @@ export default function BadgesPage() {
                 )}
               </div>
             ) : (
-              <BadgeGrid badges={earnedByCategory[category]} variant="grid" />
+              <BadgeGrid badges={earnedByCategory[category]} variant="grid" isDark={isDark} />
             )}
           </section>
         ))}

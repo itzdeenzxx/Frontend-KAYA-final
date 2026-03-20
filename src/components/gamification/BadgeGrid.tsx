@@ -41,9 +41,10 @@ const iconMap: Record<string, React.ReactNode> = {
 interface BadgeGridProps {
   badges: Badge[];
   variant?: 'grid' | 'horizontal';
+  isDark?: boolean;
 }
 
-export function BadgeGrid({ badges, variant = 'grid' }: BadgeGridProps) {
+export function BadgeGrid({ badges, variant = 'grid', isDark = false }: BadgeGridProps) {
   const { i18n } = useTranslation();
 
   const getIcon = (iconKey: string) => {
@@ -66,11 +67,13 @@ export function BadgeGrid({ badges, variant = 'grid' }: BadgeGridProps) {
           >
             <div className={cn(
               'w-14 h-14 mx-auto rounded-2xl flex items-center justify-center mb-2',
-              badge.earnedAt ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+              badge.earnedAt
+                ? (isDark ? 'bg-orange-500/20 text-orange-300' : 'bg-orange-100 text-orange-600')
+                : (isDark ? 'bg-white/10 text-gray-300' : 'bg-gray-200 text-gray-600')
             )}>
               {getIcon(badge.icon)}
             </div>
-            <p className="text-xs font-medium truncate">
+            <p className={cn('text-xs font-medium truncate', isDark ? 'text-gray-100' : 'text-gray-800')}>
               {i18n.language === 'th' ? badge.nameTh : badge.nameEn}
             </p>
           </motion.div>
@@ -88,20 +91,23 @@ export function BadgeGrid({ badges, variant = 'grid' }: BadgeGridProps) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: index * 0.05 }}
           className={cn(
-            'card-elevated p-4 text-center',
+            'rounded-2xl border p-4 text-center shadow-sm',
+            isDark ? 'bg-white/5 border-white/10 text-white' : 'bg-white border-gray-200 text-gray-900',
             !badge.earnedAt && 'opacity-50 grayscale'
           )}
         >
           <div className={cn(
             'w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-3',
-            badge.earnedAt ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+            badge.earnedAt
+              ? (isDark ? 'bg-orange-500/20 text-orange-300' : 'bg-orange-100 text-orange-600')
+              : (isDark ? 'bg-white/10 text-gray-300' : 'bg-gray-200 text-gray-600')
           )}>
             {getIcon(badge.icon)}
           </div>
-          <p className="text-sm font-medium mb-1">
+          <p className={cn('text-sm font-semibold mb-1', isDark ? 'text-gray-100' : 'text-gray-900')}>
             {i18n.language === 'th' ? badge.nameTh : badge.nameEn}
           </p>
-          <p className="text-xs text-muted-foreground">
+          <p className={cn('text-xs', isDark ? 'text-gray-300' : 'text-gray-700')}>
             {badge.earnedAt 
               ? new Date(badge.earnedAt).toLocaleDateString() 
               : badge.requirement

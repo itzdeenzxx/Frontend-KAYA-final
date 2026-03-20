@@ -36,16 +36,16 @@ import { useTheme } from '@/contexts/ThemeContext';
 const workoutStyles: WorkoutStyle[] = [
   {
     id: 'kaya-stretch',
-    name: 'KAYA เริ่มต้น',
-    nameEn: 'KAYA Beginner',
-    description: 'AI วิเคราะห์ท่าทาง + เสียงโค้ชแนะนำแบบ Real-time',
+    name: 'KAYA ยืดเหยียดอัจฉริยะ',
+    nameEn: 'KAYA AI Stretching',
+    description: '3 ท่ายืดเหยียด พร้อม AI Coach วิเคราะห์ท่าทาง, Visual Guide และ TTS',
     icon: <Brain className="w-8 h-8" />,
     color: 'text-green-400',
     bgGradient: 'from-green-600/90 via-emerald-600/80 to-teal-800/90',
-    duration: '10-20 นาที',
-    calories: '80-150',
+    duration: '5-10 นาที',
+    calories: '30-60',
     level: 'ง่าย',
-    features: ['AI Coach', 'TTS Voice', 'Pose Guide'],
+    features: ['AI Coach', 'Visual Guide', 'TTS', 'นับเซ็ต'],
     image: 'https://images.unsplash.com/photo-1518611012118-696072aa579a?w=800&q=80',
     accentColor: 'green'
   },
