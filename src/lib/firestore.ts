@@ -38,7 +38,6 @@ export const COLLECTIONS = {
   HEALTH_DATA: 'healthData',
   WORKOUT_HISTORY: 'workoutHistory',
   NUTRITION_LOGS: 'nutritionLogs',
-  BADGES: 'badges',
   CHALLENGES: 'challenges',
   CHALLENGE_TEMPLATES: 'challengeTemplates',
   LEADERBOARD: 'leaderboard',
@@ -1044,9 +1043,6 @@ const emitBadgesEarnedEvent = (detail: BadgesEarnedEventDetail): void => {
 const getUserBadgesCollectionRef = (userId: string) =>
   collection(db, COLLECTIONS.USER_BADGES, userId, 'badges');
 
-const getLegacyBadgesCollectionRef = () =>
-  collection(db, COLLECTIONS.BADGES);
-
 export const ensureBadgeCatalogSeeded = async (): Promise<void> => {
   const catalogRef = collection(db, COLLECTIONS.BADGE_CATALOG);
   const existing = await getDocs(query(catalogRef, limit(1)));
@@ -1069,50 +1065,6 @@ export const ensureBadgeCatalogSeeded = async (): Promise<void> => {
   }
 
   await batch.commit();
-};
-
-export const migrateLegacyBadgesForUser = async (userId: string): Promise<number> => {
-  const userBadgesRef = getUserBadgesCollectionRef(userId);
-  const hasMigratedData = await getDocs(query(userBadgesRef, limit(1)));
-  if (!hasMigratedData.empty) {
-    return 0;
-  }
-
-  const legacyRef = getLegacyBadgesCollectionRef();
-  const legacySnap = await getDocs(query(legacyRef, where('userId', '==', userId)));
-  if (legacySnap.empty) {
-    return 0;
-  }
-
-  const batch = writeBatch(db);
-  let migratedCount = 0;
-
-  for (const legacyDoc of legacySnap.docs) {
-    const legacyData = legacyDoc.data() as Partial<FirestoreUserBadge>;
-    const badgeId = (legacyData.badgeId && String(legacyData.badgeId)) || legacyDoc.id;
-    const targetRef = doc(db, COLLECTIONS.USER_BADGES, userId, 'badges', badgeId);
-
-    batch.set(targetRef, {
-      userId,
-      badgeId,
-      badgeName: legacyData.badgeName || legacyData.badgeNameEn || legacyData.badgeNameTh || badgeId,
-      badgeNameEn: legacyData.badgeNameEn || legacyData.badgeName || badgeId,
-      badgeNameTh: legacyData.badgeNameTh || legacyData.badgeName || badgeId,
-      category: legacyData.category,
-      requirement: legacyData.requirement || '',
-      description: legacyData.description || '',
-      icon: legacyData.icon || '🏅',
-      earnedAt: legacyData.earnedAt || serverTimestamp(),
-    }, { merge: true });
-
-    migratedCount += 1;
-  }
-
-  if (migratedCount > 0) {
-    await batch.commit();
-  }
-
-  return migratedCount;
 };
 
 export const getBadgeProgressSnapshot = async (userId: string): Promise<BadgeProgressSnapshot> => {
@@ -1247,53 +1199,14 @@ export const awardBadge = async (
 // Get user badges
 export const getUserBadges = async (userId: string): Promise<FirestoreUserBadge[]> => {
   const badgeRef = getUserBadgesCollectionRef(userId);
-  const legacyRef = getLegacyBadgesCollectionRef();
 
-  const [newCollectionDocs, legacyCollectionDocs] = await Promise.all([
-    (async (): Promise<FirestoreUserBadge[]> => {
-      try {
-        const orderedSnap = await getDocs(query(badgeRef, orderBy('earnedAt', 'desc')));
-        return orderedSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as FirestoreUserBadge[];
-      } catch {
-        try {
-          const unorderedSnap = await getDocs(badgeRef);
-          return unorderedSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as FirestoreUserBadge[];
-        } catch {
-          return [];
-        }
-      }
-    })(),
-    (async (): Promise<FirestoreUserBadge[]> => {
-      try {
-        const legacySnap = await getDocs(query(legacyRef, where('userId', '==', userId)));
-        return legacySnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as FirestoreUserBadge[];
-      } catch {
-        return [];
-      }
-    })(),
-  ]);
-
-  const merged = new Map<string, FirestoreUserBadge>();
-  for (const badge of [...legacyCollectionDocs, ...newCollectionDocs]) {
-    const key = (badge.badgeId || badge.id || '').trim();
-    if (!key) continue;
-    merged.set(key, badge);
+  try {
+    const orderedSnap = await getDocs(query(badgeRef, orderBy('earnedAt', 'desc')));
+    return orderedSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as FirestoreUserBadge[];
+  } catch {
+    const unorderedSnap = await getDocs(badgeRef);
+    return unorderedSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as FirestoreUserBadge[];
   }
-
-  const toMillis = (value: unknown): number => {
-    if (!value) return 0;
-    if (typeof value === 'object' && typeof (value as { toDate?: () => Date }).toDate === 'function') {
-      return (value as { toDate: () => Date }).toDate().getTime();
-    }
-    if (value instanceof Date) return value.getTime();
-    if (typeof value === 'string' || typeof value === 'number') {
-      const parsed = new Date(value).getTime();
-      return Number.isNaN(parsed) ? 0 : parsed;
-    }
-    return 0;
-  };
-
-  return Array.from(merged.values()).sort((a, b) => toMillis(b.earnedAt) - toMillis(a.earnedAt));
 };
 
 // ==================== LEADERBOARD OPERATIONS ====================

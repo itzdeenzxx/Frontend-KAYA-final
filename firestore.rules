@@ -100,11 +100,17 @@ service cloud.firestore {
       allow read: if true;
       allow write: if true;
     }
+
+    // Legacy badges collection is deprecated and should not be used.
+    match /badges/{badgeId} {
+      allow read, write: if false;
+    }
     
     // ==================== CATCH ALL ====================
     // Allow any other collections for flexibility
     match /{document=**} {
-      allow read, write: if true;
+      // Keep app flexibility but explicitly exclude deprecated top-level badges collection.
+      allow read, write: if !document.matches('badges/.*');
     }
   }
 }

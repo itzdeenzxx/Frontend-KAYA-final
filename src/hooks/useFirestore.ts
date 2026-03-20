@@ -31,7 +31,6 @@ import {
   getBadgeCurrentProgress,
   evaluateAndAwardBadges,
   ensureBadgeCatalogSeeded,
-  migrateLegacyBadgesForUser,
   type FirestoreHealthData,
   type FirestoreWorkoutHistory,
   type FirestoreNutritionLog,
@@ -267,7 +266,6 @@ export const useBadges = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const hasEnsuredCatalogRef = useRef(false);
-  const hasMigratedLegacyRef = useRef(false);
 
   const normalizeBadgeId = (value: string | undefined): string => (value || '').trim();
 
@@ -285,15 +283,6 @@ export const useBadges = () => {
           console.warn('Badge catalog seed skipped:', seedError);
         }
         hasEnsuredCatalogRef.current = true;
-      }
-
-      if (!hasMigratedLegacyRef.current) {
-        try {
-          await migrateLegacyBadgesForUser(lineProfile.userId);
-        } catch (migrationError) {
-          console.warn('Legacy badge migration skipped:', migrationError);
-        }
-        hasMigratedLegacyRef.current = true;
       }
 
       // Re-evaluate unlock conditions so eligible users receive badges immediately.
