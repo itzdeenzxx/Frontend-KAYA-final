@@ -31,9 +31,11 @@ import {
   getBadgeCurrentProgress,
   evaluateAndAwardBadges,
   ensureBadgeCatalogSeeded,
+  getBadgeCatalog,
   type FirestoreHealthData,
   type FirestoreWorkoutHistory,
   type FirestoreNutritionLog,
+  type FirestoreBadgeCatalogItem,
   type FirestoreUserBadge,
   type FirestoreUserSettings,
   type FirestoreDailyStats,
@@ -237,6 +239,21 @@ const makeLockedCatalog = (): Badge[] =>
     progressTarget: def.target,
   }));
 
+const makeLockedCatalogFromItems = (catalog: FirestoreBadgeCatalogItem[]): Badge[] =>
+  catalog.map((item) => ({
+    id: item.badgeId,
+    name: item.nameEn,
+    nameEn: item.nameEn,
+    nameTh: item.nameTh,
+    description: item.description,
+    icon: item.icon,
+    category: item.category,
+    requirement: item.requirement,
+    earnedAt: undefined,
+    progressCurrent: 0,
+    progressTarget: item.target,
+  }));
+
 const emptyBadgeProgressSnapshot: BadgeProgressSnapshot = {
   totalWorkouts: 0,
   totalWorkoutTime: 0,
@@ -288,9 +305,25 @@ export const useBadges = () => {
       // Re-evaluate unlock conditions so eligible users receive badges immediately.
       await evaluateAndAwardBadges(lineProfile.userId).catch(() => []);
 
-      const data = await getUserBadges(lineProfile.userId);
-      const snapshot = await getBadgeProgressSnapshot(lineProfile.userId).catch(() => emptyBadgeProgressSnapshot);
+      const [data, snapshot, catalog] = await Promise.all([
+        getUserBadges(lineProfile.userId),
+        getBadgeProgressSnapshot(lineProfile.userId).catch(() => emptyBadgeProgressSnapshot),
+        getBadgeCatalog().catch(() => [] as FirestoreBadgeCatalogItem[]),
+      ]);
       setEarnedBadges(data);
+
+      const activeCatalog = catalog.length > 0
+        ? catalog
+        : BADGE_DEFINITIONS.map((definition) => ({
+            badgeId: definition.id,
+            nameEn: definition.nameEn,
+            nameTh: definition.nameTh,
+            description: definition.description,
+            icon: definition.icon,
+            requirement: definition.requirement,
+            category: definition.category,
+            target: definition.target,
+          } as FirestoreBadgeCatalogItem));
 
       const earnedMap = new Map<string, FirestoreUserBadge>();
       for (const badge of data) {
@@ -300,20 +333,22 @@ export const useBadges = () => {
         if (byDocId) earnedMap.set(byDocId, badge);
       }
 
-      const mergedBadges: Badge[] = BADGE_DEFINITIONS.map((definition) => {
-        const earned = earnedMap.get(normalizeBadgeId(definition.id));
+      const mergedBadges: Badge[] = activeCatalog.map((definition) => {
+        const badgeId = normalizeBadgeId(definition.badgeId);
+        const earned = earnedMap.get(badgeId);
         const earnedAt = parseEarnedAt(earned?.earnedAt);
 
         return {
-          id: definition.id,
+          id: badgeId,
           name: definition.nameEn,
           nameEn: definition.nameEn,
           nameTh: definition.nameTh,
           description: definition.description,
           icon: definition.icon,
+          category: definition.category,
           requirement: definition.requirement,
           earnedAt,
-          progressCurrent: getBadgeCurrentProgress(definition.id, snapshot),
+          progressCurrent: getBadgeCurrentProgress(badgeId, snapshot),
           progressTarget: definition.target,
         };
       });
@@ -322,7 +357,16 @@ export const useBadges = () => {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch badges');
       // Keep the full locked catalog visible so the page isn't blank
-      setBadges(makeLockedCatalog());
+      setBadges(makeLockedCatalogFromItems(BADGE_DEFINITIONS.map((definition) => ({
+        badgeId: definition.id,
+        nameEn: definition.nameEn,
+        nameTh: definition.nameTh,
+        description: definition.description,
+        icon: definition.icon,
+        requirement: definition.requirement,
+        category: definition.category,
+        target: definition.target,
+      }))));
     } finally {
       setIsLoading(false);
     }

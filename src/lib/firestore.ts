@@ -302,7 +302,7 @@ export interface FirestoreBadgeCatalogItem {
   requirement: string;
   category: 'workout' | 'game' | 'nutrition';
   target: number;
-  updatedAt: Timestamp;
+  updatedAt?: Timestamp;
 }
 
 export interface FirestoreUserSettings {
@@ -1057,11 +1057,21 @@ const getUserBadgesCollectionRef = (userId: string) =>
 
 export const ensureBadgeCatalogSeeded = async (): Promise<void> => {
   const catalogRef = collection(db, COLLECTIONS.BADGE_CATALOG);
-  const existing = await getDocs(query(catalogRef, limit(1)));
-  if (!existing.empty) return;
+  const existing = await getDocs(catalogRef);
+  const existingIds = new Set<string>();
+  for (const catalogDoc of existing.docs) {
+    existingIds.add(catalogDoc.id);
+    const data = catalogDoc.data() as Partial<FirestoreBadgeCatalogItem>;
+    if (typeof data.badgeId === 'string' && data.badgeId.trim()) {
+      existingIds.add(data.badgeId.trim());
+    }
+  }
 
   const batch = writeBatch(db);
+  let writes = 0;
   for (const definition of BADGE_DEFINITIONS) {
+    if (existingIds.has(definition.id)) continue;
+
     const badgeDocRef = doc(db, COLLECTIONS.BADGE_CATALOG, definition.id);
     batch.set(badgeDocRef, {
       badgeId: definition.id,
@@ -1074,9 +1084,75 @@ export const ensureBadgeCatalogSeeded = async (): Promise<void> => {
       target: definition.target,
       updatedAt: serverTimestamp(),
     });
+    writes += 1;
   }
 
-  await batch.commit();
+  if (writes > 0) {
+    await batch.commit();
+  }
+};
+
+export const getBadgeCatalog = async (): Promise<FirestoreBadgeCatalogItem[]> => {
+  const fallbackCatalog: FirestoreBadgeCatalogItem[] = BADGE_DEFINITIONS.map((definition) => ({
+    id: definition.id,
+    badgeId: definition.id,
+    nameEn: definition.nameEn,
+    nameTh: definition.nameTh,
+    description: definition.description,
+    icon: definition.icon,
+    requirement: definition.requirement,
+    category: definition.category,
+    target: definition.target,
+  }));
+
+  try {
+    const catalogRef = collection(db, COLLECTIONS.BADGE_CATALOG);
+    const snap = await getDocs(catalogRef);
+    if (snap.empty) {
+      return fallbackCatalog;
+    }
+
+    const byId = new Map<string, FirestoreBadgeCatalogItem>();
+    for (const catalogDoc of snap.docs) {
+      const data = catalogDoc.data() as Partial<FirestoreBadgeCatalogItem>;
+      const badgeId = (typeof data.badgeId === 'string' && data.badgeId.trim())
+        ? data.badgeId.trim()
+        : catalogDoc.id;
+      byId.set(badgeId, {
+        id: catalogDoc.id,
+        badgeId,
+        nameEn: data.nameEn || badgeId,
+        nameTh: data.nameTh || data.nameEn || badgeId,
+        description: data.description || '',
+        icon: data.icon || '🏅',
+        requirement: data.requirement || '-',
+        category: data.category || 'workout',
+        target: typeof data.target === 'number' ? data.target : 1,
+        updatedAt: data.updatedAt,
+      });
+    }
+
+    const orderedCatalog = BADGE_DEFINITIONS.map((definition) => {
+      const dbItem = byId.get(definition.id);
+      if (dbItem) return dbItem;
+
+      return {
+        id: definition.id,
+        badgeId: definition.id,
+        nameEn: definition.nameEn,
+        nameTh: definition.nameTh,
+        description: definition.description,
+        icon: definition.icon,
+        requirement: definition.requirement,
+        category: definition.category,
+        target: definition.target,
+      } as FirestoreBadgeCatalogItem;
+    });
+
+    return orderedCatalog;
+  } catch {
+    return fallbackCatalog;
+  }
 };
 
 export const getBadgeProgressSnapshot = async (userId: string): Promise<BadgeProgressSnapshot> => {
@@ -1152,20 +1228,25 @@ const hasMetBadgeCondition = (badgeId: string, snapshot: BadgeProgressSnapshot):
 };
 
 export const evaluateAndAwardBadges = async (userId: string): Promise<string[]> => {
-  const [earnedBadges, snapshot] = await Promise.all([
+  const [earnedBadges, snapshot, catalog] = await Promise.all([
     getUserBadges(userId),
     getBadgeProgressSnapshot(userId),
+    getBadgeCatalog(),
   ]);
 
   const earnedSet = new Set(earnedBadges.map((badge) => badge.badgeId));
   const newlyAwarded: string[] = [];
+  const catalogById = new Map(catalog.map((item) => [item.badgeId, item]));
 
-  for (const definition of BADGE_DEFINITIONS) {
-    if (earnedSet.has(definition.id)) continue;
-    if (!hasMetBadgeCondition(definition.id, snapshot)) continue;
+  for (const definition of catalog) {
+    const badgeId = definition.badgeId;
+    if (!badgeId || earnedSet.has(badgeId)) continue;
+
+    const target = typeof definition.target === 'number' ? definition.target : 1;
+    if (getBadgeCurrentProgress(badgeId, snapshot) < target) continue;
 
     await awardBadge(userId, {
-      badgeId: definition.id,
+      badgeId,
       badgeName: definition.nameEn,
       badgeNameEn: definition.nameEn,
       badgeNameTh: definition.nameTh,
@@ -1174,11 +1255,14 @@ export const evaluateAndAwardBadges = async (userId: string): Promise<string[]> 
       description: definition.description,
       icon: definition.icon,
     });
-    newlyAwarded.push(definition.id);
+    newlyAwarded.push(badgeId);
   }
 
   if (newlyAwarded.length > 0) {
-    const unlockedDefinitions = BADGE_DEFINITIONS.filter((badge) => newlyAwarded.includes(badge.id));
+    const unlockedDefinitions = newlyAwarded
+      .map((badgeId) => catalogById.get(badgeId))
+      .filter((badge): badge is FirestoreBadgeCatalogItem => !!badge);
+
     emitBadgesEarnedEvent({
       userId,
       badgeIds: newlyAwarded,

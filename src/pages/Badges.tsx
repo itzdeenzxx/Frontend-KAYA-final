@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBadges } from '@/hooks/useFirestore';
-import { BADGE_DEFINITIONS, type BadgeCategory } from '@/lib/badges';
+import type { BadgeCategory } from '@/lib/badges';
 import { BadgeGrid } from '@/components/gamification/BadgeGrid';
 import { shareBadgeAchievement } from '@/lib/liff';
 import { toast } from '@/components/ui/sonner';
@@ -25,28 +25,23 @@ export default function BadgesPage() {
   const [isSharing, setIsSharing] = useState(false);
 
   const normalizedBadges = useMemo(() => {
-    const definitionMap = new Map(BADGE_DEFINITIONS.map((b) => [b.id, b]));
-
     return badges.map((badge) => {
-      const definition = definitionMap.get(badge.id);
-
       return {
         ...badge,
-        nameEn: badge.nameEn || definition?.nameEn || badge.id,
-        nameTh: badge.nameTh || definition?.nameTh || badge.nameEn || badge.id,
-        requirement: badge.requirement || definition?.requirement || '-',
-        icon: badge.icon || definition?.icon || 'default',
+        nameEn: badge.nameEn || badge.name || badge.id,
+        nameTh: badge.nameTh || badge.nameEn || badge.name || badge.id,
+        requirement: badge.requirement || '-',
+        icon: badge.icon || 'default',
+        category: badge.category || 'workout',
       };
     });
   }, [badges]);
 
   const byCategory = useMemo(() => {
-    const definitionMap = new Map(BADGE_DEFINITIONS.map((b) => [b.id, b]));
-
     return {
-      workout: normalizedBadges.filter((badge) => definitionMap.get(badge.id)?.category === 'workout'),
-      game: normalizedBadges.filter((badge) => definitionMap.get(badge.id)?.category === 'game'),
-      nutrition: normalizedBadges.filter((badge) => definitionMap.get(badge.id)?.category === 'nutrition'),
+      workout: normalizedBadges.filter((badge) => badge.category === 'workout'),
+      game: normalizedBadges.filter((badge) => badge.category === 'game'),
+      nutrition: normalizedBadges.filter((badge) => badge.category === 'nutrition'),
     };
   }, [normalizedBadges]);
 

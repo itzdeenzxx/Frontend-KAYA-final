@@ -227,6 +227,13 @@ export const shareBadgeAchievement = async (
     console.warn('Flex message share failed, fallback to text:', error);
   }
 
+  // Prefer LINE share URL fallback to avoid generic OS share sheets in desktop browsers.
+  if (typeof window !== 'undefined') {
+    const shareUrl = `https://line.me/R/share?text=${encodeURIComponent(message)}`;
+    window.open(shareUrl, '_blank', 'noopener,noreferrer');
+    return true;
+  }
+
   return shareMessage(message);
 };
 
