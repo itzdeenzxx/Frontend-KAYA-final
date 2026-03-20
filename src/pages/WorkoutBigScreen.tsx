@@ -116,8 +116,12 @@ export default function WorkoutBigScreen() {
   const selectedStyle = getWorkoutStyle(selectedStyleId);
   const exercises = getExercisesForStyle(selectedStyleId);
 
-  // Check if this is a KAYA workout (treat intermediate the same as kaya-stretch)
-  const isKayaWorkout = selectedStyleId === 'kaya-stretch' || selectedStyleId === 'kaya-intermediate';
+  // Check if this is a KAYA workout (all KAYA levels)
+  const isKayaWorkout =
+    selectedStyleId === 'kaya-stretch' ||
+    selectedStyleId === 'kaya-intermediate' ||
+    selectedStyleId === 'kaya-advanced' ||
+    selectedStyleId === 'kaya-expert';
 
   // Workout state
   const [currentExercise, setCurrentExercise] = useState(0);
@@ -193,24 +197,6 @@ export default function WorkoutBigScreen() {
           // Ensure video plays
           try {
             await videoRef.current.play();
-              {autoplayBlocked && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <button
-                    onClick={async () => {
-                      try {
-                        await videoRef.current?.play();
-                        setAutoplayBlocked(false);
-                        setCameraError('');
-                      } catch (e) {
-                        setCameraError('ไม่สามารถเริ่มวิดีโอได้ กรุณาแตะหน้าจออีกครั้ง');
-                      }
-                    }}
-                    className="px-6 py-3 bg-primary text-white rounded-xl shadow-lg"
-                  >
-                    เปิดกล้อง (แตะเพื่อเริ่ม)
-                  </button>
-                </div>
-              )}
             console.log('BigScreen video playing');
             setAutoplayBlocked(false);
           } catch (playError) {
@@ -520,8 +506,26 @@ export default function WorkoutBigScreen() {
               muted
               className="w-full h-full object-cover scale-x-[-1]"
             />
-            {/* Skeleton Overlay (temporarily disabled for kaya-intermediate diagnostics) */}
-            {cameraEnabled && (showSkeleton || showOpticalFlow) && selectedStyleId !== 'kaya-intermediate' && (
+            {autoplayBlocked && (
+              <div className="absolute inset-0 flex items-center justify-center z-20">
+                <button
+                  onClick={async () => {
+                    try {
+                      await videoRef.current?.play();
+                      setAutoplayBlocked(false);
+                      setCameraError('');
+                    } catch {
+                      setCameraError('ไม่สามารถเริ่มวิดีโอได้ กรุณาแตะหน้าจออีกครั้ง');
+                    }
+                  }}
+                  className="px-6 py-3 bg-primary text-white rounded-xl shadow-lg"
+                >
+                  เปิดกล้อง (แตะเพื่อเริ่ม)
+                </button>
+              </div>
+            )}
+            {/* Skeleton Overlay */}
+            {(showSkeleton || showOpticalFlow) && (
               <SkeletonOverlay
                 landmarks={landmarks}
                 opticalFlowPoints={opticalFlowPoints}

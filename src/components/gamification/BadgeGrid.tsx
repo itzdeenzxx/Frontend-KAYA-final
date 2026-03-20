@@ -73,7 +73,7 @@ export function BadgeGrid({ badges, variant = 'grid', isDark = false }: BadgeGri
             )}>
               {getIcon(badge.icon)}
             </div>
-            <p className={cn('text-xs font-medium truncate', isDark ? 'text-gray-100' : 'text-gray-800')}>
+            <p className={cn('text-xs font-semibold truncate', isDark ? 'text-white' : 'text-gray-900')}>
               {i18n.language === 'th' ? badge.nameTh : badge.nameEn}
             </p>
           </motion.div>
@@ -92,7 +92,7 @@ export function BadgeGrid({ badges, variant = 'grid', isDark = false }: BadgeGri
           transition={{ delay: index * 0.05 }}
           className={cn(
             'rounded-2xl border p-4 text-center shadow-sm',
-            isDark ? 'bg-white/5 border-white/10 text-white' : 'bg-white border-gray-200 text-gray-900',
+            isDark ? 'bg-[#13151b] border-white/15 text-white' : 'bg-white border-gray-200 text-gray-900',
             !badge.earnedAt && 'opacity-50 grayscale'
           )}
         >
@@ -107,7 +107,7 @@ export function BadgeGrid({ badges, variant = 'grid', isDark = false }: BadgeGri
           <p className={cn('text-sm font-semibold mb-1', isDark ? 'text-gray-100' : 'text-gray-900')}>
             {i18n.language === 'th' ? badge.nameTh : badge.nameEn}
           </p>
-          <p className={cn('text-xs', isDark ? 'text-gray-300' : 'text-gray-700')}>
+          <p className={cn('text-sm font-medium', isDark ? 'text-gray-200' : 'text-gray-800')}>
             {badge.earnedAt 
               ? new Date(badge.earnedAt).toLocaleDateString() 
               : badge.requirement
