@@ -3,7 +3,9 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
+
+const AdminKaya = lazy(() => import("./pages/AdminKaya"));
 
 import Dashboard from "./pages/Dashboard";
 import WorkoutSelection from "./pages/WorkoutSelection";
@@ -27,6 +29,8 @@ import FishingGame from "./pages/FishingGame";
 import WorkoutComplete from "./pages/WorkoutComplete";
 import Challenges from "./pages/Challenges";
 import WorkoutHistory from "./pages/WorkoutHistory";
+import Leaderboard from "./pages/Leaderboard";
+import UserPublicProfile from "./pages/UserPublicProfile";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
@@ -98,6 +102,8 @@ const AppRoutes = () => {
           <Route path="/game-mode" element={<GameMode />} />
           <Route path="/challenges" element={<Challenges />} />
           <Route path="/workout-history" element={<WorkoutHistory />} />
+          <Route path="/leaderboard" element={<Leaderboard />} />
+          <Route path="/user-profile/:userId" element={<UserPublicProfile />} />
         </Route>
         
         {/* Full Screen Routes */}
@@ -110,7 +116,14 @@ const AppRoutes = () => {
         <Route path="/mouse-running-game" element={<MouseRunningGame />} />
         <Route path="/whack-a-mole-game" element={<WhackAMoleGame />} />
         <Route path="/fishing-game" element={<FishingGame />} />
-        
+
+        {/* Admin Panel - URL-only access, no nav link */}
+        <Route path="/admin-kaya" element={
+          <Suspense fallback={<RunningLoader message="Loading..." />}>
+            <AdminKaya />
+          </Suspense>
+        } />
+
         {/* Catch-all */}
         <Route path="*" element={<NotFound />} />
       </Routes>

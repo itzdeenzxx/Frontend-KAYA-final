@@ -12,6 +12,7 @@ import { getCalculatedStreak } from "@/lib/firestore";
 import { useTheme } from "@/contexts/ThemeContext";
 import { hasSelectedCoach } from "@/lib/firestore";
 import { CoachSelectionPopup } from "@/components/coach";
+import { LeaderboardPreviewCard } from "@/components/gamification/LeaderboardPreviewCard";
 
 // Tier configurations
 const tierConfig = {
@@ -348,6 +349,9 @@ export default function Dashboard() {
                   </div>
                 </div>
               </Link>
+
+              {/* Leaderboard Preview */}
+              <LeaderboardPreviewCard />
 
               {/* Challenges Section */}
               <div className={cn(
@@ -778,6 +782,9 @@ export default function Dashboard() {
                 <span className={cn("text-xs", isDark ? "text-gray-400" : "text-gray-500")}>Goals</span>
               </Link>
             </div>
+
+          {/* Leaderboard Preview - Mobile */}
+          <LeaderboardPreviewCard />
 
           {/* Challenges Section - Mobile */}
             <div className="flex items-center justify-between mb-4">

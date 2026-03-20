@@ -225,4 +225,8 @@
     initial-value: 0deg;
     inherits: false;
   }
+
+  /* Hide scrollbar for tab carousels while keeping scroll behavior */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 }

@@ -1051,7 +1051,7 @@ export const getLeaderboard = async (limitCount: number = 50): Promise<Leaderboa
     orderBy('points', 'desc'),
     limit(limitCount)
   );
-  
+
   const querySnap = await getDocs(q);
   return querySnap.docs.map((doc, index) => {
     const data = doc.data();
@@ -1066,18 +1066,182 @@ export const getLeaderboard = async (limitCount: number = 50): Promise<Leaderboa
   });
 };
 
+// Get full leaderboard by points (includes streakDays for display)
+export const getFullLeaderboard = async (limitCount: number = 50): Promise<FullLeaderboardEntry[]> => {
+  const usersRef = collection(db, COLLECTIONS.USERS);
+  const q = query(usersRef, orderBy('points', 'desc'), limit(limitCount));
+  const snap = await getDocs(q);
+  return snap.docs.map((docSnap, index) => {
+    const data = docSnap.data();
+    return {
+      rank: index + 1,
+      userId: docSnap.id,
+      nickname: data.nickname || data.displayName || 'Unknown',
+      tier: (data.tier || 'bronze') as UserTier,
+      points: data.points || 0,
+      streakDays: data.streakDays || 0,
+      avatar: data.pictureUrl,
+    };
+  });
+};
+
 // Get user rank
 export const getUserRank = async (userId: string): Promise<number> => {
   const usersRef = collection(db, COLLECTIONS.USERS);
   const userSnap = await getDoc(doc(db, COLLECTIONS.USERS, userId));
-  
+
   if (!userSnap.exists()) return 0;
-  
+
   const userPoints = userSnap.data().points || 0;
   const q = query(usersRef, where('points', '>', userPoints));
   const higher = await getDocs(q);
-  
+
   return higher.size + 1;
+};
+
+// Full leaderboard entry for detailed leaderboard page
+export interface FullLeaderboardEntry {
+  rank: number;
+  userId: string;
+  nickname: string;
+  tier: UserTier;
+  points: number;
+  streakDays: number;
+  avatar?: string;
+  totalWorkouts?: number;
+  totalWorkoutTime?: number; // seconds
+  bestGameScore?: number;
+}
+
+// Get streak leaderboard
+export const getStreakLeaderboard = async (limitCount: number = 50): Promise<FullLeaderboardEntry[]> => {
+  const usersRef = collection(db, COLLECTIONS.USERS);
+  const q = query(usersRef, orderBy('streakDays', 'desc'), limit(limitCount));
+  const snap = await getDocs(q);
+  return snap.docs.map((docSnap, index) => {
+    const data = docSnap.data();
+    return {
+      rank: index + 1,
+      userId: docSnap.id,
+      nickname: data.nickname || data.displayName || 'Unknown',
+      tier: (data.tier || 'bronze') as UserTier,
+      points: data.points || 0,
+      streakDays: data.streakDays || 0,
+      avatar: data.pictureUrl,
+    };
+  });
+};
+
+const TIER_ORDER: Record<string, number> = {
+  diamond: 4,
+  platinum: 3,
+  gold: 2,
+  silver: 1,
+  bronze: 0,
+};
+
+// Get tier leaderboard (sorted by tier level then by points)
+export const getTierLeaderboard = async (limitCount: number = 50): Promise<FullLeaderboardEntry[]> => {
+  const usersRef = collection(db, COLLECTIONS.USERS);
+  const snap = await getDocs(usersRef);
+  const users: FullLeaderboardEntry[] = snap.docs.map(docSnap => {
+    const data = docSnap.data();
+    return {
+      rank: 0,
+      userId: docSnap.id,
+      nickname: data.nickname || data.displayName || 'Unknown',
+      tier: (data.tier || 'bronze') as UserTier,
+      points: data.points || 0,
+      streakDays: data.streakDays || 0,
+      avatar: data.pictureUrl,
+    };
+  });
+  users.sort((a, b) => {
+    const tierDiff = (TIER_ORDER[b.tier] || 0) - (TIER_ORDER[a.tier] || 0);
+    if (tierDiff !== 0) return tierDiff;
+    return b.points - a.points;
+  });
+  return users.slice(0, limitCount).map((u, i) => ({ ...u, rank: i + 1 }));
+};
+
+// Get workout count or workout time leaderboard
+// Fetches ALL users then cross-references workout history for consistent UI with other tabs
+export const getWorkoutLeaderboard = async (
+  type: 'count' | 'time',
+  limitCount: number = 50
+): Promise<FullLeaderboardEntry[]> => {
+  // 1. Fetch all users (same source as rank/streak/level tabs)
+  const usersRef = collection(db, COLLECTIONS.USERS);
+  const usersSnap = await getDocs(usersRef);
+
+  // 2. Build workout stats map from workoutHistory
+  const historyRef = collection(db, COLLECTIONS.WORKOUT_HISTORY);
+  const historySnap = await getDocs(historyRef);
+
+  const statsMap: Record<string, { totalWorkouts: number; totalTime: number }> = {};
+  historySnap.docs.forEach(docSnap => {
+    const data = docSnap.data();
+    const uid = data.userId as string;
+    if (!uid) return;
+    if (!statsMap[uid]) statsMap[uid] = { totalWorkouts: 0, totalTime: 0 };
+    statsMap[uid].totalWorkouts += 1;
+    statsMap[uid].totalTime += (data.totalTime as number) || 0;
+  });
+
+  // 3. Merge: every user gets their stats (defaulting to 0)
+  const merged = usersSnap.docs.map(docSnap => {
+    const data = docSnap.data();
+    const uid = docSnap.id;
+    const stats = statsMap[uid] ?? { totalWorkouts: 0, totalTime: 0 };
+    return {
+      rank: 0,
+      userId: uid,
+      nickname: data.nickname || data.displayName || 'Unknown',
+      tier: (data.tier || 'bronze') as UserTier,
+      points: data.points || 0,
+      streakDays: data.streakDays || 0,
+      avatar: data.pictureUrl,
+      totalWorkouts: stats.totalWorkouts,
+      totalWorkoutTime: stats.totalTime,
+    };
+  });
+
+  // 4. Sort by requested metric, then by points as tiebreaker
+  merged.sort((a, b) => {
+    const primary = type === 'count'
+      ? (b.totalWorkouts ?? 0) - (a.totalWorkouts ?? 0)
+      : (b.totalWorkoutTime ?? 0) - (a.totalWorkoutTime ?? 0);
+    if (primary !== 0) return primary;
+    return b.points - a.points;
+  });
+
+  return merged.slice(0, limitCount).map((u, i) => ({ ...u, rank: i + 1 }));
+};
+
+// Get leaderboard user details (for profile popup)
+export const getLeaderboardUserDetails = async (userId: string): Promise<{
+  profile: FirestoreUserProfile | null;
+  totalWorkouts: number;
+  totalWorkoutTime: number;
+  rank: number;
+} | null> => {
+  const [profile, rank] = await Promise.all([
+    getUserProfile(userId),
+    getUserRank(userId),
+  ]);
+  if (!profile) return null;
+
+  const historyRef = collection(db, COLLECTIONS.WORKOUT_HISTORY);
+  const q = query(historyRef, where('userId', '==', userId));
+  const snap = await getDocs(q);
+  let totalWorkouts = 0;
+  let totalWorkoutTime = 0;
+  snap.docs.forEach(d => {
+    totalWorkouts += 1;
+    totalWorkoutTime += (d.data().totalTime as number) || 0;
+  });
+
+  return { profile, totalWorkouts, totalWorkoutTime, rank };
 };
 
 // ==================== USER SETTINGS OPERATIONS ====================
@@ -1106,47 +1270,62 @@ export const saveUserSettings = async (
   }, { merge: true });
 };
 
-// Initialize default settings for new user
+// Initialize default settings for new user, and migrate missing fields for existing users
 export const initializeUserSettings = async (userId: string): Promise<void> => {
   const existing = await getUserSettings(userId);
-  if (existing) return;
-  
-  const defaultSettings: Omit<FirestoreUserSettings, 'updatedAt'> = {
-    userId,
-    language: 'th',
-    notifications: {
-      workoutReminders: true,
-      mealReminders: true,
-      achievements: true,
-      promotions: false,
-    },
-    privacy: {
-      showOnLeaderboard: true,
-      shareWorkouts: false,
-    },
-    workout: {
-      soundEnabled: true,
-      vibrationEnabled: true,
-      voiceCoach: true,
-      restTimerDuration: 30,
-    },
-    tts: {
-      enabled: true,
-      speed: 1.0,
-      speaker: '26',
-      nfeSteps: 32,
-      useVajax: false,
-      referenceAudioUrl: '',
-      referenceText: '',
-    },
-    lineNotification: {
-      accepted: false,
-      enabled: false,
-      notifyHour: 7,
-    },
-  };
 
-  await saveUserSettings(userId, defaultSettings);
+  if (!existing) {
+    // New user — create full defaults
+    const defaultSettings: Omit<FirestoreUserSettings, 'updatedAt'> = {
+      userId,
+      language: 'th',
+      notifications: {
+        workoutReminders: true,
+        mealReminders: true,
+        achievements: true,
+        promotions: false,
+      },
+      privacy: {
+        showOnLeaderboard: true,
+        shareWorkouts: false,
+      },
+      workout: {
+        soundEnabled: true,
+        vibrationEnabled: true,
+        voiceCoach: true,
+        restTimerDuration: 30,
+      },
+      tts: {
+        enabled: true,
+        speed: 1.0,
+        speaker: '26',
+        nfeSteps: 32,
+        useVajax: false,
+        referenceAudioUrl: '',
+        referenceText: '',
+      },
+      lineNotification: {
+        accepted: false,
+        enabled: false,
+        notifyHour: 7,
+      },
+    };
+    await saveUserSettings(userId, defaultSettings);
+    return;
+  }
+
+  // Existing user — patch any missing fields without overwriting existing data
+  const settingsRef = doc(db, COLLECTIONS.SETTINGS, userId);
+  const patch: Record<string, unknown> = {};
+
+  if (!existing.lineNotification) {
+    patch['lineNotification'] = { accepted: false, enabled: false, notifyHour: 7 };
+  }
+
+  if (Object.keys(patch).length > 0) {
+    patch['updatedAt'] = serverTimestamp();
+    await updateDoc(settingsRef, patch);
+  }
 };
 
 // Update TTS settings only
@@ -1203,6 +1382,18 @@ export const updateLineNotificationSettings = async (
   const current = existing?.lineNotification ?? { accepted: false, enabled: false, notifyHour: 7 };
   await updateDoc(settingsRef, {
     lineNotification: { ...current, ...lineNotification },
+    updatedAt: serverTimestamp(),
+  });
+};
+
+// Update workout reminder toggle only (dot-notation keeps other notification fields intact)
+export const updateWorkoutReminderEnabled = async (
+  userId: string,
+  enabled: boolean
+): Promise<void> => {
+  const settingsRef = doc(db, COLLECTIONS.SETTINGS, userId);
+  await updateDoc(settingsRef, {
+    'notifications.workoutReminders': enabled,
     updatedAt: serverTimestamp(),
   });
 };

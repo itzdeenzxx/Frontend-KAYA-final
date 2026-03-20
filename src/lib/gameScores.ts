@@ -410,6 +410,73 @@ export async function getAllPersonalBests(userId: string): Promise<AllGameBests>
       }
     }
   }
-  
+
   return result;
+}
+
+// ==================== GAME LEADERBOARD FOR ALL USERS ====================
+
+export interface GameLeaderboardEntry {
+  rank: number;
+  userId: string;
+  userName: string;
+  userAvatar?: string;
+  totalGamesPlayed: number;
+  totalPlayTime: number;
+  bestScore: number; // sum of best scores across all games
+}
+
+/**
+ * Get game leaderboard using the same `leaderboards` collection as /game-mode.
+ * Aggregates best score per game type per user, then sums across all game types.
+ */
+export async function getGlobalGameLeaderboard(limitCount: number = 50): Promise<GameLeaderboardEntry[]> {
+  const leaderboardsRef = collection(db, GAME_COLLECTIONS.LEADERBOARDS);
+  const snap = await getDocs(leaderboardsRef);
+
+  // Per-user: track best score per game type, plus display info
+  const userBestByGame: Record<string, Record<GameType, number>> = {};
+  const userInfo: Record<string, { userName: string; userAvatar?: string; gamesPlayed: number }> = {};
+
+  snap.docs.forEach(docSnap => {
+    // Doc ID is e.g. "fishing-easy", "whackAMole-hard"
+    const parts = docSnap.id.split('-');
+    const gameType = parts[0] as GameType;
+    const data = docSnap.data() as Leaderboard;
+
+    (data.topScores ?? []).forEach((entry: LeaderboardEntry) => {
+      const uid = entry.userId;
+      if (!uid) return;
+
+      // Track display info
+      if (!userInfo[uid]) {
+        userInfo[uid] = { userName: entry.userName, userAvatar: entry.userAvatar, gamesPlayed: 0 };
+      }
+      userInfo[uid].gamesPlayed += 1;
+
+      // Track best score per game type
+      if (!userBestByGame[uid]) userBestByGame[uid] = {} as Record<GameType, number>;
+      const prev = userBestByGame[uid][gameType] ?? 0;
+      if (entry.score > prev) userBestByGame[uid][gameType] = entry.score;
+    });
+  });
+
+  // Sum best scores across all game types for total score
+  const scored = Object.entries(userBestByGame).map(([userId, bests]) => ({
+    userId,
+    totalScore: Object.values(bests).reduce((a, b) => a + b, 0),
+    gamesPlayed: userInfo[userId]?.gamesPlayed ?? 0,
+  }));
+
+  scored.sort((a, b) => b.totalScore - a.totalScore || b.gamesPlayed - a.gamesPlayed);
+
+  return scored.slice(0, limitCount).map((e, i) => ({
+    rank: i + 1,
+    userId: e.userId,
+    userName: userInfo[e.userId]?.userName || 'Unknown',
+    userAvatar: userInfo[e.userId]?.userAvatar,
+    totalGamesPlayed: e.gamesPlayed,
+    totalPlayTime: 0,
+    bestScore: e.totalScore,
+  }));
 }

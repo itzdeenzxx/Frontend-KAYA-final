@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ArrowLeft, Bell, Sun, Moon, ChevronRight, LogOut, Check, Palette, Copy, MessageCircle, Clock, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { ArrowLeft, Sun, Moon, LogOut, Check, Palette, Copy, MessageCircle, Clock, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
@@ -20,29 +20,44 @@ export default function Settings() {
   const [savingHour, setSavingHour] = useState(false);
   const [copiedLineId, setCopiedLineId] = useState(false);
 
-  // Initialise LINE notification state from Firestore on load
+  const [lineNotifEnabled, setLineNotifEnabled] = useState(false);
+  const [savingLineToggle, setSavingLineToggle] = useState(false);
+
+  // Initialise from Firestore — show activated if accepted (regardless of enabled)
   useEffect(() => {
     const ln = userSettings?.lineNotification;
-    if (ln?.enabled && ln?.accepted) {
+    if (ln?.accepted === true) {
       setLineStep('activated');
       setLineNotifyHour(ln.notifyHour ?? 7);
+      setLineNotifEnabled(ln.enabled ?? false);
     }
   }, [userSettings]);
+
+  const handleLineNotifToggle = async (checked: boolean) => {
+    if (!userProfile?.lineUserId) return;
+    setLineNotifEnabled(checked);
+    setSavingLineToggle(true);
+    try {
+      await updateLineNotificationSettings(userProfile.lineUserId, { enabled: checked });
+      await refreshSettings();
+    } finally {
+      setSavingLineToggle(false);
+    }
+  };
 
   const handleCheckLineAccepted = async () => {
     if (!userProfile?.lineUserId) return;
     setLineStep('checking');
     try {
-      // Fresh read so we get the latest backend-written value
       const latest = await getUserSettings(userProfile.lineUserId);
       if (latest?.lineNotification?.accepted === true) {
-        // Activate on the frontend side
         await updateLineNotificationSettings(userProfile.lineUserId, {
           enabled: true,
           notifyHour: latest.lineNotification.notifyHour ?? 7,
         });
         await refreshSettings();
         setLineNotifyHour(latest.lineNotification.notifyHour ?? 7);
+        setLineNotifEnabled(true);
         setLineStep('activated');
       } else {
         setLineStep('error');
@@ -56,9 +71,7 @@ export default function Settings() {
     if (!userProfile?.lineUserId) return;
     setSavingHour(true);
     try {
-      await updateLineNotificationSettings(userProfile.lineUserId, {
-        notifyHour: lineNotifyHour,
-      });
+      await updateLineNotificationSettings(userProfile.lineUserId, { notifyHour: lineNotifyHour });
       await refreshSettings();
     } finally {
       setSavingHour(false);
@@ -70,13 +83,7 @@ export default function Settings() {
     setCopiedLineId(true);
     setTimeout(() => setCopiedLineId(false), 2000);
   };
-  
-  const [notifications, setNotifications] = useState({
-    workoutReminders: true,
-    mealReminders: false,
-    progressUpdates: true,
-    coachTips: true,
-  });
+
   const [showThemePreview, setShowThemePreview] = useState(false);
   const [previewTheme, setPreviewTheme] = useState<ThemeMode>(theme);
 
@@ -242,95 +249,6 @@ export default function Settings() {
           {/* Coach Settings */}
           <CoachSettings isDark={isDark} />
 
-          {/* Notifications */}
-          <div className={cn(
-            "rounded-2xl overflow-hidden border",
-            isDark 
-              ? "bg-white/5 border-white/10" 
-              : "bg-white border-gray-200 shadow-sm"
-          )}>
-            <div className={cn(
-              "p-4 border-b flex items-center gap-3",
-              isDark ? "border-white/10" : "border-gray-100"
-            )}>
-              <div className={cn(
-                "w-10 h-10 rounded-xl flex items-center justify-center",
-                isDark ? "bg-orange-500/20" : "bg-coral-light"
-              )}>
-                <Bell className={cn("w-5 h-5", isDark ? "text-orange-400" : "text-primary")} />
-              </div>
-              <h2 className={cn("font-semibold", isDark ? "text-white" : "text-gray-900")}>
-                การแจ้งเตือน
-              </h2>
-            </div>
-            <div className={cn("divide-y", isDark ? "divide-white/10" : "divide-gray-100")}>
-              <div className="p-4 flex items-center justify-between">
-                <div>
-                  <p className={cn("font-medium", isDark ? "text-white" : "text-gray-900")}>
-                    เตือนออกกำลังกาย
-                  </p>
-                  <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>
-                    รับการแจ้งเตือนให้ออกกำลังกาย
-                  </p>
-                </div>
-                <Switch
-                  checked={notifications.workoutReminders}
-                  onCheckedChange={(checked) =>
-                    setNotifications({ ...notifications, workoutReminders: checked })
-                  }
-                />
-              </div>
-              <div className="p-4 flex items-center justify-between">
-                <div>
-                  <p className={cn("font-medium", isDark ? "text-white" : "text-gray-900")}>
-                    เตือนมื้ออาหาร
-                  </p>
-                  <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>
-                    ติดตามโภชนาการของคุณ
-                  </p>
-                </div>
-                <Switch
-                  checked={notifications.mealReminders}
-                  onCheckedChange={(checked) =>
-                    setNotifications({ ...notifications, mealReminders: checked })
-                  }
-                />
-              </div>
-              <div className="p-4 flex items-center justify-between">
-                <div>
-                  <p className={cn("font-medium", isDark ? "text-white" : "text-gray-900")}>
-                    อัพเดทความก้าวหน้า
-                  </p>
-                  <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>
-                    สรุปประจำสัปดาห์
-                  </p>
-                </div>
-                <Switch
-                  checked={notifications.progressUpdates}
-                  onCheckedChange={(checked) =>
-                    setNotifications({ ...notifications, progressUpdates: checked })
-                  }
-                />
-              </div>
-              <div className="p-4 flex items-center justify-between">
-                <div>
-                  <p className={cn("font-medium", isDark ? "text-white" : "text-gray-900")}>
-                    เคล็ดลับจากโค้ช
-                  </p>
-                  <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>
-                    คำแนะนำจาก AI Coach
-                  </p>
-                </div>
-                <Switch
-                  checked={notifications.coachTips}
-                  onCheckedChange={(checked) =>
-                    setNotifications({ ...notifications, coachTips: checked })
-                  }
-                />
-              </div>
-            </div>
-          </div>
-
           {/* LINE Notification */}
           <div className={cn(
             "rounded-2xl overflow-hidden border",
@@ -404,6 +322,20 @@ export default function Settings() {
                     </button>
                   </div>
 
+                  {/* Add friend button */}
+                  <a
+                    href="https://line.me/R/ti/p/%40426emlbf"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={cn(
+                      "w-full py-3 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2",
+                      "bg-[#06C755] hover:bg-[#05b04c] active:scale-[0.98] text-white"
+                    )}
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    เพิ่มเพื่อนใน LINE
+                  </a>
+
                   {/* Error message */}
                   {lineStep === 'error' && (
                     <div className={cn(
@@ -419,12 +351,13 @@ export default function Settings() {
                   <button
                     onClick={handleCheckLineAccepted}
                     className={cn(
-                      "w-full py-3 rounded-xl font-semibold text-sm transition-all",
-                      "bg-gradient-to-r from-green-500 to-green-600 text-white",
-                      "hover:from-green-600 hover:to-green-700 active:scale-[0.98]"
+                      "w-full py-3 rounded-xl font-semibold text-sm transition-all border-2",
+                      isDark
+                        ? "border-green-500/40 text-green-400 hover:bg-green-500/10 active:scale-[0.98]"
+                        : "border-green-500/50 text-green-700 hover:bg-green-50 active:scale-[0.98]"
                     )}
                   >
-                    เพิ่มเพื่อนเรียบร้อย
+                    เพิ่มเพื่อนเรียบร้อยแล้ว →
                   </button>
                 </>
               )}
@@ -442,13 +375,24 @@ export default function Settings() {
               {/* ── STEP: ACTIVATED ── */}
               {lineStep === 'activated' && (
                 <>
-                  {/* Success badge */}
+                  {/* Toggle เปิด/ปิด */}
                   <div className={cn(
-                    "flex items-center gap-2 rounded-xl p-3 text-sm font-medium",
-                    isDark ? "bg-green-500/10 text-green-400 border border-green-500/20" : "bg-green-50 text-green-700 border border-green-200"
+                    "flex items-center justify-between p-4 rounded-xl border",
+                    isDark ? "bg-white/5 border-white/10" : "bg-gray-50 border-gray-200"
                   )}>
-                    <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-                    <span>เปิดใช้งานการแจ้งเตือนเรียบร้อย</span>
+                    <div>
+                      <p className={cn("font-medium text-sm", isDark ? "text-white" : "text-gray-900")}>
+                        การแจ้งเตือนออกกำลังกาย
+                      </p>
+                      <p className={cn("text-xs mt-0.5", isDark ? "text-gray-400" : "text-gray-500")}>
+                        {lineNotifEnabled ? "เปิดอยู่ · จะแจ้งเตือนทุกวันเวลา " + String(lineNotifyHour).padStart(2,'0') + ":00" : "ปิดอยู่"}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={lineNotifEnabled}
+                      disabled={savingLineToggle}
+                      onCheckedChange={handleLineNotifToggle}
+                    />
                   </div>
 
                   {/* Time picker */}
