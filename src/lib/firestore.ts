@@ -1244,46 +1244,47 @@ export const getBadgeProgressSnapshot = async (userId: string): Promise<BadgePro
 const badgeTargetById = new Map(BADGE_DEFINITIONS.map((badge) => [badge.id, badge.target]));
 
 export const getBadgeCurrentProgress = (badgeId: string, snapshot: BadgeProgressSnapshot): number => {
-  switch (badgeId) {
-    case 'welcome_first_login':
-      return 1;
-    case 'workout_first':
-    case 'workout_7_sessions':
-    case 'workout_15_sessions':
-    case 'workout_30_sessions':
-      return snapshot.totalWorkouts;
-    case 'workout_50_minutes':
-    case 'workout_120_minutes':
-    case 'workout_300_minutes':
-      return snapshot.totalWorkoutTime;
-    case 'workout_1000_calories':
-    case 'workout_5000_calories':
-      return snapshot.totalCaloriesBurned;
-    case 'workout_streak_current_3':
-    case 'workout_streak_current_7':
-      return snapshot.currentWorkoutStreak24h;
-    case 'workout_streak_record_10':
-    case 'workout_streak_record_30':
-      return snapshot.bestWorkoutStreak24h;
-    case 'game_first':
-    case 'game_5_sessions':
-    case 'game_25_sessions':
-    case 'game_50_sessions':
-    case 'game_100_sessions':
-      return snapshot.totalGamesPlayed;
-    case 'nutrition_first_log':
-    case 'nutrition_7_logs':
-    case 'nutrition_14_logs':
-    case 'nutrition_30_logs':
-      return snapshot.totalNutritionLogs;
-    case 'nutrition_hydration_goal':
-      return snapshot.hydrationGoalDays > 0 ? 1 : 0;
-    case 'nutrition_hydration_7_days':
-    case 'nutrition_hydration_30_days':
-      return snapshot.hydrationGoalDays;
-    default:
-      return 0;
+  if (badgeId === 'welcome_first_login') {
+    return 1;
   }
+
+  if (badgeId === 'workout_first' || /^workout_\d+_sessions$/.test(badgeId)) {
+    return snapshot.totalWorkouts;
+  }
+
+  if (/^workout_\d+_minutes$/.test(badgeId)) {
+    return snapshot.totalWorkoutTime;
+  }
+
+  if (/^workout_\d+_calories$/.test(badgeId)) {
+    return snapshot.totalCaloriesBurned;
+  }
+
+  if (/^workout_streak_current_\d+$/.test(badgeId)) {
+    return snapshot.currentWorkoutStreak24h;
+  }
+
+  if (/^workout_streak_record_\d+$/.test(badgeId)) {
+    return snapshot.bestWorkoutStreak24h;
+  }
+
+  if (badgeId === 'game_first' || /^game_\d+_sessions$/.test(badgeId)) {
+    return snapshot.totalGamesPlayed;
+  }
+
+  if (badgeId === 'nutrition_first_log' || /^nutrition_\d+_logs$/.test(badgeId)) {
+    return snapshot.totalNutritionLogs;
+  }
+
+  if (badgeId === 'nutrition_hydration_goal') {
+    return snapshot.hydrationGoalDays > 0 ? 1 : 0;
+  }
+
+  if (/^nutrition_hydration_\d+_days$/.test(badgeId)) {
+    return snapshot.hydrationGoalDays;
+  }
+
+  return 0;
 };
 
 const hasMetBadgeCondition = (badgeId: string, snapshot: BadgeProgressSnapshot): boolean => {
