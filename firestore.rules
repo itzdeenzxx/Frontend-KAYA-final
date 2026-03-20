@@ -89,12 +89,12 @@ service cloud.firestore {
     }
     
     // ==================== BADGES ====================
-    
-    match /badges/{badgeId} {
-      allow read: if true;
-      allow write: if false;
+
+    // Static badge catalog used by the app (seeded from BADGE_DEFINITIONS)
+    match /badgeCatalog/{badgeId} {
+      allow read, write: if true;
     }
-    
+
     // User's earned badges
     match /userBadges/{userId}/badges/{badgeId} {
       allow read: if true;

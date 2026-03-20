@@ -84,20 +84,39 @@ export const closeLiff = (): void => {
   }
 };
 
-// Share message via LINE
-export const shareMessage = async (text: string): Promise<void> => {
-  if (liff.isApiAvailable('shareTargetPicker')) {
-    try {
-      await liff.shareTargetPicker([
-        {
-          type: 'text',
-          text: text,
-        },
-      ]);
-    } catch (error) {
-      console.error('Failed to share message:', error);
-    }
+// Share message via LINE shareTargetPicker
+export const shareMessage = async (text: string): Promise<boolean> => {
+  if (!liff.isApiAvailable('shareTargetPicker')) {
+    return false;
   }
+
+  try {
+    await liff.shareTargetPicker([
+      {
+        type: 'text',
+        text,
+      },
+    ]);
+    return true;
+  } catch (error) {
+    console.error('Failed to share message:', error);
+    return false;
+  }
+};
+
+export const shareBadgeAchievement = async (
+  displayName: string,
+  badgeNames: string[],
+  totalBadgeCount: number
+): Promise<boolean> => {
+  const badgeList = badgeNames.join(', ');
+  const message =
+    `🎉 ${displayName} ปลดล็อกเหรียญใหม่ใน KAYA\n` +
+    `🏅 เหรียญ: ${badgeList}\n` +
+    `📊 รวมที่ปลดล็อกครั้งนี้: ${totalBadgeCount} เหรียญ\n` +
+    `มาฟิตไปด้วยกันที่ KAYA!`;
+
+  return shareMessage(message);
 };
 
 // Send message to LINE chat

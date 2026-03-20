@@ -17,6 +17,7 @@ import {
   increment,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { evaluateAndAwardBadges } from './firestore';
 
 // ==================== TYPES ====================
 
@@ -126,6 +127,9 @@ export async function saveGameScore(
     timestamp: Timestamp.now(),
     gameData: scoreData.gameData,
   });
+
+  // 5. ประเมินและปลดล็อกเหรียญจากการเล่นเกม
+  await evaluateAndAwardBadges(userId);
   
   return { scoreId: scoreRef.id, isNewPersonalBest };
 }

@@ -5,9 +5,8 @@ import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { BadgeGrid } from "@/components/gamification/BadgeGrid";
 import { ChallengeCard } from "@/components/gamification/ChallengeCard";
-import { mockBadges } from "@/lib/mockData";
 import { useAuth } from "@/contexts/AuthContext";
-import { useWorkoutHistory, useNutrition, useChallenges, useDailyStats } from "@/hooks/useFirestore";
+import { useWorkoutHistory, useNutrition, useChallenges, useDailyStats, useBadges } from "@/hooks/useFirestore";
 import { getCalculatedStreak } from "@/lib/firestore";
 import { useTheme } from "@/contexts/ThemeContext";
 import { hasSelectedCoach } from "@/lib/firestore";
@@ -59,6 +58,9 @@ export default function Dashboard() {
   const { stats } = useWorkoutHistory();
   const { logs: nutritionLogs } = useNutrition();
   const { challenges, claimReward, refreshChallenges } = useChallenges();
+  const { badges, earnedBadges: earnedBadgeDocs } = useBadges();
+  const earnedBadgeIds = new Set(earnedBadgeDocs.map((badge) => badge.badgeId));
+  const earnedBadges = badges.filter((badge) => earnedBadgeIds.has(badge.id));
   const { todayStats, cumulativeStats, addWater, removeWater } = useDailyStats();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
@@ -469,11 +471,22 @@ export default function Dashboard() {
                 "rounded-3xl p-6",
                 isDark ? "bg-white/5 border border-white/10" : "bg-white shadow-lg"
               )}>
-                <div className="flex items-center gap-2 mb-4">
-                  <Star className="w-5 h-5 text-yellow-500" />
-                  <h3 className="font-bold">{t('gamification.badges')}</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Star className="w-5 h-5 text-yellow-500" />
+                    <h3 className="font-bold">{t('gamification.badges')}</h3>
+                  </div>
+                  <Link to="/badges" className="text-primary text-sm flex items-center gap-1">
+                    View All <ChevronRight className="w-4 h-4" />
+                  </Link>
                 </div>
-                <BadgeGrid badges={mockBadges} variant="horizontal" />
+                {earnedBadges.length > 0 ? (
+                  <BadgeGrid badges={earnedBadges} variant="horizontal" />
+                ) : (
+                  <p className={cn('text-sm', isDark ? 'text-gray-400' : 'text-gray-500')}>
+                    ยังไม่มีเหรียญที่ปลดล็อก ({earnedBadgeDocs.length}/{badges.length})
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -818,6 +831,9 @@ export default function Dashboard() {
                 <Star className="w-5 h-5 text-yellow-500" />
                 <h2 className="text-lg font-bold">{t('gamification.badges')}</h2>
               </div>
+              <Link to="/badges" className="text-primary text-sm flex items-center gap-1">
+                View All <ChevronRight className="w-4 h-4" />
+              </Link>
             </div>
             <div className={cn(
               "backdrop-blur border rounded-xl p-4",
@@ -825,7 +841,13 @@ export default function Dashboard() {
                 ? "bg-white/5 border-white/10" 
                 : "bg-white border-gray-200 shadow-sm"
             )}>
-              <BadgeGrid badges={mockBadges} variant="horizontal" />
+              {earnedBadges.length > 0 ? (
+                <BadgeGrid badges={earnedBadges} variant="horizontal" />
+              ) : (
+                <p className={cn('text-sm', isDark ? 'text-gray-400' : 'text-gray-500')}>
+                  ยังไม่มีเหรียญที่ปลดล็อก ({earnedBadgeDocs.length}/{badges.length})
+                </p>
+              )}
             </div>
 
           {/* Weekly Progress Banner - Mobile */}

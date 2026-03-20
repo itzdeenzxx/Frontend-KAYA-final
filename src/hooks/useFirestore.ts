@@ -27,6 +27,10 @@ import {
   incrementWaterIntake,
   decrementWaterIntake,
   getCumulativeStats,
+  getBadgeProgressSnapshot,
+  getBadgeCurrentProgress,
+  ensureBadgeCatalogSeeded,
+  migrateLegacyBadgesForUser,
   type FirestoreHealthData,
   type FirestoreWorkoutHistory,
   type FirestoreNutritionLog,
@@ -35,6 +39,8 @@ import {
   type FirestoreDailyStats,
 } from '@/lib/firestore';
 import type { LeaderboardEntry, Challenge } from '@/lib/types';
+import type { Badge } from '@/lib/types';
+import { BADGE_DEFINITIONS } from '@/lib/badges';
 
 // Hook for health data operations
 export const useHealthData = () => {
@@ -216,11 +222,28 @@ export const useNutrition = () => {
 };
 
 // Hook for badges
+const makeLockedCatalog = (): Badge[] =>
+  BADGE_DEFINITIONS.map((def) => ({
+    id: def.id,
+    name: def.nameEn,
+    nameEn: def.nameEn,
+    nameTh: def.nameTh,
+    description: def.description,
+    icon: def.icon,
+    requirement: def.requirement,
+    earnedAt: undefined,
+    progressCurrent: 0,
+    progressTarget: def.target,
+  }));
+
 export const useBadges = () => {
   const { lineProfile } = useAuth();
-  const [badges, setBadges] = useState<FirestoreUserBadge[]>([]);
+  const [earnedBadges, setEarnedBadges] = useState<FirestoreUserBadge[]>([]);
+  const [badges, setBadges] = useState<Badge[]>(makeLockedCatalog);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasEnsuredCatalogRef = useRef(false);
+  const hasMigratedLegacyRef = useRef(false);
 
   const fetchBadges = useCallback(async () => {
     if (!lineProfile?.userId) return;
@@ -229,10 +252,49 @@ export const useBadges = () => {
     setError(null);
     
     try {
-      const data = await getUserBadges(lineProfile.userId);
-      setBadges(data);
+      if (!hasEnsuredCatalogRef.current) {
+        await ensureBadgeCatalogSeeded();
+        hasEnsuredCatalogRef.current = true;
+      }
+
+      if (!hasMigratedLegacyRef.current) {
+        await migrateLegacyBadgesForUser(lineProfile.userId);
+        hasMigratedLegacyRef.current = true;
+      }
+
+      const [data, snapshot] = await Promise.all([
+        getUserBadges(lineProfile.userId),
+        getBadgeProgressSnapshot(lineProfile.userId),
+      ]);
+      setEarnedBadges(data);
+
+      const earnedMap = new Map(data.map((badge) => [badge.badgeId, badge]));
+      const mergedBadges: Badge[] = BADGE_DEFINITIONS.map((definition) => {
+        const earned = earnedMap.get(definition.id);
+        const earnedAtValue = earned?.earnedAt as unknown;
+        const earnedAt = earnedAtValue && typeof (earnedAtValue as { toDate?: () => Date }).toDate === 'function'
+          ? (earnedAtValue as { toDate: () => Date }).toDate()
+          : undefined;
+
+        return {
+          id: definition.id,
+          name: definition.nameEn,
+          nameEn: definition.nameEn,
+          nameTh: definition.nameTh,
+          description: definition.description,
+          icon: definition.icon,
+          requirement: definition.requirement,
+          earnedAt,
+          progressCurrent: getBadgeCurrentProgress(definition.id, snapshot),
+          progressTarget: definition.target,
+        };
+      });
+
+      setBadges(mergedBadges);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch badges');
+      // Keep the full locked catalog visible so the page isn't blank
+      setBadges(makeLockedCatalog());
     } finally {
       setIsLoading(false);
     }
@@ -264,6 +326,7 @@ export const useBadges = () => {
 
   return {
     badges,
+    earnedBadges,
     awardBadge: award,
     refreshBadges: fetchBadges,
     isLoading,

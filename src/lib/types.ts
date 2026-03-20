@@ -148,6 +148,8 @@ export interface Badge {
   icon: string;
   earnedAt?: Date;
   requirement: string;
+  progressCurrent?: number;
+  progressTarget?: number;
 }
 
 // Challenge template stored in Firestore (one-time setup)

@@ -842,7 +842,6 @@ export default function WorkoutUI() {
   }, [stopAllTTS]);
   // Keep refs updated so non-reactive code (setTimeout, useEffect) always has latest
   useEffect(() => { playCoachAudioRef.current = playCoachAudio; }, [playCoachAudio]);
-  useEffect(() => { handleNextRef.current = handleNext; }, [handleNext]);
 
   // Stop all audio when component unmounts (e.g. back button, navigate away)
   useEffect(() => {
@@ -1626,6 +1625,9 @@ export default function WorkoutUI() {
       finishWorkout();
     }
   }, [currentExercise, exercises, isKayaWorkout, kayaAnalysis, saveCurrentExerciseResult, finishWorkout, stopAllTTS]);
+
+  // Sync ref after handleNext is declared (avoid accessing before initialization)
+  useEffect(() => { handleNextRef.current = handleNext; }, [handleNext]);
 
   const handlePrevious = useCallback(() => {
     if (currentExercise > 0) {

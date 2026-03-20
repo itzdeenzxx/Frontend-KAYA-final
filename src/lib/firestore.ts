@@ -18,6 +18,8 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { BADGE_DEFINITIONS } from './badges';
+import { BADGES_EARNED_EVENT, type BadgesEarnedEventDetail } from './badgeEvents';
 import type { 
   User, 
   UserTier, 
@@ -44,9 +46,12 @@ export const COLLECTIONS = {
   DAILY_STATS: 'dailyStats',
   NUTRITION_SCANS: 'nutritionScans',
   FOOD_DATABASE: 'foodDatabase',
+  BADGE_CATALOG: 'badgeCatalog',
+  USER_BADGES: 'userBadges',
   SAVED_RECIPES: 'savedRecipes',
   HEALTHY_FOODS: 'healthyFoods',
   SAVED_FOODS: 'savedFoods',
+  USER_GAME_STATS: 'userGameStats',
 } as const;
 
 // ==================== DAILY STATS ====================
@@ -139,6 +144,12 @@ export const incrementWaterIntake = async (userId: string): Promise<number> => {
   
   const newWater = currentWater + 1;
   await updateDailyStats(userId, { waterIntake: newWater });
+
+  // Evaluate hydration badges when user reaches goal for the day.
+  if (newWater >= 8) {
+    await evaluateAndAwardBadges(userId);
+  }
+
   return newWater;
 };
 
@@ -273,9 +284,26 @@ export interface FirestoreUserBadge {
   userId: string;
   badgeId: string;
   badgeName: string;
+  badgeNameEn?: string;
+  badgeNameTh?: string;
+  category?: 'workout' | 'game' | 'nutrition';
+  requirement?: string;
   description: string;
   icon: string;
   earnedAt: Timestamp;
+}
+
+export interface FirestoreBadgeCatalogItem {
+  id?: string;
+  badgeId: string;
+  nameEn: string;
+  nameTh: string;
+  description: string;
+  icon: string;
+  requirement: string;
+  category: 'workout' | 'game' | 'nutrition';
+  target: number;
+  updatedAt: Timestamp;
 }
 
 export interface FirestoreUserSettings {
@@ -585,6 +613,9 @@ export const saveWorkoutSession = async (
   // Update user points based on workout
   const pointsEarned = Math.floor(data.caloriesBurned / 10) + Math.floor(data.averageFormScore || 0);
   await updateUserPoints(data.userId, pointsEarned);
+
+  // Evaluate and award workout-related badges
+  await evaluateAndAwardBadges(data.userId);
   
   return docRef.id;
 };
@@ -673,6 +704,10 @@ export const saveNutritionLog = async (
     ...data,
     createdAt: serverTimestamp(),
   });
+
+  // Evaluate and award nutrition-related badges
+  await evaluateAndAwardBadges(data.userId);
+
   return docRef.id;
 };
 
@@ -992,39 +1027,226 @@ export const saveHealthyFoodCategory = async (
 
 // ==================== BADGE OPERATIONS ====================
 
+export interface BadgeProgressSnapshot {
+  totalWorkouts: number;
+  totalWorkoutTime: number;
+  totalCaloriesBurned: number;
+  totalNutritionLogs: number;
+  totalGamesPlayed: number;
+  hydrationGoalDays: number;
+}
+
+const emitBadgesEarnedEvent = (detail: BadgesEarnedEventDetail): void => {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent<BadgesEarnedEventDetail>(BADGES_EARNED_EVENT, { detail }));
+};
+
+const getUserBadgesCollectionRef = (userId: string) =>
+  collection(db, COLLECTIONS.USER_BADGES, userId, 'badges');
+
+const getLegacyBadgesCollectionRef = () =>
+  collection(db, COLLECTIONS.BADGES);
+
+export const ensureBadgeCatalogSeeded = async (): Promise<void> => {
+  const catalogRef = collection(db, COLLECTIONS.BADGE_CATALOG);
+  const existing = await getDocs(query(catalogRef, limit(1)));
+  if (!existing.empty) return;
+
+  const batch = writeBatch(db);
+  for (const definition of BADGE_DEFINITIONS) {
+    const badgeDocRef = doc(db, COLLECTIONS.BADGE_CATALOG, definition.id);
+    batch.set(badgeDocRef, {
+      badgeId: definition.id,
+      nameEn: definition.nameEn,
+      nameTh: definition.nameTh,
+      description: definition.description,
+      icon: definition.icon,
+      requirement: definition.requirement,
+      category: definition.category,
+      target: definition.target,
+      updatedAt: serverTimestamp(),
+    });
+  }
+
+  await batch.commit();
+};
+
+export const migrateLegacyBadgesForUser = async (userId: string): Promise<number> => {
+  const userBadgesRef = getUserBadgesCollectionRef(userId);
+  const hasMigratedData = await getDocs(query(userBadgesRef, limit(1)));
+  if (!hasMigratedData.empty) {
+    return 0;
+  }
+
+  const legacyRef = getLegacyBadgesCollectionRef();
+  const legacySnap = await getDocs(query(legacyRef, where('userId', '==', userId)));
+  if (legacySnap.empty) {
+    return 0;
+  }
+
+  const batch = writeBatch(db);
+  let migratedCount = 0;
+
+  for (const legacyDoc of legacySnap.docs) {
+    const legacyData = legacyDoc.data() as Partial<FirestoreUserBadge>;
+    const badgeId = (legacyData.badgeId && String(legacyData.badgeId)) || legacyDoc.id;
+    const targetRef = doc(db, COLLECTIONS.USER_BADGES, userId, 'badges', badgeId);
+
+    batch.set(targetRef, {
+      userId,
+      badgeId,
+      badgeName: legacyData.badgeName || legacyData.badgeNameEn || legacyData.badgeNameTh || badgeId,
+      badgeNameEn: legacyData.badgeNameEn || legacyData.badgeName || badgeId,
+      badgeNameTh: legacyData.badgeNameTh || legacyData.badgeName || badgeId,
+      category: legacyData.category,
+      requirement: legacyData.requirement || '',
+      description: legacyData.description || '',
+      icon: legacyData.icon || '🏅',
+      earnedAt: legacyData.earnedAt || serverTimestamp(),
+    }, { merge: true });
+
+    migratedCount += 1;
+  }
+
+  if (migratedCount > 0) {
+    await batch.commit();
+  }
+
+  return migratedCount;
+};
+
+export const getBadgeProgressSnapshot = async (userId: string): Promise<BadgeProgressSnapshot> => {
+  const [workoutStats, cumulativeStats, nutritionSnap, gameStatsSnap, hydrationGoalSnap] = await Promise.all([
+    getUserWorkoutStats(userId),
+    getCumulativeStats(userId),
+    getDocs(query(collection(db, COLLECTIONS.NUTRITION_LOGS), where('userId', '==', userId))),
+    getDoc(doc(db, COLLECTIONS.USER_GAME_STATS, userId)),
+    getDocs(
+      query(
+        collection(db, COLLECTIONS.DAILY_STATS),
+        where('userId', '==', userId),
+        where('waterIntake', '>=', 8)
+      )
+    ),
+  ]);
+
+  return {
+    totalWorkouts: workoutStats.totalWorkouts || 0,
+    totalWorkoutTime: cumulativeStats.totalWorkoutTime || 0,
+    totalCaloriesBurned: cumulativeStats.totalCalories || 0,
+    totalNutritionLogs: nutritionSnap.size,
+    totalGamesPlayed: gameStatsSnap.exists() ? (gameStatsSnap.data().totalGamesPlayed || 0) : 0,
+    hydrationGoalDays: hydrationGoalSnap.size,
+  };
+};
+
+const badgeTargetById = new Map(BADGE_DEFINITIONS.map((badge) => [badge.id, badge.target]));
+
+export const getBadgeCurrentProgress = (badgeId: string, snapshot: BadgeProgressSnapshot): number => {
+  switch (badgeId) {
+    case 'workout_first':
+    case 'workout_7_sessions':
+    case 'workout_15_sessions':
+    case 'workout_30_sessions':
+      return snapshot.totalWorkouts;
+    case 'workout_50_minutes':
+    case 'workout_120_minutes':
+    case 'workout_300_minutes':
+      return snapshot.totalWorkoutTime;
+    case 'workout_1000_calories':
+    case 'workout_5000_calories':
+      return snapshot.totalCaloriesBurned;
+    case 'game_first':
+    case 'game_5_sessions':
+    case 'game_25_sessions':
+    case 'game_50_sessions':
+    case 'game_100_sessions':
+      return snapshot.totalGamesPlayed;
+    case 'nutrition_first_log':
+    case 'nutrition_7_logs':
+    case 'nutrition_14_logs':
+    case 'nutrition_30_logs':
+      return snapshot.totalNutritionLogs;
+    case 'nutrition_hydration_goal':
+      return snapshot.hydrationGoalDays > 0 ? 1 : 0;
+    case 'nutrition_hydration_7_days':
+    case 'nutrition_hydration_30_days':
+      return snapshot.hydrationGoalDays;
+    default:
+      return 0;
+  }
+};
+
+const hasMetBadgeCondition = (badgeId: string, snapshot: BadgeProgressSnapshot): boolean => {
+  const target = badgeTargetById.get(badgeId);
+  if (target === undefined) return false;
+  return getBadgeCurrentProgress(badgeId, snapshot) >= target;
+};
+
+export const evaluateAndAwardBadges = async (userId: string): Promise<string[]> => {
+  const [earnedBadges, snapshot] = await Promise.all([
+    getUserBadges(userId),
+    getBadgeProgressSnapshot(userId),
+  ]);
+
+  const earnedSet = new Set(earnedBadges.map((badge) => badge.badgeId));
+  const newlyAwarded: string[] = [];
+
+  for (const definition of BADGE_DEFINITIONS) {
+    if (earnedSet.has(definition.id)) continue;
+    if (!hasMetBadgeCondition(definition.id, snapshot)) continue;
+
+    await awardBadge(userId, {
+      badgeId: definition.id,
+      badgeName: definition.nameEn,
+      badgeNameEn: definition.nameEn,
+      badgeNameTh: definition.nameTh,
+      category: definition.category,
+      requirement: definition.requirement,
+      description: definition.description,
+      icon: definition.icon,
+    });
+    newlyAwarded.push(definition.id);
+  }
+
+  if (newlyAwarded.length > 0) {
+    const unlockedDefinitions = BADGE_DEFINITIONS.filter((badge) => newlyAwarded.includes(badge.id));
+    emitBadgesEarnedEvent({
+      userId,
+      badgeIds: newlyAwarded,
+      badgeNamesTh: unlockedDefinitions.map((badge) => badge.nameTh),
+      badgeNamesEn: unlockedDefinitions.map((badge) => badge.nameEn),
+    });
+  }
+
+  return newlyAwarded;
+};
+
 // Award badge to user
 export const awardBadge = async (
   userId: string,
   badge: Omit<FirestoreUserBadge, 'id' | 'userId' | 'earnedAt'>
 ): Promise<string> => {
-  // Check if user already has this badge
-  const badgeRef = collection(db, COLLECTIONS.BADGES);
-  const q = query(
-    badgeRef,
-    where('userId', '==', userId),
-    where('badgeId', '==', badge.badgeId)
-  );
-  
-  const existing = await getDocs(q);
-  if (!existing.empty) {
-    return existing.docs[0].id; // Already has badge
+  const badgeDocRef = doc(db, COLLECTIONS.USER_BADGES, userId, 'badges', badge.badgeId);
+  const existing = await getDoc(badgeDocRef);
+  if (existing.exists()) {
+    return existing.id; // Already has badge
   }
-  
-  const docRef = await addDoc(badgeRef, {
+
+  await setDoc(badgeDocRef, {
     ...badge,
     userId,
     earnedAt: serverTimestamp(),
   });
-  
-  return docRef.id;
+
+  return badgeDocRef.id;
 };
 
 // Get user badges
 export const getUserBadges = async (userId: string): Promise<FirestoreUserBadge[]> => {
-  const badgeRef = collection(db, COLLECTIONS.BADGES);
+  const badgeRef = getUserBadgesCollectionRef(userId);
   const q = query(
     badgeRef,
-    where('userId', '==', userId),
     orderBy('earnedAt', 'desc')
   );
   
@@ -1672,8 +1894,7 @@ export const getActiveChallenges = async (userId: string): Promise<Challenge[]> 
 
 // Initialize challenges for a user (seeds templates if needed)
 export const initializeUserChallenges = async (userId: string): Promise<void> => {
-  // Clean up duplicates and seed fresh templates
-  await removeDuplicateChallengeTemplates();
+  // Seed handles duplicate cleanup internally
   await seedChallengeTemplates();
   
   // getActiveChallenges handles auto-reset, so just calling it is enough
