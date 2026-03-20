@@ -1247,50 +1247,53 @@ export const awardBadge = async (
 // Get user badges
 export const getUserBadges = async (userId: string): Promise<FirestoreUserBadge[]> => {
   const badgeRef = getUserBadgesCollectionRef(userId);
-  try {
-    const q = query(
-      badgeRef,
-      orderBy('earnedAt', 'desc')
-    );
-
-    const querySnap = await getDocs(q);
-    const userBadges = querySnap.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as FirestoreUserBadge[];
-    if (userBadges.length > 0) {
-      return userBadges;
-    }
-  } catch {
-    // Continue to fallback reads below.
-  }
-
-  try {
-    // Fallback to an unordered read so badge rendering still works.
-    const querySnap = await getDocs(badgeRef);
-    const userBadges = querySnap.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as FirestoreUserBadge[];
-    if (userBadges.length > 0) {
-      return userBadges;
-    }
-  } catch {
-    // Continue to legacy fallback below.
-  }
-
   const legacyRef = getLegacyBadgesCollectionRef();
-  const legacySnap = await getDocs(query(legacyRef, where('userId', '==', userId)));
-  return legacySnap.docs
-    .map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    }))
-    .sort((a, b) => {
-      const aDate = (a as FirestoreUserBadge).earnedAt?.toDate?.()?.getTime?.() || 0;
-      const bDate = (b as FirestoreUserBadge).earnedAt?.toDate?.()?.getTime?.() || 0;
-      return bDate - aDate;
-    }) as FirestoreUserBadge[];
+
+  const [newCollectionDocs, legacyCollectionDocs] = await Promise.all([
+    (async (): Promise<FirestoreUserBadge[]> => {
+      try {
+        const orderedSnap = await getDocs(query(badgeRef, orderBy('earnedAt', 'desc')));
+        return orderedSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as FirestoreUserBadge[];
+      } catch {
+        try {
+          const unorderedSnap = await getDocs(badgeRef);
+          return unorderedSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as FirestoreUserBadge[];
+        } catch {
+          return [];
+        }
+      }
+    })(),
+    (async (): Promise<FirestoreUserBadge[]> => {
+      try {
+        const legacySnap = await getDocs(query(legacyRef, where('userId', '==', userId)));
+        return legacySnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as FirestoreUserBadge[];
+      } catch {
+        return [];
+      }
+    })(),
+  ]);
+
+  const merged = new Map<string, FirestoreUserBadge>();
+  for (const badge of [...legacyCollectionDocs, ...newCollectionDocs]) {
+    const key = (badge.badgeId || badge.id || '').trim();
+    if (!key) continue;
+    merged.set(key, badge);
+  }
+
+  const toMillis = (value: unknown): number => {
+    if (!value) return 0;
+    if (typeof value === 'object' && typeof (value as { toDate?: () => Date }).toDate === 'function') {
+      return (value as { toDate: () => Date }).toDate().getTime();
+    }
+    if (value instanceof Date) return value.getTime();
+    if (typeof value === 'string' || typeof value === 'number') {
+      const parsed = new Date(value).getTime();
+      return Number.isNaN(parsed) ? 0 : parsed;
+    }
+    return 0;
+  };
+
+  return Array.from(merged.values()).sort((a, b) => toMillis(b.earnedAt) - toMillis(a.earnedAt));
 };
 
 // ==================== LEADERBOARD OPERATIONS ====================
