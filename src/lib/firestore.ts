@@ -1116,18 +1116,20 @@ export const migrateLegacyBadgesForUser = async (userId: string): Promise<number
 };
 
 export const getBadgeProgressSnapshot = async (userId: string): Promise<BadgeProgressSnapshot> => {
+  const hydrationGoalPromise = getDocs(
+    query(
+      collection(db, COLLECTIONS.DAILY_STATS),
+      where('userId', '==', userId),
+      where('waterIntake', '>=', 8)
+    )
+  ).catch(() => null);
+
   const [workoutStats, cumulativeStats, nutritionSnap, gameStatsSnap, hydrationGoalSnap] = await Promise.all([
     getUserWorkoutStats(userId),
     getCumulativeStats(userId),
     getDocs(query(collection(db, COLLECTIONS.NUTRITION_LOGS), where('userId', '==', userId))),
     getDoc(doc(db, COLLECTIONS.USER_GAME_STATS, userId)),
-    getDocs(
-      query(
-        collection(db, COLLECTIONS.DAILY_STATS),
-        where('userId', '==', userId),
-        where('waterIntake', '>=', 8)
-      )
-    ),
+    hydrationGoalPromise,
   ]);
 
   return {
@@ -1136,7 +1138,7 @@ export const getBadgeProgressSnapshot = async (userId: string): Promise<BadgePro
     totalCaloriesBurned: cumulativeStats.totalCalories || 0,
     totalNutritionLogs: nutritionSnap.size,
     totalGamesPlayed: gameStatsSnap.exists() ? (gameStatsSnap.data().totalGamesPlayed || 0) : 0,
-    hydrationGoalDays: hydrationGoalSnap.size,
+    hydrationGoalDays: hydrationGoalSnap?.size || 0,
   };
 };
 
@@ -1245,16 +1247,25 @@ export const awardBadge = async (
 // Get user badges
 export const getUserBadges = async (userId: string): Promise<FirestoreUserBadge[]> => {
   const badgeRef = getUserBadgesCollectionRef(userId);
-  const q = query(
-    badgeRef,
-    orderBy('earnedAt', 'desc')
-  );
-  
-  const querySnap = await getDocs(q);
-  return querySnap.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data(),
-  })) as FirestoreUserBadge[];
+  try {
+    const q = query(
+      badgeRef,
+      orderBy('earnedAt', 'desc')
+    );
+
+    const querySnap = await getDocs(q);
+    return querySnap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as FirestoreUserBadge[];
+  } catch {
+    // Fallback to an unordered read so badge rendering still works.
+    const querySnap = await getDocs(badgeRef);
+    return querySnap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as FirestoreUserBadge[];
+  }
 };
 
 // ==================== LEADERBOARD OPERATIONS ====================

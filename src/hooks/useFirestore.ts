@@ -37,6 +37,7 @@ import {
   type FirestoreUserBadge,
   type FirestoreUserSettings,
   type FirestoreDailyStats,
+  type BadgeProgressSnapshot,
 } from '@/lib/firestore';
 import type { LeaderboardEntry, Challenge } from '@/lib/types';
 import type { Badge } from '@/lib/types';
@@ -236,6 +237,28 @@ const makeLockedCatalog = (): Badge[] =>
     progressTarget: def.target,
   }));
 
+const emptyBadgeProgressSnapshot: BadgeProgressSnapshot = {
+  totalWorkouts: 0,
+  totalWorkoutTime: 0,
+  totalCaloriesBurned: 0,
+  totalNutritionLogs: 0,
+  totalGamesPlayed: 0,
+  hydrationGoalDays: 0,
+};
+
+const parseEarnedAt = (value: unknown): Date | undefined => {
+  if (!value) return undefined;
+  if (value instanceof Date) return value;
+  if (typeof value === 'object' && typeof (value as { toDate?: () => Date }).toDate === 'function') {
+    return (value as { toDate: () => Date }).toDate();
+  }
+  if (typeof value === 'number' || typeof value === 'string') {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  }
+  return undefined;
+};
+
 export const useBadges = () => {
   const { lineProfile } = useAuth();
   const [earnedBadges, setEarnedBadges] = useState<FirestoreUserBadge[]>([]);
@@ -262,19 +285,14 @@ export const useBadges = () => {
         hasMigratedLegacyRef.current = true;
       }
 
-      const [data, snapshot] = await Promise.all([
-        getUserBadges(lineProfile.userId),
-        getBadgeProgressSnapshot(lineProfile.userId),
-      ]);
+      const data = await getUserBadges(lineProfile.userId);
+      const snapshot = await getBadgeProgressSnapshot(lineProfile.userId).catch(() => emptyBadgeProgressSnapshot);
       setEarnedBadges(data);
 
       const earnedMap = new Map(data.map((badge) => [badge.badgeId, badge]));
       const mergedBadges: Badge[] = BADGE_DEFINITIONS.map((definition) => {
         const earned = earnedMap.get(definition.id);
-        const earnedAtValue = earned?.earnedAt as unknown;
-        const earnedAt = earnedAtValue && typeof (earnedAtValue as { toDate?: () => Date }).toDate === 'function'
-          ? (earnedAtValue as { toDate: () => Date }).toDate()
-          : undefined;
+        const earnedAt = parseEarnedAt(earned?.earnedAt);
 
         return {
           id: definition.id,

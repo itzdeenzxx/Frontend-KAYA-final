@@ -20,7 +20,7 @@ export default function BadgesPage() {
   const { lineProfile } = useAuth();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const { badges, isLoading } = useBadges();
+  const { badges, isLoading, error } = useBadges();
   const [isSharing, setIsSharing] = useState(false);
 
   const byCategory = useMemo(() => {
@@ -44,14 +44,14 @@ export default function BadgesPage() {
     }
 
     setIsSharing(true);
-    const names = earnedBadges.map((badge) => badge.nameTh || badge.nameEn);
+    const names = Array.from(new Set(earnedBadges.map((badge) => badge.nameTh || badge.nameEn).filter(Boolean)));
     const shared = await shareBadgeAchievement(lineProfile?.displayName || 'ผู้ใช้ KAYA', names, names.length);
     setIsSharing(false);
 
     if (shared) {
       toast.success('แชร์ความสำเร็จไปที่ LINE แล้ว');
     } else {
-      toast.error('ไม่สามารถแชร์ผ่าน LINE ได้ในขณะนี้');
+      toast.error('ไม่สามารถแชร์ได้ในขณะนี้ (ลองเปิดใน LINE อีกครั้ง)');
     }
   };
 
@@ -136,6 +136,11 @@ export default function BadgesPage() {
               style={{ width: `${totalCount > 0 ? (earnedCount / totalCount) * 100 : 0}%` }}
             />
           </div>
+          {error && (
+            <p className={cn('mt-3 text-xs', isDark ? 'text-amber-300' : 'text-amber-700')}>
+              โหลดข้อมูลความคืบหน้าบางส่วนไม่สำเร็จ แต่ยังแสดงเหรียญที่ปลดล็อกแล้วได้
+            </p>
+          )}
         </div>
 
         {(['workout', 'game', 'nutrition'] as const).map((category) => (

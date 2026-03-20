@@ -109,7 +109,10 @@ export const shareBadgeAchievement = async (
   badgeNames: string[],
   totalBadgeCount: number
 ): Promise<boolean> => {
-  const badgeList = badgeNames.join(', ');
+  const uniqueNames = Array.from(new Set(badgeNames.filter(Boolean)));
+  const previewNames = uniqueNames.slice(0, 8);
+  const extraCount = Math.max(uniqueNames.length - previewNames.length, 0);
+  const badgeList = `${previewNames.join(', ')}${extraCount > 0 ? ` และอีก ${extraCount} เหรียญ` : ''}`;
   const message =
     `🎉 ${displayName} ปลดล็อกเหรียญใหม่ใน KAYA\n` +
     `🏅 เหรียญ: ${badgeList}\n` +

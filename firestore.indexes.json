@@ -58,6 +58,14 @@
         { "fieldPath": "userId", "order": "ASCENDING" },
         { "fieldPath": "scannedAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "dailyStats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "waterIntake", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
