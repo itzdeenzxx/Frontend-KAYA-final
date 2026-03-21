@@ -7,7 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useBadges } from '@/hooks/useFirestore';
 import type { BadgeCategory } from '@/lib/badges';
 import { BadgeGrid } from '@/components/gamification/BadgeGrid';
-import { shareBadgeAchievement } from '@/lib/liff';
+import { shareBadgeAchievement, shareSingleBadgeAchievement } from '@/lib/liff';
 import { toast } from '@/components/ui/sonner';
 import type { Badge } from '@/lib/types';
 
@@ -77,8 +77,15 @@ export default function BadgesPage() {
     }
 
     setIsSharing(true);
-    const badgeLabel = selectedBadge.nameTh || selectedBadge.nameEn || selectedBadge.id;
-    const shared = await shareBadgeAchievement(lineProfile?.displayName || 'ผู้ใช้ KAYA', [badgeLabel], 1);
+    const shared = await shareSingleBadgeAchievement(lineProfile?.displayName || 'ผู้ใช้ KAYA', {
+      id: selectedBadge.id,
+      nameEn: selectedBadge.nameEn,
+      nameTh: selectedBadge.nameTh,
+      icon: selectedBadge.icon,
+      category: selectedBadge.category,
+      description: selectedBadge.description,
+      requirement: selectedBadge.requirement,
+    });
     setIsSharing(false);
 
     if (shared) {

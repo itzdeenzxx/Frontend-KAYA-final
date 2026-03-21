@@ -1,5 +1,6 @@
 // LINE LIFF Configuration
 import liff from '@line/liff';
+import type { Badge } from './types';
 
 // LIFF Configuration from environment variables
 export const LIFF_ID = import.meta.env.VITE_LIFF_ID;
@@ -228,6 +229,149 @@ export const shareBadgeAchievement = async (
   }
 
   // Prefer LINE share URL fallback to avoid generic OS share sheets in desktop browsers.
+  if (typeof window !== 'undefined') {
+    const shareUrl = `https://line.me/R/share?text=${encodeURIComponent(message)}`;
+    window.open(shareUrl, '_blank', 'noopener,noreferrer');
+    return true;
+  }
+
+  return shareMessage(message);
+};
+
+const getTwemojiUrl = (emoji: string): string | null => {
+  const value = (emoji || '').trim();
+  if (!value) return null;
+
+  const codePoints = Array.from(value)
+    .map((char) => char.codePointAt(0))
+    .filter((cp): cp is number => typeof cp === 'number')
+    .map((cp) => cp.toString(16));
+
+  if (codePoints.length === 0) return null;
+  return `https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/${codePoints.join('-')}.png`;
+};
+
+const getCategoryArtwork = (category?: Badge['category']): string => {
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  if (category === 'game') return `${origin}/assets/badges/share-game.svg`;
+  if (category === 'nutrition') return `${origin}/assets/badges/share-nutrition.svg`;
+  return `${origin}/assets/badges/share-workout.svg`;
+};
+
+export const shareSingleBadgeAchievement = async (
+  displayName: string,
+  badge: Pick<Badge, 'id' | 'nameEn' | 'nameTh' | 'icon' | 'category' | 'description' | 'requirement'>
+): Promise<boolean> => {
+  const badgeTitle = badge.nameTh || badge.nameEn || badge.id;
+  const message =
+    `🏅 ${displayName} ปลดล็อกเหรียญ ${badgeTitle} ใน KAYA\n` +
+    `📌 เงื่อนไข: ${badge.requirement || '-'}\n` +
+    `✨ ${badge.description || 'มาออกกำลังกายไปด้วยกันกับ KAYA'}`;
+
+  const badgeImage = getTwemojiUrl(badge.icon || '') || getCategoryArtwork(badge.category);
+  const categoryLabel = badge.category === 'game'
+    ? 'GAME BADGE'
+    : badge.category === 'nutrition'
+      ? 'NUTRITION BADGE'
+      : 'WORKOUT BADGE';
+
+  const flexMessage = {
+    type: 'flex',
+    altText: `${displayName} ปลดล็อกเหรียญ ${badgeTitle} ใน KAYA`,
+    contents: {
+      type: 'bubble',
+      size: 'mega',
+      hero: {
+        type: 'image',
+        url: badgeImage,
+        size: 'full',
+        aspectRatio: '20:13',
+        aspectMode: 'cover',
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'md',
+        backgroundColor: '#0f172a',
+        paddingAll: '16px',
+        contents: [
+          {
+            type: 'box',
+            layout: 'baseline',
+            contents: [
+              {
+                type: 'text',
+                text: categoryLabel,
+                size: 'xs',
+                color: '#fdba74',
+                weight: 'bold',
+              },
+            ],
+          },
+          {
+            type: 'text',
+            text: badgeTitle,
+            wrap: true,
+            size: 'xl',
+            weight: 'bold',
+            color: '#f8fafc',
+          },
+          {
+            type: 'text',
+            text: `โดย ${displayName}`,
+            size: 'sm',
+            color: '#cbd5e1',
+          },
+          {
+            type: 'separator',
+            color: '#334155',
+          },
+          {
+            type: 'text',
+            text: badge.description || 'เหรียญความสำเร็จจาก KAYA',
+            wrap: true,
+            size: 'sm',
+            color: '#e2e8f0',
+          },
+          {
+            type: 'text',
+            text: `เงื่อนไข: ${badge.requirement || '-'}`,
+            wrap: true,
+            size: 'xs',
+            color: '#94a3b8',
+          },
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        paddingAll: '12px',
+        backgroundColor: '#111827',
+        contents: [
+          {
+            type: 'text',
+            text: 'KAYA Fitness',
+            align: 'center',
+            color: '#f59e0b',
+            size: 'sm',
+            weight: 'bold',
+          },
+        ],
+      },
+    },
+  } as const;
+
+  try {
+    if (liff.isApiAvailable('shareTargetPicker')) {
+      const result = await liff.shareTargetPicker([flexMessage as any]);
+      if (result !== false) {
+        return true;
+      }
+    }
+  } catch (error) {
+    console.warn('Single badge flex share failed, fallback to text:', error);
+  }
+
   if (typeof window !== 'undefined') {
     const shareUrl = `https://line.me/R/share?text=${encodeURIComponent(message)}`;
     window.open(shareUrl, '_blank', 'noopener,noreferrer');
