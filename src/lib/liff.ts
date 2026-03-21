@@ -263,6 +263,11 @@ const getBadgeIconArtwork = (badgeId: string): string => {
   return `${origin}/assets/badges/icons/${badgeId}.svg`;
 };
 
+const getWorkoutEntryUrl = (): string => {
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://kaya-tang.vercel.app';
+  return `${origin}/workout-selection`;
+};
+
 export const shareSingleBadgeAchievement = async (
   displayName: string,
   badge: Pick<Badge, 'id' | 'nameEn' | 'nameTh' | 'icon' | 'category' | 'description' | 'requirement'>
@@ -274,6 +279,7 @@ export const shareSingleBadgeAchievement = async (
     `✨ ${badge.description || 'มาออกกำลังกายไปด้วยกันกับ KAYA'}`;
 
   const badgeImage = getBadgeIconArtwork(badge.id) || getTwemojiUrl(badge.icon || '') || getCategoryArtwork(badge.category);
+  const workoutEntryUrl = getWorkoutEntryUrl();
   const categoryLabel = badge.category === 'game'
     ? 'GAME BADGE'
     : badge.category === 'nutrition'
@@ -328,6 +334,13 @@ export const shareSingleBadgeAchievement = async (
             color: '#cbd5e1',
           },
           {
+            type: 'text',
+            text: 'ปลดล็อกสำเร็จแล้ว พร้อมไปต่อได้เลย',
+            size: 'xs',
+            color: '#f59e0b',
+            weight: 'bold',
+          },
+          {
             type: 'separator',
             color: '#334155',
           },
@@ -350,6 +363,7 @@ export const shareSingleBadgeAchievement = async (
       footer: {
         type: 'box',
         layout: 'vertical',
+        spacing: 'sm',
         paddingAll: '12px',
         backgroundColor: '#111827',
         contents: [
@@ -360,6 +374,17 @@ export const shareSingleBadgeAchievement = async (
             color: '#f59e0b',
             size: 'sm',
             weight: 'bold',
+          },
+          {
+            type: 'button',
+            style: 'primary',
+            height: 'sm',
+            color: '#f97316',
+            action: {
+              type: 'uri',
+              label: 'เข้าไปออกกำลังกายใน KAYA',
+              uri: workoutEntryUrl,
+            },
           },
         ],
       },
