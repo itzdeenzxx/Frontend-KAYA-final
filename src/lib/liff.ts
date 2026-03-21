@@ -258,6 +258,11 @@ const getCategoryArtwork = (category?: Badge['category']): string => {
   return `${origin}/assets/badges/share-workout.svg`;
 };
 
+const getBadgeIconArtwork = (badgeId: string): string => {
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  return `${origin}/assets/badges/icons/${badgeId}.svg`;
+};
+
 export const shareSingleBadgeAchievement = async (
   displayName: string,
   badge: Pick<Badge, 'id' | 'nameEn' | 'nameTh' | 'icon' | 'category' | 'description' | 'requirement'>
@@ -268,7 +273,7 @@ export const shareSingleBadgeAchievement = async (
     `📌 เงื่อนไข: ${badge.requirement || '-'}\n` +
     `✨ ${badge.description || 'มาออกกำลังกายไปด้วยกันกับ KAYA'}`;
 
-  const badgeImage = getTwemojiUrl(badge.icon || '') || getCategoryArtwork(badge.category);
+  const badgeImage = getBadgeIconArtwork(badge.id) || getTwemojiUrl(badge.icon || '') || getCategoryArtwork(badge.category);
   const categoryLabel = badge.category === 'game'
     ? 'GAME BADGE'
     : badge.category === 'nutrition'
