@@ -109,7 +109,7 @@ export const shareMessage = async (text: string): Promise<boolean> => {
     // Final fallback: open LINE share URL for forwarding to chats.
     if (typeof window !== 'undefined') {
       const shareUrl = `https://line.me/R/share?text=${encodeURIComponent(text)}`;
-      window.open(shareUrl, '_blank', 'noopener,noreferrer');
+      window.location.href = shareUrl;
       return true;
     }
 
@@ -118,6 +118,13 @@ export const shareMessage = async (text: string): Promise<boolean> => {
     console.error('Failed to share message:', error);
     return false;
   }
+};
+
+const redirectToLineShareUrl = (text: string): boolean => {
+  if (typeof window === 'undefined') return false;
+  const shareUrl = `https://line.me/R/share?text=${encodeURIComponent(text)}`;
+  window.location.href = shareUrl;
+  return true;
 };
 
 export const shareBadgeAchievement = async (
@@ -249,14 +256,8 @@ export const shareBadgeAchievement = async (
     console.warn('Flex message share failed:', error);
   }
 
-  // Keep text fallback only for aggregate share when not in LIFF context.
-  if (typeof window !== 'undefined') {
-    const shareUrl = `https://line.me/R/share?text=${encodeURIComponent(message)}`;
-    window.open(shareUrl, '_blank', 'noopener,noreferrer');
-    return true;
-  }
-
-  return false;
+  // Guaranteed fallback: forward to LINE share URL with text.
+  return redirectToLineShareUrl(message);
 };
 
 const getTwemojiUrl = (emoji: string): string | null => {
@@ -433,9 +434,8 @@ export const shareSingleBadgeAchievement = async (
     console.warn('Single badge flex share failed:', error);
   }
 
-  // For single badge share we intentionally avoid plain-text fallback.
-  // Returning false lets UI tell user to open inside LINE app for rich card share.
-  return false;
+  // Guaranteed fallback path if rich card APIs are unavailable.
+  return redirectToLineShareUrl(message);
 };
 
 // Send message to LINE chat
