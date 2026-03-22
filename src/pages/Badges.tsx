@@ -65,7 +65,7 @@ export default function BadgesPage() {
     if (shared) {
       toast.success('แชร์ความสำเร็จไปที่ LINE แล้ว');
     } else {
-      toast.error('ไม่สามารถแชร์ได้ในขณะนี้ (ลองเปิดใน LINE อีกครั้ง)');
+      toast.error('ไม่สามารถส่ง Flex Message ได้ (กรุณาเปิดผ่าน LINE App)');
     }
   };
 
@@ -91,7 +91,7 @@ export default function BadgesPage() {
     if (shared) {
       toast.success('แชร์เหรียญนี้ไปที่ LINE แล้ว');
     } else {
-      toast.error('ไม่สามารถแชร์ได้ในขณะนี้ (ลองเปิดใน LINE อีกครั้ง)');
+      toast.error('แชร์เหรียญแบบการ์ดไม่สำเร็จ (กรุณาเปิดผ่าน LINE App)');
     }
   };
 

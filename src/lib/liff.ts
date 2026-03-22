@@ -222,7 +222,7 @@ export const shareBadgeAchievement = async (
             color: '#f97316',
             action: {
               type: 'uri',
-              label: 'เข้าไปออกกำลังกายใน KAYA',
+              label: 'เริ่มออกกำลังกาย',
               uri: workoutEntryUrl,
             },
           },
@@ -232,24 +232,31 @@ export const shareBadgeAchievement = async (
   } as const;
 
   try {
+    // Prefer shareTargetPicker when available (choose recipients).
     if (liff.isApiAvailable('shareTargetPicker')) {
       const result = await liff.shareTargetPicker([flexMessage as any]);
       if (result !== false) {
         return true;
       }
     }
+
+    // In LINE in-client, fallback to sendMessages (send to current chat).
+    if (liff.isInClient()) {
+      await liff.sendMessages([flexMessage as any]);
+      return true;
+    }
   } catch (error) {
-    console.warn('Flex message share failed, fallback to text:', error);
+    console.warn('Flex message share failed:', error);
   }
 
-  // Prefer LINE share URL fallback to avoid generic OS share sheets in desktop browsers.
+  // Keep text fallback only for aggregate share when not in LIFF context.
   if (typeof window !== 'undefined') {
     const shareUrl = `https://line.me/R/share?text=${encodeURIComponent(message)}`;
     window.open(shareUrl, '_blank', 'noopener,noreferrer');
     return true;
   }
 
-  return shareMessage(message);
+  return false;
 };
 
 const getTwemojiUrl = (emoji: string): string | null => {
@@ -400,7 +407,7 @@ export const shareSingleBadgeAchievement = async (
             color: '#f97316',
             action: {
               type: 'uri',
-              label: 'เข้าไปออกกำลังกายใน KAYA',
+              label: 'เริ่มออกกำลังกาย',
               uri: workoutEntryUrl,
             },
           },
@@ -416,17 +423,19 @@ export const shareSingleBadgeAchievement = async (
         return true;
       }
     }
+
+    // In LINE in-client, fallback to sendMessages (send to current chat).
+    if (liff.isInClient()) {
+      await liff.sendMessages([flexMessage as any]);
+      return true;
+    }
   } catch (error) {
-    console.warn('Single badge flex share failed, fallback to text:', error);
+    console.warn('Single badge flex share failed:', error);
   }
 
-  if (typeof window !== 'undefined') {
-    const shareUrl = `https://line.me/R/share?text=${encodeURIComponent(message)}`;
-    window.open(shareUrl, '_blank', 'noopener,noreferrer');
-    return true;
-  }
-
-  return shareMessage(message);
+  // For single badge share we intentionally avoid plain-text fallback.
+  // Returning false lets UI tell user to open inside LINE app for rich card share.
+  return false;
 };
 
 // Send message to LINE chat
