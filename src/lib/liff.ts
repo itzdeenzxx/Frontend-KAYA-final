@@ -120,11 +120,28 @@ export const shareMessage = async (text: string): Promise<boolean> => {
   }
 };
 
-const redirectToLineShareUrl = (text: string): boolean => {
-  if (typeof window === 'undefined') return false;
-  const shareUrl = `https://line.me/R/share?text=${encodeURIComponent(text)}`;
-  window.location.href = shareUrl;
-  return true;
+const tryShareFlex = async (message: unknown, context: string): Promise<boolean> => {
+  try {
+    if (liff.isApiAvailable('shareTargetPicker')) {
+      const result = await liff.shareTargetPicker([message as any]);
+      if (result !== false) {
+        return true;
+      }
+    }
+
+    if (liff.isInClient()) {
+      await liff.sendMessages([message as any]);
+      return true;
+    }
+  } catch (error) {
+    console.warn(`[${context}] Flex share failed`, {
+      inClient: liff.isInClient(),
+      shareTargetPickerAvailable: liff.isApiAvailable('shareTargetPicker'),
+      error,
+    });
+  }
+
+  return false;
 };
 
 export const shareBadgeAchievement = async (
@@ -144,7 +161,7 @@ export const shareBadgeAchievement = async (
 
   const workoutEntryUrl = getWorkoutEntryUrl();
 
-  const flexMessage = {
+  const richFlexMessage = {
     type: 'flex',
     altText: `${displayName} ปลดล็อก ${totalBadgeCount} เหรียญใน KAYA`,
     contents: {
@@ -238,26 +255,62 @@ export const shareBadgeAchievement = async (
     },
   } as const;
 
-  try {
-    // Prefer shareTargetPicker when available (choose recipients).
-    if (liff.isApiAvailable('shareTargetPicker')) {
-      const result = await liff.shareTargetPicker([flexMessage as any]);
-      if (result !== false) {
-        return true;
-      }
-    }
+  const minimalFlexMessage = {
+    type: 'flex',
+    altText: `${displayName} ปลดล็อก ${totalBadgeCount} เหรียญใน KAYA`,
+    contents: {
+      type: 'bubble',
+      hero: {
+        type: 'image',
+        url: getFallbackBadgePng(),
+        size: 'full',
+        aspectMode: 'cover',
+        aspectRatio: '20:13',
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          { type: 'text', text: 'KAYA Achievement', weight: 'bold', size: 'xl' },
+          { type: 'text', text: `ผู้ใช้: ${displayName}`, size: 'sm', margin: 'md', wrap: true },
+          { type: 'text', text: `ปลดล็อก: ${totalBadgeCount} เหรียญ`, size: 'sm', wrap: true },
+          { type: 'text', text: badgeList, size: 'sm', wrap: true, margin: 'sm' },
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          {
+            type: 'button',
+            style: 'primary',
+            action: {
+              type: 'uri',
+              label: 'เริ่มออกกำลังกาย',
+              uri: workoutEntryUrl,
+            },
+          },
+        ],
+      },
+    },
+  } as const;
 
-    // In LINE in-client, fallback to sendMessages (send to current chat).
-    if (liff.isInClient()) {
-      await liff.sendMessages([flexMessage as any]);
-      return true;
-    }
-  } catch (error) {
-    console.warn('Flex message share failed:', error);
+  if (await tryShareFlex(richFlexMessage, 'aggregate-rich')) {
+    return true;
   }
 
-  // Guaranteed fallback: forward to LINE share URL with text.
-  return redirectToLineShareUrl(message);
+  if (await tryShareFlex(minimalFlexMessage, 'aggregate-minimal')) {
+    return true;
+  }
+
+  // For badge shares, return false if Flex could not be delivered.
+  // UI should tell user to open in LINE app and retry.
+  console.warn('Aggregate badge share fell back to non-flex path', {
+    inClient: liff.isInClient(),
+    shareTargetPickerAvailable: liff.isApiAvailable('shareTargetPicker'),
+    messagePreview: message,
+  });
+  return false;
 };
 
 const getTwemojiUrl = (emoji: string): string | null => {
@@ -299,7 +352,7 @@ export const shareSingleBadgeAchievement = async (
       ? 'NUTRITION BADGE'
       : 'WORKOUT BADGE';
 
-  const flexMessage = {
+  const richFlexMessage = {
     type: 'flex',
     altText: `${displayName} ปลดล็อกเหรียญ ${badgeTitle} ใน KAYA`,
     contents: {
@@ -417,25 +470,59 @@ export const shareSingleBadgeAchievement = async (
     },
   } as const;
 
-  try {
-    if (liff.isApiAvailable('shareTargetPicker')) {
-      const result = await liff.shareTargetPicker([flexMessage as any]);
-      if (result !== false) {
-        return true;
-      }
-    }
+  const minimalFlexMessage = {
+    type: 'flex',
+    altText: `${displayName} ปลดล็อกเหรียญ ${badgeTitle} ใน KAYA`,
+    contents: {
+      type: 'bubble',
+      hero: {
+        type: 'image',
+        url: badgeImage,
+        size: 'full',
+        aspectMode: 'cover',
+        aspectRatio: '20:13',
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          { type: 'text', text: badgeTitle, weight: 'bold', size: 'xl', wrap: true },
+          { type: 'text', text: `โดย ${displayName}`, size: 'sm', margin: 'md', wrap: true },
+          { type: 'text', text: `เงื่อนไข: ${badge.requirement || '-'}`, size: 'sm', wrap: true, margin: 'sm' },
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          {
+            type: 'button',
+            style: 'primary',
+            action: {
+              type: 'uri',
+              label: 'เริ่มออกกำลังกาย',
+              uri: workoutEntryUrl,
+            },
+          },
+        ],
+      },
+    },
+  } as const;
 
-    // In LINE in-client, fallback to sendMessages (send to current chat).
-    if (liff.isInClient()) {
-      await liff.sendMessages([flexMessage as any]);
-      return true;
-    }
-  } catch (error) {
-    console.warn('Single badge flex share failed:', error);
+  if (await tryShareFlex(richFlexMessage, 'single-rich')) {
+    return true;
   }
 
-  // Guaranteed fallback path if rich card APIs are unavailable.
-  return redirectToLineShareUrl(message);
+  if (await tryShareFlex(minimalFlexMessage, 'single-minimal')) {
+    return true;
+  }
+
+  console.warn('Single badge share fell back to non-flex path', {
+    inClient: liff.isInClient(),
+    shareTargetPickerAvailable: liff.isApiAvailable('shareTargetPicker'),
+    messagePreview: message,
+  });
+  return false;
 };
 
 // Send message to LINE chat
