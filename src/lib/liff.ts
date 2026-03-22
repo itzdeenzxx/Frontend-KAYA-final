@@ -135,6 +135,8 @@ export const shareBadgeAchievement = async (
     `📊 รวมที่ปลดล็อกครั้งนี้: ${totalBadgeCount} เหรียญ\n` +
     `มาฟิตไปด้วยกันที่ KAYA!`;
 
+  const workoutEntryUrl = getWorkoutEntryUrl();
+
   const flexMessage = {
     type: 'flex',
     altText: `${displayName} ปลดล็อก ${totalBadgeCount} เหรียญใน KAYA`,
@@ -201,6 +203,7 @@ export const shareBadgeAchievement = async (
       footer: {
         type: 'box',
         layout: 'vertical',
+        spacing: 'sm',
         paddingAll: '12px',
         backgroundColor: '#111827',
         contents: [
@@ -211,6 +214,17 @@ export const shareBadgeAchievement = async (
             align: 'center',
             size: 'sm',
             weight: 'bold',
+          },
+          {
+            type: 'button',
+            style: 'primary',
+            height: 'sm',
+            color: '#f97316',
+            action: {
+              type: 'uri',
+              label: 'เข้าไปออกกำลังกายใน KAYA',
+              uri: workoutEntryUrl,
+            },
           },
         ],
       },
