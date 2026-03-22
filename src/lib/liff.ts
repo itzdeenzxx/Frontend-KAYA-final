@@ -205,8 +205,9 @@ export const shareBadgeAchievement = async (
       inClient: liff.isInClient(),
       shareTargetPickerAvailable: liff.isApiAvailable('shareTargetPicker'),
     });
-    openInLineClient();
-    return false;
+    const redirected = openInLineClient();
+    if (redirected) return true;
+    return shareBadgeAsMiniAppLink(message);
   }
 
   const workoutEntryUrl = getWorkoutEntryUrl();
@@ -360,7 +361,7 @@ export const shareBadgeAchievement = async (
     shareTargetPickerAvailable: liff.isApiAvailable('shareTargetPicker'),
     messagePreview: message,
   });
-  return false;
+  return shareBadgeAsMiniAppLink(message);
 };
 
 const getTwemojiUrl = (emoji: string): string | null => {
@@ -383,6 +384,20 @@ const getWorkoutEntryUrl = (): string => {
   return `${origin}/workout-selection`;
 };
 
+const getMiniAppUrl = (): string => {
+  if (LIFF_ID) {
+    return `https://miniapp.line.me/${LIFF_ID}`;
+  }
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://kaya-tang.vercel.app';
+  return origin;
+};
+
+const shareBadgeAsMiniAppLink = async (message: string): Promise<boolean> => {
+  const miniAppUrl = getMiniAppUrl();
+  const text = `${message}\n\n🚀 เปิด KAYA: ${miniAppUrl}`;
+  return shareMessage(text);
+};
+
 export const shareSingleBadgeAchievement = async (
   displayName: string,
   badge: Pick<Badge, 'id' | 'nameEn' | 'nameTh' | 'icon' | 'category' | 'description' | 'requirement'>
@@ -399,8 +414,9 @@ export const shareSingleBadgeAchievement = async (
       shareTargetPickerAvailable: liff.isApiAvailable('shareTargetPicker'),
       messagePreview: message,
     });
-    openInLineClient();
-    return false;
+    const redirected = openInLineClient();
+    if (redirected) return true;
+    return shareBadgeAsMiniAppLink(message);
   }
 
   // LINE Flex image requires web-safe image formats such as PNG/JPEG (SVG can fail and trigger text fallback).
@@ -582,7 +598,7 @@ export const shareSingleBadgeAchievement = async (
     shareTargetPickerAvailable: liff.isApiAvailable('shareTargetPicker'),
     messagePreview: message,
   });
-  return false;
+  return shareBadgeAsMiniAppLink(message);
 };
 
 // Send message to LINE chat
