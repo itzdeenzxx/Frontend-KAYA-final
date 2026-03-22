@@ -5,6 +5,13 @@ import type { Badge } from './types';
 // LIFF Configuration from environment variables
 export const LIFF_ID = import.meta.env.VITE_LIFF_ID;
 export const CHANNEL_ID = import.meta.env.VITE_LINE_CHANNEL_ID;
+const FORCE_IN_CLIENT_KEY = 'liff_force_inclient_once';
+
+const getLiffDeepLinkUrl = (): string | null => {
+  if (!LIFF_ID || typeof window === 'undefined') return null;
+  const state = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  return `https://liff.line.me/${LIFF_ID}?liff.state=${encodeURIComponent(state)}`;
+};
 
 export interface LiffProfile {
   userId: string;
@@ -145,10 +152,37 @@ const tryShareFlex = async (message: unknown, context: string): Promise<boolean>
 };
 
 const openInLineClient = (): boolean => {
-  if (typeof window === 'undefined' || !LIFF_ID) return false;
-  const deepLink = `line://app/${LIFF_ID}`;
+  if (typeof window === 'undefined') return false;
+  const deepLink = getLiffDeepLinkUrl();
+  if (!deepLink) return false;
   window.location.href = deepLink;
   return true;
+};
+
+export const ensureInLineClientContext = (): boolean => {
+  if (typeof window === 'undefined') return true;
+  if (!LIFF_ID) return true;
+
+  const inClient = liff.isInClient();
+  if (inClient) {
+    sessionStorage.removeItem(FORCE_IN_CLIENT_KEY);
+    return true;
+  }
+
+  const userAgent = window.navigator.userAgent || '';
+  const openedFromLine = /Line\//i.test(userAgent);
+  if (!openedFromLine) {
+    return false;
+  }
+
+  const alreadyForced = sessionStorage.getItem(FORCE_IN_CLIENT_KEY) === '1';
+  if (alreadyForced) {
+    return false;
+  }
+
+  sessionStorage.setItem(FORCE_IN_CLIENT_KEY, '1');
+  openInLineClient();
+  return false;
 };
 
 export const shareBadgeAchievement = async (
