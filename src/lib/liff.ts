@@ -251,17 +251,7 @@ const getTwemojiUrl = (emoji: string): string | null => {
   return `https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/${codePoints.join('-')}.png`;
 };
 
-const getCategoryArtwork = (category?: Badge['category']): string => {
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  if (category === 'game') return `${origin}/assets/badges/share-game.svg`;
-  if (category === 'nutrition') return `${origin}/assets/badges/share-nutrition.svg`;
-  return `${origin}/assets/badges/share-workout.svg`;
-};
-
-const getBadgeIconArtwork = (badgeId: string): string => {
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  return `${origin}/assets/badges/icons/${badgeId}.svg`;
-};
+const getFallbackBadgePng = (): string => getTwemojiUrl('🏅') as string;
 
 const getWorkoutEntryUrl = (): string => {
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://kaya-tang.vercel.app';
@@ -278,7 +268,8 @@ export const shareSingleBadgeAchievement = async (
     `📌 เงื่อนไข: ${badge.requirement || '-'}\n` +
     `✨ ${badge.description || 'มาออกกำลังกายไปด้วยกันกับ KAYA'}`;
 
-  const badgeImage = getBadgeIconArtwork(badge.id) || getTwemojiUrl(badge.icon || '') || getCategoryArtwork(badge.category);
+  // LINE Flex image requires web-safe image formats such as PNG/JPEG (SVG can fail and trigger text fallback).
+  const badgeImage = getTwemojiUrl(badge.icon || '') || getFallbackBadgePng();
   const workoutEntryUrl = getWorkoutEntryUrl();
   const categoryLabel = badge.category === 'game'
     ? 'GAME BADGE'
@@ -303,9 +294,22 @@ export const shareSingleBadgeAchievement = async (
         type: 'box',
         layout: 'vertical',
         spacing: 'md',
-        backgroundColor: '#0f172a',
+        backgroundColor: '#0b1220',
         paddingAll: '16px',
         contents: [
+          {
+            type: 'box',
+            layout: 'horizontal',
+            justifyContent: 'center',
+            contents: [
+              {
+                type: 'image',
+                url: badgeImage,
+                size: 'sm',
+                aspectMode: 'fit',
+              },
+            ],
+          },
           {
             type: 'box',
             layout: 'baseline',
@@ -314,7 +318,7 @@ export const shareSingleBadgeAchievement = async (
                 type: 'text',
                 text: categoryLabel,
                 size: 'xs',
-                color: '#fdba74',
+                color: '#fb923c',
                 weight: 'bold',
               },
             ],
@@ -365,7 +369,7 @@ export const shareSingleBadgeAchievement = async (
         layout: 'vertical',
         spacing: 'sm',
         paddingAll: '12px',
-        backgroundColor: '#111827',
+        backgroundColor: '#0f172a',
         contents: [
           {
             type: 'text',
