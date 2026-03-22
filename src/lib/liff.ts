@@ -102,15 +102,33 @@ export const shareMessage = async (text: string): Promise<boolean> => {
           text,
         },
       ]);
-      if (result !== false) {
+      if (result !== false && result !== null) {
         return true;
       }
     }
 
+    if (liff.isInClient()) {
+      await liff.sendMessages([
+        {
+          type: 'text',
+          text,
+        },
+      ]);
+      return true;
+    }
+
     // Fallback for browsers outside LIFF client.
     if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
-      await navigator.share({ text });
-      return true;
+      try {
+        await navigator.share({ text });
+        return true;
+      } catch (shareError) {
+        const aborted =
+          shareError instanceof DOMException && shareError.name === 'AbortError';
+        if (aborted) {
+          return false;
+        }
+      }
     }
 
     // Final fallback: open LINE share URL for forwarding to chats.
@@ -131,7 +149,7 @@ const tryShareFlex = async (message: unknown, context: string): Promise<boolean>
   try {
     if (liff.isApiAvailable('shareTargetPicker')) {
       const result = await liff.shareTargetPicker([message as any]);
-      if (result !== false) {
+      if (result !== false && result !== null) {
         return true;
       }
     }
@@ -201,12 +219,10 @@ export const shareBadgeAchievement = async (
     `มาฟิตไปด้วยกันที่ KAYA!`;
 
   if (!liff.isInClient() && !liff.isApiAvailable('shareTargetPicker')) {
-    console.warn('Aggregate badge share requires LINE in-client. Redirecting...', {
+    console.warn('Aggregate badge share in fallback mode (no LINE share APIs).', {
       inClient: liff.isInClient(),
       shareTargetPickerAvailable: liff.isApiAvailable('shareTargetPicker'),
     });
-    const redirected = openInLineClient();
-    if (redirected) return true;
     return shareBadgeAsMiniAppLink(message);
   }
 
@@ -409,13 +425,11 @@ export const shareSingleBadgeAchievement = async (
     `✨ ${badge.description || 'มาออกกำลังกายไปด้วยกันกับ KAYA'}`;
 
   if (!liff.isInClient() && !liff.isApiAvailable('shareTargetPicker')) {
-    console.warn('Single badge share requires LINE in-client. Redirecting...', {
+    console.warn('Single badge share in fallback mode (no LINE share APIs).', {
       inClient: liff.isInClient(),
       shareTargetPickerAvailable: liff.isApiAvailable('shareTargetPicker'),
       messagePreview: message,
     });
-    const redirected = openInLineClient();
-    if (redirected) return true;
     return shareBadgeAsMiniAppLink(message);
   }
 
