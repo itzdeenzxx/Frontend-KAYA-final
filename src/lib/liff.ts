@@ -227,6 +227,7 @@ export const shareBadgeAchievement = async (
   }
 
   const workoutEntryUrl = getWorkoutEntryUrl();
+  const miniAppUrl = getMiniAppUrl();
 
   const richFlexMessage = {
     type: 'flex',
@@ -237,55 +238,73 @@ export const shareBadgeAchievement = async (
       header: {
         type: 'box',
         layout: 'vertical',
-        backgroundColor: '#121418',
+        backgroundColor: '#0f172a',
         paddingAll: '16px',
+        spacing: 'sm',
         contents: [
           {
             type: 'text',
             text: 'KAYA Achievement',
-            color: '#F3F4F6',
+            color: '#cbd5e1',
             size: 'sm',
             weight: 'bold',
           },
           {
             type: 'text',
             text: '🏆 ปลดล็อกเหรียญใหม่',
-            color: '#FB923C',
+            color: '#f97316',
             size: 'xl',
             weight: 'bold',
-            margin: 'md',
+          },
+          {
+            type: 'text',
+            text: `ผู้ใช้: ${displayName}`,
+            color: '#e2e8f0',
+            size: 'xs',
           },
         ],
       },
       body: {
         type: 'box',
         layout: 'vertical',
-        backgroundColor: '#1F2937',
+        backgroundColor: '#111827',
         paddingAll: '16px',
         spacing: 'md',
         contents: [
           {
+            type: 'box',
+            layout: 'vertical',
+            cornerRadius: '12px',
+            backgroundColor: '#1e293b',
+            paddingAll: '12px',
+            spacing: 'xs',
+            contents: [
+              {
+                type: 'text',
+                text: `รวมที่ปลดล็อก: ${totalBadgeCount} เหรียญ`,
+                color: '#fdba74',
+                size: 'md',
+                weight: 'bold',
+              },
+              {
+                type: 'text',
+                text: 'Badge Showcase',
+                color: '#94a3b8',
+                size: 'xs',
+              },
+            ],
+          },
+          {
             type: 'text',
-            text: `ผู้ใช้: ${displayName}`,
-            color: '#E5E7EB',
+            text: 'รายการเหรียญที่ปลดล็อก',
+            color: '#f3f4f6',
             size: 'sm',
-          },
-          {
-            type: 'text',
-            text: `รวมที่ปลดล็อก: ${totalBadgeCount} เหรียญ`,
-            color: '#FDBA74',
-            size: 'md',
             weight: 'bold',
-          },
-          {
-            type: 'separator',
-            color: '#374151',
-            margin: 'sm',
           },
           {
             type: 'text',
             text: badgeList,
-            color: '#D1D5DB',
+            color: '#d1d5db',
             wrap: true,
             size: 'sm',
           },
@@ -296,15 +315,24 @@ export const shareBadgeAchievement = async (
         layout: 'vertical',
         spacing: 'sm',
         paddingAll: '12px',
-        backgroundColor: '#111827',
+        backgroundColor: '#0b1220',
         contents: [
           {
             type: 'text',
-            text: 'มาฟิตไปด้วยกันที่ KAYA',
-            color: '#F59E0B',
+            text: 'แตะปุ่มเพื่อเข้า KAYA ได้ทันที',
+            color: '#f8fafc',
             align: 'center',
-            size: 'sm',
-            weight: 'bold',
+            size: 'xs',
+          },
+          {
+            type: 'button',
+            style: 'secondary',
+            height: 'sm',
+            action: {
+              type: 'uri',
+              label: 'เปิด KAYA Mini App',
+              uri: miniAppUrl,
+            },
           },
           {
             type: 'button',
@@ -316,6 +344,14 @@ export const shareBadgeAchievement = async (
               label: 'เริ่มออกกำลังกาย',
               uri: workoutEntryUrl,
             },
+          },
+          {
+            type: 'text',
+            text: 'KAYA Fitness',
+            color: '#f59e0b',
+            align: 'center',
+            size: 'sm',
+            weight: 'bold',
           },
         ],
       },
@@ -337,6 +373,7 @@ export const shareBadgeAchievement = async (
       body: {
         type: 'box',
         layout: 'vertical',
+        spacing: 'sm',
         contents: [
           { type: 'text', text: 'KAYA Achievement', weight: 'bold', size: 'xl' },
           { type: 'text', text: `ผู้ใช้: ${displayName}`, size: 'sm', margin: 'md', wrap: true },
@@ -347,7 +384,17 @@ export const shareBadgeAchievement = async (
       footer: {
         type: 'box',
         layout: 'vertical',
+        spacing: 'sm',
         contents: [
+          {
+            type: 'button',
+            style: 'secondary',
+            action: {
+              type: 'uri',
+              label: 'เปิด KAYA Mini App',
+              uri: miniAppUrl,
+            },
+          },
           {
             type: 'button',
             style: 'primary',
@@ -436,6 +483,7 @@ export const shareSingleBadgeAchievement = async (
   // LINE Flex image requires web-safe image formats such as PNG/JPEG (SVG can fail and trigger text fallback).
   const badgeImage = getTwemojiUrl(badge.icon || '') || getFallbackBadgePng();
   const workoutEntryUrl = getWorkoutEntryUrl();
+  const miniAppUrl = getMiniAppUrl();
   const categoryLabel = badge.category === 'game'
     ? 'GAME BADGE'
     : badge.category === 'nutrition'
@@ -538,6 +586,23 @@ export const shareSingleBadgeAchievement = async (
         contents: [
           {
             type: 'text',
+            text: 'แตะปุ่มเพื่อเข้า KAYA ได้ทันที',
+            align: 'center',
+            color: '#f8fafc',
+            size: 'xs',
+          },
+          {
+            type: 'button',
+            style: 'secondary',
+            height: 'sm',
+            action: {
+              type: 'uri',
+              label: 'เปิด KAYA Mini App',
+              uri: miniAppUrl,
+            },
+          },
+          {
+            type: 'text',
             text: 'KAYA Fitness',
             align: 'center',
             color: '#f59e0b',
@@ -584,7 +649,17 @@ export const shareSingleBadgeAchievement = async (
       footer: {
         type: 'box',
         layout: 'vertical',
+        spacing: 'sm',
         contents: [
+          {
+            type: 'button',
+            style: 'secondary',
+            action: {
+              type: 'uri',
+              label: 'เปิด KAYA Mini App',
+              uri: miniAppUrl,
+            },
+          },
           {
             type: 'button',
             style: 'primary',
