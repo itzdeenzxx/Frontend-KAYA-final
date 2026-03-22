@@ -201,42 +201,42 @@ export function ShopScreen({
   }, [player.ownedRods, player.ownedBaits, player.ownedBoats, player.equippedRod, player.equippedBait, player.equippedBoat]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-800 to-black relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-800 to-black relative overflow-x-hidden">
       {/* Background Pattern */}
       <div className="absolute inset-0 opacity-5">
         <div className="absolute top-20 left-20"><GearIcon className="w-36 h-36" /></div>
         <div className="absolute bottom-20 right-20"><ToolsIcon className="w-32 h-32" /></div>
       </div>
 
-      <div className="relative z-10 flex h-screen">
+      <div className="relative z-10 flex min-h-screen flex-col lg:flex-row">
         {/* Left Sidebar - Categories */}
-        <div className="w-64 bg-gradient-to-b from-gray-900/95 to-gray-800/95 backdrop-blur-md border-r-2 border-gray-700 p-6 flex flex-col">
+        <div className="w-full lg:w-64 bg-gradient-to-b from-gray-900/95 to-gray-800/95 backdrop-blur-md border-b-2 lg:border-b-0 lg:border-r-2 border-gray-700 p-4 md:p-6 flex flex-col">
           {/* Title */}
-          <div className="mb-8">
-            <h1 className="text-4xl font-black text-white mb-2">GEAR</h1>
+          <div className="mb-4 lg:mb-8">
+            <h1 className="text-3xl md:text-4xl font-black text-white mb-2">GEAR</h1>
             <div className="flex items-center space-x-2">
-              <Coins className="h-6 w-6 text-yellow-500" />
-              <span className="text-3xl font-black text-yellow-400">{player.coins.toLocaleString()}</span>
+              <Coins className="h-5 w-5 md:h-6 md:w-6 text-yellow-500" />
+              <span className="text-2xl md:text-3xl font-black text-yellow-400">{player.coins.toLocaleString()}</span>
             </div>
           </div>
 
           {/* Category Tabs */}
-          <div className="space-y-2 flex-1">
+          <div className="grid grid-cols-3 gap-2 lg:flex lg:flex-col lg:gap-2 lg:flex-1">
             <button
               onClick={() => {
                 setActiveTab('rods');
                 setSelectedItem(null);
               }}
               className={cn(
-                'w-full px-4 py-3 rounded-lg text-left font-bold transition-all',
+                'w-full px-3 py-2.5 lg:px-4 lg:py-3 rounded-lg text-center lg:text-left text-xs sm:text-sm lg:text-base font-bold transition-all',
                 activeTab === 'rods'
                   ? 'bg-purple-600 text-white shadow-lg'
                   : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
               )}
             >
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1"><FishingRodIcon className="w-5 h-5" /> RODS</span>
-                <span className="text-xs bg-purple-800 px-2 py-1 rounded">
+              <div className="flex items-center justify-center lg:justify-between gap-1.5 lg:gap-2">
+                <span className="flex items-center gap-1"><FishingRodIcon className="w-4 h-4 lg:w-5 lg:h-5" /> RODS</span>
+                <span className="text-[10px] lg:text-xs bg-purple-800 px-1.5 py-0.5 lg:px-2 lg:py-1 rounded">
                   {FISHING_RODS.length}
                 </span>
               </div>
@@ -248,15 +248,15 @@ export function ShopScreen({
                 setSelectedItem(null);
               }}
               className={cn(
-                'w-full px-4 py-3 rounded-lg text-left font-bold transition-all',
+                'w-full px-3 py-2.5 lg:px-4 lg:py-3 rounded-lg text-center lg:text-left text-xs sm:text-sm lg:text-base font-bold transition-all',
                 activeTab === 'baits'
                   ? 'bg-purple-600 text-white shadow-lg'
                   : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
               )}
             >
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1"><BaitIcon className="w-5 h-5" /> BAITS</span>
-                <span className="text-xs bg-purple-800 px-2 py-1 rounded">
+              <div className="flex items-center justify-center lg:justify-between gap-1.5 lg:gap-2">
+                <span className="flex items-center gap-1"><BaitIcon className="w-4 h-4 lg:w-5 lg:h-5" /> BAITS</span>
+                <span className="text-[10px] lg:text-xs bg-purple-800 px-1.5 py-0.5 lg:px-2 lg:py-1 rounded">
                   {BAITS.length}
                 </span>
               </div>
@@ -268,15 +268,15 @@ export function ShopScreen({
                 setSelectedItem(null);
               }}
               className={cn(
-                'w-full px-4 py-3 rounded-lg text-left font-bold transition-all',
+                'w-full px-3 py-2.5 lg:px-4 lg:py-3 rounded-lg text-center lg:text-left text-xs sm:text-sm lg:text-base font-bold transition-all',
                 activeTab === 'boats'
                   ? 'bg-purple-600 text-white shadow-lg'
                   : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
               )}
             >
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1"><BoatIcon className="w-5 h-5" /> BOATS</span>
-                <span className="text-xs bg-purple-800 px-2 py-1 rounded">
+              <div className="flex items-center justify-center lg:justify-between gap-1.5 lg:gap-2">
+                <span className="flex items-center gap-1"><BoatIcon className="w-4 h-4 lg:w-5 lg:h-5" /> BOATS</span>
+                <span className="text-[10px] lg:text-xs bg-purple-800 px-1.5 py-0.5 lg:px-2 lg:py-1 rounded">
                   {BOATS.length}
                 </span>
               </div>
@@ -286,7 +286,7 @@ export function ShopScreen({
           {/* Close Button */}
           <button
             onClick={onBack}
-            className="w-full mt-auto px-4 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg font-bold text-white transition-all"
+            className="w-full lg:mt-auto mt-3 px-4 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg font-bold text-white transition-all"
           >
             <X className="inline h-5 w-5 mr-2" />
             CLOSE
@@ -294,8 +294,8 @@ export function ShopScreen({
         </div>
 
         {/* Center - Items Grid */}
-        <div className="flex-1 p-6 overflow-y-auto">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="flex-1 p-4 md:p-6 overflow-y-auto">
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
             {currentItems.map((item: any) => {
               const stars = getRarityStars(item.rarity);
               const borderColor = getBorderColor(item.rarity);
@@ -332,13 +332,13 @@ export function ShopScreen({
                   <CardContent className="p-0">
                     {/* Item Display */}
                     <div
-                      className="h-40 flex items-center justify-center relative"
+                      className="h-32 sm:h-40 flex items-center justify-center relative"
                       style={{
                         background: `linear-gradient(135deg, ${borderColor}20, ${borderColor}40)`,
                       }}
                     >
-                      <div className="text-7xl flex items-center justify-center">
-                        <ShopItemIcon type={item.type} itemId={item.id} className="w-20 h-20" />
+                      <div className="text-6xl sm:text-7xl flex items-center justify-center">
+                        <ShopItemIcon type={item.type} itemId={item.id} className="w-14 h-14 sm:w-20 sm:h-20" />
                       </div>
                     </div>
 
@@ -372,7 +372,7 @@ export function ShopScreen({
 
                       {/* Quantity (for baits) */}
                       {item.type === 'bait' && item.owned && (
-                        <p className="text-xs text-white">x{item.quantity}</p>
+                        <p className="text-xs text-gray-700">x{item.quantity}</p>
                       )}
                     </div>
                   </CardContent>
@@ -384,15 +384,15 @@ export function ShopScreen({
 
         {/* Right Panel - Item Detail */}
         {selectedItem ? (
-          <div className="w-96 bg-gradient-to-b from-purple-900/95 to-purple-800/95 backdrop-blur-md border-l-4 border-purple-500 p-6 overflow-y-auto">
+          <div className="w-full lg:w-96 bg-gradient-to-b from-purple-900/95 to-purple-800/95 backdrop-blur-md border-t-4 lg:border-t-0 lg:border-l-4 border-purple-500 p-4 md:p-6 max-h-[45vh] lg:max-h-none overflow-y-auto">
             {/* Item Header */}
             <div className="mb-6">
               <div className="flex items-center space-x-2 mb-2">
                 <div
-                  className="text-5xl animate-pulse"
+                  className="text-4xl md:text-5xl animate-pulse"
                   style={{ filter: `drop-shadow(0 0 10px ${getBorderColor(selectedItem.rarity)})` }}
                 >
-                  <ShopItemIcon type={selectedItem.type} itemId={selectedItem.id} className="w-16 h-16" />
+                  <ShopItemIcon type={selectedItem.type} itemId={selectedItem.id} className="w-14 h-14 md:w-16 md:h-16" />
                 </div>
                 <div className="flex-1">
                   <div
@@ -404,7 +404,7 @@ export function ShopScreen({
                   >
                     {RARITY_NAMES_TH[selectedItem.rarity].toUpperCase()}
                   </div>
-                  <h2 className="text-2xl font-black text-white">
+                  <h2 className="text-xl md:text-2xl font-black text-white">
                     {selectedItem.nameTh}
                   </h2>
                 </div>
@@ -471,7 +471,7 @@ export function ShopScreen({
                     max="9999"
                     value={baitQuantityToBuy}
                     onChange={(e) => setBaitQuantityToBuy(Math.max(1, parseInt(e.target.value) || 1))}
-                    className="w-full bg-gray-800 border-2 border-purple-500 rounded-lg px-4 py-3 text-white text-center text-2xl font-bold focus:outline-none focus:border-purple-400"
+                    className="w-full bg-gray-800 border-2 border-purple-500 rounded-lg px-4 py-3 text-white text-center text-xl md:text-2xl font-bold focus:outline-none focus:border-purple-400"
                   />
                   <p className="text-gray-400 text-xs text-center mt-2">
                     ราคาต่อชิ้น: {selectedItem.price.toLocaleString()} coins
@@ -508,7 +508,7 @@ export function ShopScreen({
               {selectedItem.owned && selectedItem.type !== 'bait' ? (
                 selectedItem.equipped ? (
                   <Button
-                    className="w-full h-14 bg-yellow-600 hover:bg-yellow-500 text-white font-black text-lg"
+                    className="w-full h-12 md:h-14 bg-yellow-600 hover:bg-yellow-500 text-white font-black text-base md:text-lg"
                     disabled
                   >
                     <CheckCircle2 className="h-5 w-5 mr-2" />
@@ -516,7 +516,7 @@ export function ShopScreen({
                   </Button>
                 ) : (
                   <Button
-                    className="w-full h-14 bg-green-600 hover:bg-green-500 text-white font-black text-lg"
+                    className="w-full h-12 md:h-14 bg-green-600 hover:bg-green-500 text-white font-black text-base md:text-lg"
                     onClick={handleEquipItem}
                   >
                     EQUIP
@@ -524,7 +524,7 @@ export function ShopScreen({
                 )
               ) : player.level < selectedItem.requiredLevel ? (
                 <Button
-                  className="w-full h-14 bg-red-600 text-white font-black text-lg cursor-not-allowed"
+                  className="w-full h-12 md:h-14 bg-red-600 text-white font-black text-base md:text-lg cursor-not-allowed"
                   disabled
                 >
                   <Lock className="h-5 w-5 mr-2" />
@@ -532,7 +532,7 @@ export function ShopScreen({
                 </Button>
               ) : canBuySelected() ? (
                 <Button
-                  className="w-full h-14 bg-orange-600 hover:bg-orange-500 text-white font-black text-lg"
+                  className="w-full h-12 md:h-14 bg-orange-600 hover:bg-orange-500 text-white font-black text-base md:text-lg"
                   onClick={handleBuyItem}
                 >
                   <ShoppingCart className="h-5 w-5 mr-2" />
@@ -540,7 +540,7 @@ export function ShopScreen({
                 </Button>
               ) : (
                 <Button
-                  className="w-full h-14 bg-gray-700 text-white font-black text-lg cursor-not-allowed"
+                  className="w-full h-12 md:h-14 bg-gray-700 text-white font-black text-base md:text-lg cursor-not-allowed"
                   disabled
                 >
                   <Coins className="h-5 w-5 mr-2" />
@@ -552,7 +552,7 @@ export function ShopScreen({
               {selectedItem.owned && selectedItem.type === 'bait' && (
                 selectedItem.equipped ? (
                   <Button
-                    className="w-full h-14 bg-yellow-600 text-white font-black text-lg"
+                    className="w-full h-12 md:h-14 bg-yellow-600 text-white font-black text-base md:text-lg"
                     disabled
                   >
                     <CheckCircle2 className="h-5 w-5 mr-2" />
@@ -560,7 +560,7 @@ export function ShopScreen({
                   </Button>
                 ) : (
                   <Button
-                    className="w-full h-14 bg-green-600 hover:bg-green-500 text-white font-black text-lg"
+                    className="w-full h-12 md:h-14 bg-green-600 hover:bg-green-500 text-white font-black text-base md:text-lg"
                     onClick={handleEquipItem}
                   >
                     EQUIP
@@ -570,7 +570,7 @@ export function ShopScreen({
             </div>
           </div>
         ) : (
-          <div className="w-96 bg-gradient-to-b from-purple-900/95 to-purple-800/95 backdrop-blur-md border-l-4 border-purple-500 p-6 flex items-center justify-center">
+          <div className="w-full lg:w-96 bg-gradient-to-b from-purple-900/95 to-purple-800/95 backdrop-blur-md border-t-4 lg:border-t-0 lg:border-l-4 border-purple-500 p-4 md:p-6 max-h-[45vh] lg:max-h-none flex items-center justify-center">
             <div className="text-center text-purple-300">
               <p className="text-lg font-bold">SELECT AN ITEM</p>
               <p className="text-sm mt-2">Click on any item to see details</p>
