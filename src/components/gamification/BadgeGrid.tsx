@@ -67,10 +67,10 @@ export function BadgeGrid({ badges, variant = 'grid', isDark = false, onBadgeCli
             )}
           >
             <div className={cn(
-              'w-12 h-12 mx-auto rounded-2xl flex items-center justify-center mb-2',
+              'w-12 h-12 mx-auto rounded-2xl flex items-center justify-center mb-2 border',
               badge.earnedAt
-                ? (isDark ? 'bg-orange-500/18 text-orange-300' : 'bg-orange-100 text-orange-600')
-                : (isDark ? 'bg-white/90 text-zinc-500' : 'bg-gray-200 text-gray-500')
+                ? (isDark ? 'bg-orange-500/18 border-orange-400/55 text-orange-300 shadow-[0_0_0_1px_rgba(251,146,60,0.25)]' : 'bg-orange-100 border-orange-300 text-orange-600')
+                : (isDark ? 'bg-white/90 border-white/30 text-zinc-500' : 'bg-gray-200 border-gray-300 text-gray-500')
             )}>
               {getIcon(badge.icon)}
             </div>
@@ -93,17 +93,19 @@ export function BadgeGrid({ badges, variant = 'grid', isDark = false, onBadgeCli
           transition={{ delay: index * 0.05 }}
           className={cn(
             'rounded-2xl border p-4 text-center shadow-sm min-h-[132px] flex flex-col items-center justify-center',
-            isDark ? 'bg-zinc-950 border-orange-500/40 text-orange-100' : 'bg-white border-gray-200 text-black',
+            badge.earnedAt
+              ? (isDark ? 'bg-zinc-950 border-orange-400/55 text-orange-100 shadow-[0_0_0_1px_rgba(251,146,60,0.12)]' : 'bg-white border-orange-300 text-black')
+              : (isDark ? 'bg-zinc-950 border-white/10 text-zinc-200' : 'bg-white border-gray-200 text-black'),
             onBadgeClick && 'cursor-pointer hover:scale-[1.01] transition-transform',
-            !badge.earnedAt && 'opacity-50 grayscale'
+            !badge.earnedAt && 'opacity-70'
           )}
           onClick={() => onBadgeClick?.(badge)}
         >
           <div className={cn(
-            'w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-3',
+            'w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-3 border',
             badge.earnedAt
-              ? (isDark ? 'bg-orange-500/18 text-orange-300' : 'bg-orange-100 text-orange-600')
-              : (isDark ? 'bg-white/90 text-zinc-500' : 'bg-gray-200 text-gray-500')
+              ? (isDark ? 'bg-orange-500/18 border-orange-400/55 text-orange-300 shadow-[0_0_0_1px_rgba(251,146,60,0.25)]' : 'bg-orange-100 border-orange-300 text-orange-600')
+              : (isDark ? 'bg-white/90 border-white/30 text-zinc-500' : 'bg-gray-200 border-gray-300 text-gray-500')
           )}>
             {getIcon(badge.icon)}
           </div>
