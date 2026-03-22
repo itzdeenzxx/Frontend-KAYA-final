@@ -144,6 +144,13 @@ const tryShareFlex = async (message: unknown, context: string): Promise<boolean>
   return false;
 };
 
+const openInLineClient = (): boolean => {
+  if (typeof window === 'undefined' || !LIFF_ID) return false;
+  const deepLink = `line://app/${LIFF_ID}`;
+  window.location.href = deepLink;
+  return true;
+};
+
 export const shareBadgeAchievement = async (
   displayName: string,
   badgeNames: string[],
@@ -158,6 +165,15 @@ export const shareBadgeAchievement = async (
     `🏅 เหรียญ: ${badgeList}\n` +
     `📊 รวมที่ปลดล็อกครั้งนี้: ${totalBadgeCount} เหรียญ\n` +
     `มาฟิตไปด้วยกันที่ KAYA!`;
+
+  if (!liff.isInClient() && !liff.isApiAvailable('shareTargetPicker')) {
+    console.warn('Aggregate badge share requires LINE in-client. Redirecting...', {
+      inClient: liff.isInClient(),
+      shareTargetPickerAvailable: liff.isApiAvailable('shareTargetPicker'),
+    });
+    openInLineClient();
+    return false;
+  }
 
   const workoutEntryUrl = getWorkoutEntryUrl();
 
@@ -342,6 +358,16 @@ export const shareSingleBadgeAchievement = async (
     `🏅 ${displayName} ปลดล็อกเหรียญ ${badgeTitle} ใน KAYA\n` +
     `📌 เงื่อนไข: ${badge.requirement || '-'}\n` +
     `✨ ${badge.description || 'มาออกกำลังกายไปด้วยกันกับ KAYA'}`;
+
+  if (!liff.isInClient() && !liff.isApiAvailable('shareTargetPicker')) {
+    console.warn('Single badge share requires LINE in-client. Redirecting...', {
+      inClient: liff.isInClient(),
+      shareTargetPickerAvailable: liff.isApiAvailable('shareTargetPicker'),
+      messagePreview: message,
+    });
+    openInLineClient();
+    return false;
+  }
 
   // LINE Flex image requires web-safe image formats such as PNG/JPEG (SVG can fail and trigger text fallback).
   const badgeImage = getTwemojiUrl(badge.icon || '') || getFallbackBadgePng();
