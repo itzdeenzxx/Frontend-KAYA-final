@@ -1,6 +1,5 @@
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
-import { useState } from 'react';
 import { Badge } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { 
@@ -49,19 +48,8 @@ interface BadgeGridProps {
 
 export function BadgeGrid({ badges, variant = 'grid', isDark = false, onBadgeClick }: BadgeGridProps) {
   const { i18n } = useTranslation();
-  const [iconFallbackMap, setIconFallbackMap] = useState<Record<string, boolean>>({});
-
-  const getIconAssetUrl = (badgeId: string) => `/assets/badges/icons/${badgeId}.svg`;
-
-  const isEmojiIcon = (value: string): boolean => {
-    if (!value) return false;
-    return /\p{Extended_Pictographic}/u.test(value);
-  };
 
   const getIcon = (iconKey: string) => {
-    if (isEmojiIcon(iconKey)) {
-      return <span className="text-3xl leading-none">{iconKey}</span>;
-    }
     return iconMap[iconKey] || iconMap['default'];
   };
 
@@ -75,29 +63,18 @@ export function BadgeGrid({ badges, variant = 'grid', isDark = false, onBadgeCli
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: index * 0.05 }}
             className={cn(
-              'flex-shrink-0 w-20 text-center',
-              !badge.earnedAt && 'opacity-40 grayscale'
+              'flex-shrink-0 w-20 text-center'
             )}
           >
             <div className={cn(
-              'w-14 h-14 mx-auto rounded-2xl flex items-center justify-center mb-2 border',
+              'w-12 h-12 mx-auto rounded-2xl flex items-center justify-center mb-2',
               badge.earnedAt
-                ? (isDark ? 'bg-orange-500/18 border-orange-400/50 text-orange-300' : 'bg-orange-100 border-orange-300 text-orange-600')
-                : (isDark ? 'bg-zinc-800 border-white/15 text-orange-200' : 'bg-gray-200 border-gray-300 text-gray-700')
+                ? (isDark ? 'bg-orange-500/18 text-orange-300' : 'bg-orange-100 text-orange-600')
+                : (isDark ? 'bg-white/90 text-zinc-500' : 'bg-gray-200 text-gray-500')
             )}>
-              {iconFallbackMap[badge.id] ? (
-                getIcon(badge.icon)
-              ) : (
-                <img
-                  src={getIconAssetUrl(badge.id)}
-                  alt={badge.nameEn || badge.id}
-                  className="w-10 h-10 object-contain"
-                  loading="lazy"
-                  onError={() => setIconFallbackMap((prev) => ({ ...prev, [badge.id]: true }))}
-                />
-              )}
+              {getIcon(badge.icon)}
             </div>
-            <p className={cn('text-xs font-semibold truncate', isDark ? 'text-orange-100' : 'text-black')}>
+            <p className={cn('text-xs font-semibold truncate', isDark ? 'text-white' : 'text-gray-900')}>
               {i18n.language === 'th' ? badge.nameTh : badge.nameEn}
             </p>
           </motion.div>
@@ -123,22 +100,12 @@ export function BadgeGrid({ badges, variant = 'grid', isDark = false, onBadgeCli
           onClick={() => onBadgeClick?.(badge)}
         >
           <div className={cn(
-            'w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-3 border',
+            'w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-3',
             badge.earnedAt
-              ? (isDark ? 'bg-orange-500/18 border-orange-400/50 text-orange-300' : 'bg-orange-100 border-orange-300 text-orange-600')
-              : (isDark ? 'bg-zinc-800 border-white/15 text-orange-200' : 'bg-gray-200 border-gray-300 text-gray-700')
+              ? (isDark ? 'bg-orange-500/18 text-orange-300' : 'bg-orange-100 text-orange-600')
+              : (isDark ? 'bg-white/90 text-zinc-500' : 'bg-gray-200 text-gray-500')
           )}>
-            {iconFallbackMap[badge.id] ? (
-              getIcon(badge.icon)
-            ) : (
-              <img
-                src={getIconAssetUrl(badge.id)}
-                alt={(i18n.language === 'th' ? badge.nameTh : badge.nameEn) || badge.id}
-                className="w-11 h-11 object-contain"
-                loading="lazy"
-                onError={() => setIconFallbackMap((prev) => ({ ...prev, [badge.id]: true }))}
-              />
-            )}
+            {getIcon(badge.icon)}
           </div>
           <p className={cn('text-sm font-semibold mb-1 leading-tight', isDark ? 'text-orange-100' : 'text-black')}>
             {(i18n.language === 'th' ? badge.nameTh : badge.nameEn) || badge.id}
