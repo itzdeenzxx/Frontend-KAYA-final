@@ -187,12 +187,16 @@ export const ensureInLineClientContext = (): boolean => {
   const userAgent = window.navigator.userAgent || '';
   const openedFromLine = /Line\//i.test(userAgent);
   if (!openedFromLine) {
-    return false;
+    // Regular external browsers should continue normal LIFF auth flow.
+    // Returning false here causes app to stay unauthenticated and show an infinite loader.
+    return true;
   }
 
   const alreadyForced = sessionStorage.getItem(FORCE_IN_CLIENT_KEY) === '1';
   if (alreadyForced) {
-    return false;
+    // We already attempted deep-link once. If user stayed in external browser,
+    // continue in current context instead of blocking the app forever.
+    return true;
   }
 
   sessionStorage.setItem(FORCE_IN_CLIENT_KEY, '1');
