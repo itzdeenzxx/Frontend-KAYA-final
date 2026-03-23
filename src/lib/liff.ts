@@ -147,15 +147,12 @@ export const shareMessage = async (text: string): Promise<boolean> => {
 
 const tryShareFlex = async (message: unknown, context: string): Promise<boolean> => {
   try {
-    if (liff.isApiAvailable('shareTargetPicker')) {
-      const result = await liff.shareTargetPicker([message as any]);
-      if (result !== false && result !== null) {
-        return true;
-      }
+    if (!liff.isApiAvailable('shareTargetPicker')) {
+      return false;
     }
 
-    if (liff.isInClient()) {
-      await liff.sendMessages([message as any]);
+    const result = await liff.shareTargetPicker([message as any]);
+    if (result !== false && result !== null) {
       return true;
     }
   } catch (error) {
@@ -218,12 +215,12 @@ export const shareBadgeAchievement = async (
     `📊 รวมที่ปลดล็อกครั้งนี้: ${totalBadgeCount} เหรียญ\n` +
     `มาฟิตไปด้วยกันที่ KAYA!`;
 
-  if (!liff.isInClient() && !liff.isApiAvailable('shareTargetPicker')) {
-    console.warn('Aggregate badge share in fallback mode (no LINE share APIs).', {
+  if (!liff.isApiAvailable('shareTargetPicker')) {
+    console.warn('Aggregate badge share requires shareTargetPicker.', {
       inClient: liff.isInClient(),
       shareTargetPickerAvailable: liff.isApiAvailable('shareTargetPicker'),
     });
-    return shareBadgeAsMiniAppLink(message);
+    return false;
   }
 
   const workoutEntryUrl = getWorkoutEntryUrl();
@@ -417,14 +414,13 @@ export const shareBadgeAchievement = async (
     return true;
   }
 
-  // For badge shares, return false if Flex could not be delivered.
-  // UI should tell user to open in LINE app and retry.
-  console.warn('Aggregate badge share fell back to non-flex path', {
+  // For badge shares, require Share Target Picker.
+  console.warn('Aggregate badge share failed via shareTargetPicker', {
     inClient: liff.isInClient(),
     shareTargetPickerAvailable: liff.isApiAvailable('shareTargetPicker'),
     messagePreview: message,
   });
-  return shareBadgeAsMiniAppLink(message);
+  return false;
 };
 
 const getTwemojiUrl = (emoji: string): string | null => {
@@ -471,13 +467,13 @@ export const shareSingleBadgeAchievement = async (
     `📌 เงื่อนไข: ${badge.requirement || '-'}\n` +
     `✨ ${badge.description || 'มาออกกำลังกายไปด้วยกันกับ KAYA'}`;
 
-  if (!liff.isInClient() && !liff.isApiAvailable('shareTargetPicker')) {
-    console.warn('Single badge share in fallback mode (no LINE share APIs).', {
+  if (!liff.isApiAvailable('shareTargetPicker')) {
+    console.warn('Single badge share requires shareTargetPicker.', {
       inClient: liff.isInClient(),
       shareTargetPickerAvailable: liff.isApiAvailable('shareTargetPicker'),
       messagePreview: message,
     });
-    return shareBadgeAsMiniAppLink(message);
+    return false;
   }
 
   // LINE Flex image requires web-safe image formats such as PNG/JPEG (SVG can fail and trigger text fallback).
@@ -682,12 +678,12 @@ export const shareSingleBadgeAchievement = async (
     return true;
   }
 
-  console.warn('Single badge share fell back to non-flex path', {
+  console.warn('Single badge share failed via shareTargetPicker', {
     inClient: liff.isInClient(),
     shareTargetPickerAvailable: liff.isApiAvailable('shareTargetPicker'),
     messagePreview: message,
   });
-  return shareBadgeAsMiniAppLink(message);
+  return false;
 };
 
 // Send message to LINE chat

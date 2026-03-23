@@ -105,7 +105,7 @@ const AppRoutes = () => {
           if (shared) {
             sonnerToast.success('แชร์ความสำเร็จไปที่ LINE แล้ว');
           } else {
-            sonnerToast.error('ไม่สามารถส่ง Flex Message ได้ (กรุณาเปิดผ่าน LINE App)');
+            sonnerToast.error('ไม่สามารถเปิด Share Target Picker ได้ (กรุณาเปิดผ่าน LINE App)');
           }
         }}
       />
