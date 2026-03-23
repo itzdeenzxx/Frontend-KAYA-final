@@ -168,6 +168,9 @@ export default function WorkoutUI() {
   const navigatedRef = useRef(false);
   // Global "stopped" flag — set by handleStop to prevent any new audio from playing
   const stoppedRef = useRef(false);
+  // While true, suppress ALL coach/rep/exercise speech during voice interaction lifecycle.
+  // Used for recording -> processing -> thinking -> speaking AI response.
+  const voiceInteractionLockRef = useRef(false);
   // True while rep-count audio is playing — blocks ALL other audio except danger warnings
   const isCountingRepRef = useRef(false);
   // Pending timeout IDs that must be cancelled on stop/unmount
@@ -796,11 +799,27 @@ export default function WorkoutUI() {
     stopCoachPopupAudio();
   }, []);
 
+  // Lock/unlock all non-voice-interaction speech while user is talking to AI.
+  const setVoiceInteractionLock = useCallback((locked: boolean) => {
+    voiceInteractionLockRef.current = locked;
+    if (locked) {
+      // Keep popup queue blocked while voice interaction is active.
+      setWorkoutUIAudioPlaying(true);
+      return;
+    }
+
+    // Only release popup gate when WorkoutUI isn't currently speaking.
+    if (!isTtsSpeakingRef.current) {
+      setWorkoutUIAudioPlaying(false);
+    }
+  }, []);
+
   // Play a pre-recorded coach audio clip by category (reads from refs — no stale closure)
   // Categories that represent danger / injury risk — allowed to interrupt rep counting
   const DANGER_CATEGORIES = new Set<AudioCategory>(['form_correction']);
   const playCoachAudio = useCallback((category: AudioCategory, onEnd?: () => void): void => {
     if (stoppedRef.current) return; // don't play anything after handleStop
+    if (voiceInteractionLockRef.current) { onEnd?.(); return; }
     if (!ttsEnabledRef.current) { onEnd?.(); return; }
     // While counting reps, block everything except danger warnings
     if (isCountingRepRef.current && !DANGER_CATEGORIES.has(category)) { onEnd?.(); return; }
@@ -1024,6 +1043,7 @@ export default function WorkoutUI() {
   // Speak rep count (only 1,3,5,7,9,10)
   const speakRepCount = useCallback(async (rep: number) => {
     if (stoppedRef.current) return; // don't play after stop
+    if (voiceInteractionLockRef.current) return;
     const message = REP_MESSAGES[rep];
     if (message && rep > lastSpokenRepRef.current) {
       lastSpokenRepRef.current = rep;
@@ -1224,6 +1244,7 @@ export default function WorkoutUI() {
     
     // Stop any TTS that's playing
     stopAllTTS();
+    setVoiceInteractionLock(true);
     
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
@@ -1277,14 +1298,19 @@ export default function WorkoutUI() {
       setVoiceStatus("recording");
     } catch (error) {
       console.error('Failed to start recording:', error);
+      setVoiceInteractionLock(false);
+      setVoiceStatus("idle");
     }
-  }, [isRecording, stopAllTTS]);
+  }, [isRecording, stopAllTTS, setVoiceInteractionLock]);
 
   // Stop voice recording and process
   const stopVoiceRecording = useCallback(async () => {
     if (!isRecording) return;
     
     setVoiceStatus("processing");
+    // When stopping recording, immediately cut any newly-triggered audio too.
+    stopAllTTS();
+    setVoiceInteractionLock(true);
     
     // Small delay to capture remaining audio
     await new Promise(r => setTimeout(r, 200));
@@ -1320,6 +1346,7 @@ export default function WorkoutUI() {
       if (pcmData.length === 0) {
         setVoiceStatus("idle");
         setIsRecording(false);
+        setVoiceInteractionLock(false);
         return;
       }
       
@@ -1329,6 +1356,7 @@ export default function WorkoutUI() {
       if (totalSamples < 8000) {
         setVoiceStatus("idle");
         setIsRecording(false);
+        setVoiceInteractionLock(false);
         return;
       }
         
@@ -1365,6 +1393,7 @@ export default function WorkoutUI() {
         if (!transcript || !transcript.trim()) {
           setVoiceStatus("idle");
           setIsRecording(false);
+          setVoiceInteractionLock(false);
           return;
         }
         
@@ -1421,14 +1450,16 @@ export default function WorkoutUI() {
         await speakTTS(response, true);
         
         setVoiceStatus("idle");
+        setVoiceInteractionLock(false);
     } catch (error) {
       console.error('Voice interaction error:', error);
       setVoiceStatus("idle");
+      setVoiceInteractionLock(false);
     }
     
     setIsRecording(false);
     mediaRecorderRef.current = null;
-  }, [isRecording, pcmToWav, captureScreenshotForVoice, exercises, currentExercise, userProfile, healthData, isKayaWorkout, kayaAnalysis.reps, speakTTS]);
+  }, [isRecording, pcmToWav, captureScreenshotForVoice, exercises, currentExercise, userProfile, healthData, isKayaWorkout, kayaAnalysis.reps, speakTTS, stopAllTTS, setVoiceInteractionLock]);
 
   // Speak exercise instruction when exercise changes
   const speakExerciseInstruction = useCallback(async (exercise: WorkoutExercise) => {
@@ -1436,6 +1467,7 @@ export default function WorkoutUI() {
 
     // Don't speak after workout has been stopped
     if (stoppedRef.current) return;
+    if (voiceInteractionLockRef.current) return;
 
     // Skip if TTS disabled
     if (!ttsEnabledRef.current) {
@@ -1646,6 +1678,7 @@ export default function WorkoutUI() {
   const handleStop = () => {
     stoppedRef.current = true;    // prevent any new audio from starting
     isCountingRepRef.current = false; // release counting lock
+    setVoiceInteractionLock(false);
     navigatedRef.current = true;  // prevent finishWorkout's fallback timeout from navigating
     // Clear all pending timeouts (rest announcement, finishWorkout fallback, etc.)
     for (const t of pendingTimeoutsRef.current) clearTimeout(t);
