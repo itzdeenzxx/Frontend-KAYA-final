@@ -1,5 +1,6 @@
+import { useEffect, useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
+import { Toaster as Sonner, toast as sonnerToast } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
@@ -31,11 +32,15 @@ import Challenges from "./pages/Challenges";
 import WorkoutHistory from "./pages/WorkoutHistory";
 import Leaderboard from "./pages/Leaderboard";
 import UserPublicProfile from "./pages/UserPublicProfile";
+import BadgesPage from "./pages/Badges";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
 import { ThemeSelectorModal } from "./components/shared/ThemeSelectorModal";
 import { RunningLoader } from "./components/shared/RunningLoader";
+import { BadgeUnlockModal } from "./components/gamification/BadgeUnlockModal";
+import { shareBadgeAchievement } from "./lib/liff";
+import { BADGES_EARNED_EVENT, type BadgesEarnedEventDetail } from "./lib/badgeEvents";
 
 const queryClient = new QueryClient();
 
@@ -44,6 +49,28 @@ const AppRoutes = () => {
   const { isInitialized, isLoading, isAuthenticated, isNewUser, lineProfile, completeOnboarding } = useAuth();
   const { showThemeSelector, setShowThemeSelector, isThemeLoaded, theme } = useTheme();
   const [loadingTimedOut, setLoadingTimedOut] = useState(false);
+  const isDark = theme === "dark";
+  const [unlockModalOpen, setUnlockModalOpen] = useState(false);
+  const [latestUnlockedBadgeNames, setLatestUnlockedBadgeNames] = useState<string[]>([]);
+
+  useEffect(() => {
+    const handleBadgesEarned = (event: Event) => {
+      const customEvent = event as CustomEvent<BadgesEarnedEventDetail>;
+      const detail = customEvent.detail;
+
+      if (!detail || !lineProfile?.userId || detail.userId !== lineProfile.userId) {
+        return;
+      }
+
+      setLatestUnlockedBadgeNames(detail.badgeNamesTh);
+      setUnlockModalOpen(true);
+    };
+
+    window.addEventListener(BADGES_EARNED_EVENT, handleBadgesEarned as EventListener);
+    return () => {
+      window.removeEventListener(BADGES_EARNED_EVENT, handleBadgesEarned as EventListener);
+    };
+  }, [lineProfile?.displayName, lineProfile?.userId]);
 
   // Global loading timeout safety net - force through after 12 seconds
   useEffect(() => {
@@ -83,6 +110,22 @@ const AppRoutes = () => {
         isOpen={showThemeSelector} 
         onClose={() => setShowThemeSelector(false)}
       />
+      <BadgeUnlockModal
+        open={unlockModalOpen}
+        userName={lineProfile?.displayName || 'คุณ'}
+        badgeNames={latestUnlockedBadgeNames}
+        isDark={isDark}
+        onClose={() => setUnlockModalOpen(false)}
+        onShare={async () => {
+          const userLabel = lineProfile?.displayName || 'คุณ';
+          const shared = await shareBadgeAchievement(userLabel, latestUnlockedBadgeNames, latestUnlockedBadgeNames.length);
+          if (shared) {
+            sonnerToast.success('แชร์ความสำเร็จไปที่ LINE แล้ว');
+          } else {
+            sonnerToast.error('ไม่สามารถส่ง Flex Message ได้ (กรุณาเปิดผ่าน LINE App)');
+          }
+        }}
+      />
       
       <BrowserRouter>
       <Routes>
@@ -102,8 +145,9 @@ const AppRoutes = () => {
           <Route path="/game-mode" element={<GameMode />} />
           <Route path="/challenges" element={<Challenges />} />
           <Route path="/workout-history" element={<WorkoutHistory />} />
-          <Route path="/leaderboard" element={<Leaderboard />} />
+  <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/user-profile/:userId" element={<UserPublicProfile />} />
+          <Route path="/badges" element={<BadgesPage />} />
         </Route>
         
         {/* Full Screen Routes */}

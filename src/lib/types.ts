@@ -146,8 +146,11 @@ export interface Badge {
   nameTh: string;
   description: string;
   icon: string;
+  category?: 'workout' | 'game' | 'nutrition';
   earnedAt?: Date;
   requirement: string;
+  progressCurrent?: number;
+  progressTarget?: number;
 }
 
 // Challenge template stored in Firestore (one-time setup)

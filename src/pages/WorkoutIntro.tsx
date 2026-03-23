@@ -38,6 +38,10 @@ export default function WorkoutIntro() {
   const exercises = getExercisesForStyle(selectedStyleId);
 
   const [isReady, setIsReady] = useState(false);
+  const stretchDescription =
+    selectedStyleId === 'kaya-stretch'
+      ? '3 ท่ายืดเหยียด ยกแขน บิดลำตัว ยกเข่า ช่วยเพิ่มความยืดหยุ่นและผ่อนคลายกล้ามเนื้อ'
+      : selectedStyle?.description;
 
   // Read AI workout summary if available (from Gemma3 recommendation)
   const aiWorkoutSummary = (() => {
@@ -141,7 +145,7 @@ export default function WorkoutIntro() {
               </div>
             </div>
             <p className="text-white/90 text-base md:text-lg mb-4">
-              {selectedStyle.description}
+              {stretchDescription}
             </p>
             
             {/* Stats Grid */}

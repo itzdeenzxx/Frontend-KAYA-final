@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { cn } from '@/lib/utils';
 
 interface ConfettiPiece {
   id: number;
@@ -12,7 +13,11 @@ interface ConfettiPiece {
   shape: 'rect' | 'circle' | 'triangle';
 }
 
-export function Confetti() {
+interface ConfettiProps {
+  className?: string;
+}
+
+export function Confetti({ className }: ConfettiProps) {
   const [pieces, setPieces] = useState<ConfettiPiece[]>([]);
 
   useEffect(() => {
@@ -44,7 +49,7 @@ export function Confetti() {
   }, []);
 
   return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none z-50">
+    <div className={cn('absolute inset-0 overflow-hidden pointer-events-none z-50', className)}>
       {pieces.map((piece) => (
         <div
           key={piece.id}

@@ -32,20 +32,36 @@ import { cn } from '@/lib/utils';
 import { isMobileDevice } from '@/lib/session';
 import { useTheme } from '@/contexts/ThemeContext';
 
+interface WorkoutStyle {
+  id: string;
+  name: string;
+  nameEn: string;
+  description: string;
+  icon: React.ReactNode;
+  color: string;
+  bgGradient: string;
+  duration: string;
+  calories: string;
+  level: 'ง่าย' | 'ปานกลาง' | 'หนัก' | 'ผู้เชี่ยวชาญ';
+  features: string[];
+  image: string;
+  accentColor: string;
+}
+
 // Workout styles data with images (restricted to KAYA options)
 const workoutStyles: WorkoutStyle[] = [
   {
     id: 'kaya-stretch',
-    name: 'KAYA เริ่มต้น',
-    nameEn: 'KAYA Beginner',
-    description: 'AI วิเคราะห์ท่าทาง + เสียงโค้ชแนะนำแบบ Real-time',
+    name: 'KAYA ยืดเหยียดอัจฉริยะ',
+    nameEn: 'KAYA AI Stretching',
+    description: '3 ท่ายืดเหยียด ยกแขน บิดลำตัว ยกเข่า ช่วยเพิ่มความยืดหยุ่นและผ่อนคลายกล้ามเนื้อ',
     icon: <Brain className="w-8 h-8" />,
     color: 'text-green-400',
     bgGradient: 'from-green-600/90 via-emerald-600/80 to-teal-800/90',
     duration: '10-20 นาที',
     calories: '30-60',
     level: 'ง่าย',
-    features: ['AI Coach', 'TTS Voice', 'Pose Guide'],
+    features: ['AI Coach', 'Visual Guide', 'TTS', 'นับเซ็ต'],
     image: 'https://images.unsplash.com/photo-1518611012118-696072aa579a?w=800&q=80',
     accentColor: 'green'
   },

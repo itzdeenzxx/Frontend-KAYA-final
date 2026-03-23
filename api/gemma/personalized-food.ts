@@ -5,6 +5,12 @@ declare const process: {
 };
 
 export default async function handler(req: Request): Promise<Response> {
+  const fallback = {
+    success: true,
+    tags: ['chicken breast', 'salmon', 'brown rice', 'broccoli', 'egg', 'avocado'],
+    reason: 'ระบบแนะนำอาหาร AI ชั่วคราวไม่พร้อมใช้งาน จึงแสดงรายการสุขภาพพื้นฐานให้ก่อน',
+  };
+
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method Not Allowed' }), {
       status: 405,
@@ -14,8 +20,8 @@ export default async function handler(req: Request): Promise<Response> {
 
   const apiKey = process.env.TOGETHER_API_KEY;
   if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'Server misconfigured' }), {
-      status: 500,
+    return new Response(JSON.stringify(fallback), {
+      status: 200,
       headers: { 'content-type': 'application/json' },
     });
   }
@@ -93,8 +99,8 @@ Example: {"tags":["chicken breast","brown rice","broccoli","salmon","sweet potat
     });
 
     if (!response.ok) {
-      return new Response(JSON.stringify({ error: 'AI API error' }), {
-        status: 502,
+      return new Response(JSON.stringify(fallback), {
+        status: 200,
         headers: { 'content-type': 'application/json' },
       });
     }
@@ -121,9 +127,9 @@ Example: {"tags":["chicken breast","brown rice","broccoli","salmon","sweet potat
       headers: { 'content-type': 'application/json' },
     });
   } catch (error) {
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { 'content-type': 'application/json' } }
-    );
+    return new Response(JSON.stringify(fallback), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
   }
 }

@@ -27,14 +27,23 @@ import {
   incrementWaterIntake,
   decrementWaterIntake,
   getCumulativeStats,
+  getBadgeProgressSnapshot,
+  getBadgeCurrentProgress,
+  evaluateAndAwardBadges,
+  ensureBadgeCatalogSeeded,
+  getBadgeCatalog,
   type FirestoreHealthData,
   type FirestoreWorkoutHistory,
   type FirestoreNutritionLog,
+  type FirestoreBadgeCatalogItem,
   type FirestoreUserBadge,
   type FirestoreUserSettings,
   type FirestoreDailyStats,
+  type BadgeProgressSnapshot,
 } from '@/lib/firestore';
 import type { LeaderboardEntry, Challenge } from '@/lib/types';
+import type { Badge } from '@/lib/types';
+import { BADGE_DEFINITIONS } from '@/lib/badges';
 
 // Hook for health data operations
 export const useHealthData = () => {
@@ -216,11 +225,68 @@ export const useNutrition = () => {
 };
 
 // Hook for badges
+const makeLockedCatalog = (): Badge[] =>
+  BADGE_DEFINITIONS.map((def) => ({
+    id: def.id,
+    name: def.nameEn,
+    nameEn: def.nameEn,
+    nameTh: def.nameTh,
+    description: def.description,
+    icon: def.icon,
+    requirement: def.requirement,
+    earnedAt: undefined,
+    progressCurrent: 0,
+    progressTarget: def.target,
+  }));
+
+const makeLockedCatalogFromItems = (catalog: FirestoreBadgeCatalogItem[]): Badge[] =>
+  catalog.map((item) => ({
+    id: item.badgeId,
+    name: item.nameEn,
+    nameEn: item.nameEn,
+    nameTh: item.nameTh,
+    description: item.description,
+    icon: item.icon,
+    category: item.category,
+    requirement: item.requirement,
+    earnedAt: undefined,
+    progressCurrent: 0,
+    progressTarget: item.target,
+  }));
+
+const emptyBadgeProgressSnapshot: BadgeProgressSnapshot = {
+  totalWorkouts: 0,
+  totalWorkoutTime: 0,
+  totalCaloriesBurned: 0,
+  totalNutritionLogs: 0,
+  totalGamesPlayed: 0,
+  hydrationGoalDays: 0,
+  currentWorkoutStreak24h: 0,
+  bestWorkoutStreak24h: 0,
+};
+
+const parseEarnedAt = (value: unknown): Date | undefined => {
+  if (!value) return undefined;
+  if (value instanceof Date) return value;
+  if (typeof value === 'object' && typeof (value as { toDate?: () => Date }).toDate === 'function') {
+    return (value as { toDate: () => Date }).toDate();
+  }
+  if (typeof value === 'number' || typeof value === 'string') {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  }
+  return undefined;
+};
+
 export const useBadges = () => {
   const { lineProfile } = useAuth();
-  const [badges, setBadges] = useState<FirestoreUserBadge[]>([]);
+  const [earnedBadges, setEarnedBadges] = useState<FirestoreUserBadge[]>([]);
+  const [badges, setBadges] = useState<Badge[]>(makeLockedCatalog);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasEnsuredCatalogRef = useRef(false);
+
+  const normalizeBadgeId = (value: string | undefined): string => (value || '').trim();
 
   const fetchBadges = useCallback(async () => {
     if (!lineProfile?.userId) return;
@@ -229,10 +295,80 @@ export const useBadges = () => {
     setError(null);
     
     try {
-      const data = await getUserBadges(lineProfile.userId);
-      setBadges(data);
+      if (!hasEnsuredCatalogRef.current) {
+        try {
+          await ensureBadgeCatalogSeeded();
+        } catch (seedError) {
+          console.warn('Badge catalog seed skipped:', seedError);
+        }
+        hasEnsuredCatalogRef.current = true;
+      }
+
+      // Re-evaluate unlock conditions so eligible users receive badges immediately.
+      await evaluateAndAwardBadges(lineProfile.userId).catch(() => []);
+
+      const [data, snapshot, catalog] = await Promise.all([
+        getUserBadges(lineProfile.userId),
+        getBadgeProgressSnapshot(lineProfile.userId).catch(() => emptyBadgeProgressSnapshot),
+        getBadgeCatalog().catch(() => [] as FirestoreBadgeCatalogItem[]),
+      ]);
+      setEarnedBadges(data);
+
+      const activeCatalog = catalog.length > 0
+        ? catalog
+        : BADGE_DEFINITIONS.map((definition) => ({
+            badgeId: definition.id,
+            nameEn: definition.nameEn,
+            nameTh: definition.nameTh,
+            description: definition.description,
+            icon: definition.icon,
+            requirement: definition.requirement,
+            category: definition.category,
+            target: definition.target,
+          } as FirestoreBadgeCatalogItem));
+
+      const earnedMap = new Map<string, FirestoreUserBadge>();
+      for (const badge of data) {
+        const byBadgeId = normalizeBadgeId(badge.badgeId);
+        const byDocId = normalizeBadgeId(badge.id);
+        if (byBadgeId) earnedMap.set(byBadgeId, badge);
+        if (byDocId) earnedMap.set(byDocId, badge);
+      }
+
+      const mergedBadges: Badge[] = activeCatalog.map((definition) => {
+        const badgeId = normalizeBadgeId(definition.badgeId);
+        const earned = earnedMap.get(badgeId);
+        const earnedAt = parseEarnedAt(earned?.earnedAt);
+
+        return {
+          id: badgeId,
+          name: definition.nameEn,
+          nameEn: definition.nameEn,
+          nameTh: definition.nameTh,
+          description: definition.description,
+          icon: definition.icon,
+          category: definition.category,
+          requirement: definition.requirement,
+          earnedAt,
+          progressCurrent: getBadgeCurrentProgress(badgeId, snapshot),
+          progressTarget: definition.target,
+        };
+      });
+
+      setBadges(mergedBadges);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch badges');
+      // Keep the full locked catalog visible so the page isn't blank
+      setBadges(makeLockedCatalogFromItems(BADGE_DEFINITIONS.map((definition) => ({
+        badgeId: definition.id,
+        nameEn: definition.nameEn,
+        nameTh: definition.nameTh,
+        description: definition.description,
+        icon: definition.icon,
+        requirement: definition.requirement,
+        category: definition.category,
+        target: definition.target,
+      }))));
     } finally {
       setIsLoading(false);
     }
@@ -264,6 +400,7 @@ export const useBadges = () => {
 
   return {
     badges,
+    earnedBadges,
     awardBadge: award,
     refreshBadges: fetchBadges,
     isLoading,

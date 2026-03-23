@@ -6,6 +6,7 @@ import {
   getLineProfile, 
   loginWithLine, 
   logoutFromLine,
+  ensureInLineClientContext,
   isInLineApp,
   getOS,
   getLanguage,
@@ -99,6 +100,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       // Initialize LIFF
       await initializeLiff();
+
+      // If opened from LINE external browser, force into LIFF in-client context first.
+      // This is required for shareTargetPicker/Flex messaging features.
+      const inProperClientContext = ensureInLineClientContext();
+      if (!inProperClientContext) {
+        setState(prev => ({
+          ...prev,
+          isInitialized: true,
+          isLoading: false,
+        }));
+        return;
+      }
       
       // Initialize Firebase Analytics (ignore errors)
       try {

@@ -1694,7 +1694,7 @@ export default function WorkoutUI() {
     }
   }, [currentExercise, exercises, isKayaWorkout, kayaAnalysis, saveCurrentExerciseResult, finishWorkout, stopAllTTS]);
 
-  // Keep handleNextRef updated so non-reactive code always has latest
+  // Sync ref after handleNext is declared (avoid accessing before initialization)
   useEffect(() => { handleNextRef.current = handleNext; }, [handleNext]);
 
   const handlePrevious = useCallback(() => {

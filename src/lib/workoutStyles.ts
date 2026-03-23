@@ -83,7 +83,7 @@ export const workoutStyles: WorkoutStyle[] = [
     id: 'kaya-stretch',
     name: 'KAYA ยืดเหยียดอัจฉริยะ',
     nameEn: 'KAYA AI Stretching',
-    description: '3 ท่ายืดเหยียด พร้อม AI Coach วิเคราะห์ท่าทาง, Visual Guide และ TTS',
+    description: '3 ท่ายืดเหยียด ยกแขน บิดลำตัว ยกเข่า ช่วยเพิ่มความยืดหยุ่นและผ่อนคลายกล้ามเนื้อ',
     icon: React.createElement(Target, { className: "w-8 h-8" }),
     color: 'text-primary',
     bgGradient: 'from-primary/20 to-orange-500/20',
