@@ -1510,9 +1510,12 @@ export default function WorkoutUI() {
       }
     }
     
-    // No local audio found (non-KAYA exercise or missing file) — skip silently
-    console.log('🔇 [ExerciseInstruction] No local audio for exercise:', exercise.kayaExercise || exercise.name);
-  }, [stopAllTTS]);
+    // Fallback: if no local audio for this exercise, speak a short dynamic prompt.
+    // This prevents the "first exercise has no voice" gap when a specific file is missing.
+    const exerciseLabel = exercise.nameTh || exercise.name || 'ท่าต่อไป';
+    console.log('🔊 [ExerciseInstruction] No local audio, fallback TTS for:', exercise.kayaExercise || exercise.name);
+    await speakTTS(`เริ่มท่า ${exerciseLabel} ครับ`);
+  }, [stopAllTTS, speakTTS]);
 
   // Speak coach introduction
   const speakCoachIntroduction = useCallback(async () => {
