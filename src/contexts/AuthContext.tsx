@@ -101,18 +101,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // Initialize LIFF
       await initializeLiff();
 
-      // If opened from LINE external browser, force into LIFF in-client context first.
-      // This is required for shareTargetPicker/Flex messaging features.
+      // Try to ensure proper LINE client context for share features
+      // But don't block login if not in LINE app - just log warning
       const inProperClientContext = ensureInLineClientContext();
       if (!inProperClientContext) {
-        setState(prev => ({
-          ...prev,
-          isInitialized: true,
-          isLoading: false,
-        }));
-        return;
+        console.warn('Not in proper LINE context - share features may be limited');
       }
-      
+
       // Initialize Firebase Analytics (ignore errors)
       try {
         await initAnalytics();

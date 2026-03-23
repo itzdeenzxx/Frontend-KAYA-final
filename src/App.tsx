@@ -4,9 +4,7 @@ import { Toaster as Sonner, toast as sonnerToast } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { useState, useEffect, lazy, Suspense } from 'react';
-
-const AdminKaya = lazy(() => import("./pages/AdminKaya"));
+import { useState, useEffect } from 'react';
 
 import Dashboard from "./pages/Dashboard";
 import WorkoutSelection from "./pages/WorkoutSelection";
@@ -41,6 +39,9 @@ import { RunningLoader } from "./components/shared/RunningLoader";
 import { BadgeUnlockModal } from "./components/gamification/BadgeUnlockModal";
 import { shareBadgeAchievement } from "./lib/liff";
 import { BADGES_EARNED_EVENT, type BadgesEarnedEventDetail } from "./lib/badgeEvents";
+import React, { Suspense } from 'react';
+
+const AdminKaya = React.lazy(() => import("./pages/AdminKaya"));
 
 const queryClient = new QueryClient();
 
@@ -160,14 +161,14 @@ const AppRoutes = () => {
         <Route path="/mouse-running-game" element={<MouseRunningGame />} />
         <Route path="/whack-a-mole-game" element={<WhackAMoleGame />} />
         <Route path="/fishing-game" element={<FishingGame />} />
-
+        
         {/* Admin Panel - URL-only access, no nav link */}
         <Route path="/admin-kaya" element={
           <Suspense fallback={<RunningLoader message="Loading..." />}>
             <AdminKaya />
           </Suspense>
         } />
-
+        
         {/* Catch-all */}
         <Route path="*" element={<NotFound />} />
       </Routes>
