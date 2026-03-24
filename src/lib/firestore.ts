@@ -299,6 +299,7 @@ export interface FirestoreBadgeCatalogItem {
   requirement: string;
   category: 'workout' | 'game' | 'nutrition';
   target: number;
+  active?: boolean;
   updatedAt?: Timestamp;
 }
 
@@ -834,6 +835,7 @@ export interface BadgeCatalogUpdateInput {
   requirement: string;
   category: 'workout' | 'game' | 'nutrition';
   target: number;
+  active?: boolean;
 }
 
 // Save nutrition scan
@@ -1148,6 +1150,7 @@ export const ensureBadgeCatalogSeeded = async (): Promise<void> => {
       requirement: definition.requirement,
       category: definition.category,
       target: definition.target,
+      active: true,
       updatedAt: serverTimestamp(),
     });
     writes += 1;
@@ -1177,6 +1180,7 @@ export const upsertBadgeCatalogItem = async (
     requirement: payload.requirement.trim(),
     category: payload.category,
     target: Number.isFinite(payload.target) ? Math.max(1, Math.floor(payload.target)) : 1,
+    active: payload.active !== false,
     updatedAt: serverTimestamp(),
   }, { merge: true });
 };
@@ -1194,6 +1198,7 @@ export const resetBadgeCatalogFromDefinitions = async (): Promise<void> => {
       requirement: definition.requirement,
       category: definition.category,
       target: definition.target,
+      active: true,
       updatedAt: serverTimestamp(),
     }, { merge: true });
   }
@@ -1212,6 +1217,7 @@ export const getBadgeCatalog = async (): Promise<FirestoreBadgeCatalogItem[]> =>
     requirement: definition.requirement,
     category: definition.category,
     target: definition.target,
+    active: true,
   }));
 
   try {
@@ -1237,6 +1243,7 @@ export const getBadgeCatalog = async (): Promise<FirestoreBadgeCatalogItem[]> =>
         requirement: data.requirement || '-',
         category: data.category || 'workout',
         target: typeof data.target === 'number' ? data.target : 1,
+        active: data.active !== false,
         updatedAt: data.updatedAt,
       });
     }
@@ -1255,10 +1262,16 @@ export const getBadgeCatalog = async (): Promise<FirestoreBadgeCatalogItem[]> =>
         requirement: definition.requirement,
         category: definition.category,
         target: definition.target,
+        active: true,
       } as FirestoreBadgeCatalogItem;
     });
 
-    return orderedCatalog;
+    // Keep custom badges that are not in static definitions.
+    const extras = Array.from(byId.values()).filter(
+      (item) => !BADGE_DEFINITIONS.some((definition) => definition.id === item.badgeId)
+    );
+
+    return [...orderedCatalog, ...extras];
   } catch {
     return fallbackCatalog;
   }
@@ -1414,6 +1427,7 @@ export const evaluateAndAwardBadges = async (userId: string): Promise<string[]> 
   for (const definition of catalog) {
     const badgeId = definition.badgeId;
     if (!badgeId || earnedSet.has(badgeId)) continue;
+    if (definition.active === false) continue;
 
     const target = typeof definition.target === 'number' ? definition.target : 1;
     if (getBadgeCurrentProgress(badgeId, snapshot) < target) continue;

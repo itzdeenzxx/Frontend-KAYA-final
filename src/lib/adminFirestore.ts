@@ -1,5 +1,6 @@
 // Admin Firestore & Storage Service
 import {
+  addDoc,
   doc,
   getDoc,
   setDoc,
@@ -22,6 +23,97 @@ import {
   StorageReference,
 } from 'firebase/storage';
 import { db, storage } from './firebase';
+
+const ADMIN_AUDIT_COLLECTION = 'adminAuditLogs';
+const ADMIN_ACTOR_STORAGE_KEY = 'kaya_admin_actor';
+
+export interface AdminAuditActor {
+  userId: string;
+  displayName?: string;
+}
+
+export interface AdminAuditLogEntry {
+  id: string;
+  action: string;
+  summary: string;
+  actorUserId: string;
+  actorName?: string;
+  targetCollection?: string;
+  targetId?: string;
+  details?: Record<string, unknown>;
+  createdAt?: unknown;
+}
+
+const getStoredAdminActor = (): AdminAuditActor | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(ADMIN_ACTOR_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<AdminAuditActor>;
+    if (!parsed.userId) return null;
+    return {
+      userId: String(parsed.userId),
+      displayName: parsed.displayName ? String(parsed.displayName) : undefined,
+    };
+  } catch {
+    return null;
+  }
+};
+
+export const setAdminActorContext = (actor: AdminAuditActor): void => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(ADMIN_ACTOR_STORAGE_KEY, JSON.stringify(actor));
+};
+
+export const logAdminAction = async (
+  action: string,
+  summary: string,
+  options?: {
+    targetCollection?: string;
+    targetId?: string;
+    details?: Record<string, unknown>;
+    actor?: AdminAuditActor;
+  }
+): Promise<void> => {
+  try {
+    const actor = options?.actor || getStoredAdminActor();
+    await addDoc(collection(db, ADMIN_AUDIT_COLLECTION), {
+      action,
+      summary,
+      actorUserId: actor?.userId || 'unknown-admin',
+      actorName: actor?.displayName || null,
+      targetCollection: options?.targetCollection || null,
+      targetId: options?.targetId || null,
+      details: options?.details || null,
+      createdAt: serverTimestamp(),
+    });
+  } catch (error) {
+    console.warn('Failed to write admin audit log', error);
+  }
+};
+
+export const listAdminAuditLogs = async (
+  limitCount = 200
+): Promise<AdminAuditLogEntry[]> => {
+  try {
+    const q = query(
+      collection(db, ADMIN_AUDIT_COLLECTION),
+      orderBy('createdAt', 'desc'),
+      limit(limitCount)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((item) => ({ id: item.id, ...(item.data() as Omit<AdminAuditLogEntry, 'id'>) }));
+  } catch {
+    const snap = await getDocs(query(collection(db, ADMIN_AUDIT_COLLECTION), limit(limitCount)));
+    return snap.docs
+      .map((item) => ({ id: item.id, ...(item.data() as Omit<AdminAuditLogEntry, 'id'>) }))
+      .sort((a, b) => {
+        const aTime = (a.createdAt as { toDate?: () => Date } | undefined)?.toDate?.()?.getTime?.() || 0;
+        const bTime = (b.createdAt as { toDate?: () => Date } | undefined)?.toDate?.()?.getTime?.() || 0;
+        return bTime - aTime;
+      });
+  }
+};
 
 // ==================== ADMIN ACCESS CONTROL ====================
 
@@ -72,6 +164,11 @@ export const addAdminId = async (newUserId: string): Promise<void> => {
     userIds: ids,
     updatedAt: serverTimestamp(),
   }, { merge: true });
+  await logAdminAction('admin.add', 'เพิ่มผู้ดูแลระบบ', {
+    targetCollection: 'adminConfig',
+    targetId: 'admins',
+    details: { addedUserId: newUserId },
+  });
 };
 
 export const removeAdminId = async (userId: string): Promise<void> => {
@@ -82,6 +179,11 @@ export const removeAdminId = async (userId: string): Promise<void> => {
     userIds: filtered,
     updatedAt: serverTimestamp(),
   }, { merge: true });
+  await logAdminAction('admin.remove', 'ลบผู้ดูแลระบบ', {
+    targetCollection: 'adminConfig',
+    targetId: 'admins',
+    details: { removedUserId: userId },
+  });
 };
 
 // ==================== DASHBOARD STATS ====================
@@ -155,6 +257,11 @@ export const updateDocument = async (
     ...data,
     _adminModifiedAt: serverTimestamp(),
   }, { merge: true });
+  await logAdminAction('document.update', `อัปเดตข้อมูล ${collectionName}/${docId}`, {
+    targetCollection: collectionName,
+    targetId: docId,
+    details: { fields: Object.keys(data) },
+  });
 };
 
 export const deleteDocument = async (
@@ -162,6 +269,10 @@ export const deleteDocument = async (
   docId: string
 ): Promise<void> => {
   await deleteDoc(doc(db, collectionName, docId));
+  await logAdminAction('document.delete', `ลบข้อมูล ${collectionName}/${docId}`, {
+    targetCollection: collectionName,
+    targetId: docId,
+  });
 };
 
 export const createDocument = async (
@@ -174,11 +285,21 @@ export const createDocument = async (
       ...data,
       _adminCreatedAt: serverTimestamp(),
     });
+    await logAdminAction('document.create', `สร้างข้อมูล ${collectionName}/${customId}`, {
+      targetCollection: collectionName,
+      targetId: customId,
+      details: { fields: Object.keys(data) },
+    });
     return customId;
   }
   const colRef = collection(db, collectionName);
   const docRef = doc(colRef);
   await setDoc(docRef, { ...data, _adminCreatedAt: serverTimestamp() });
+  await logAdminAction('document.create', `สร้างข้อมูล ${collectionName}/${docRef.id}`, {
+    targetCollection: collectionName,
+    targetId: docRef.id,
+    details: { fields: Object.keys(data) },
+  });
   return docRef.id;
 };
 
@@ -221,6 +342,11 @@ export const banUser = async (userId: string, reason: string): Promise<void> => 
     banReason: reason,
     bannedAt: serverTimestamp(),
   });
+  await logAdminAction('user.ban', 'แบนผู้ใช้', {
+    targetCollection: 'users',
+    targetId: userId,
+    details: { reason: reason || null },
+  });
 };
 
 export const unbanUser = async (userId: string): Promise<void> => {
@@ -228,6 +354,10 @@ export const unbanUser = async (userId: string): Promise<void> => {
     banned: false,
     banReason: null,
     bannedAt: null,
+  });
+  await logAdminAction('user.unban', 'ปลดแบนผู้ใช้', {
+    targetCollection: 'users',
+    targetId: userId,
   });
 };
 
@@ -282,6 +412,10 @@ export const getStorageFileDetails = async (fullPath: string) => {
 
 export const deleteStorageFile = async (fullPath: string): Promise<void> => {
   await deleteObject(ref(storage, fullPath));
+  await logAdminAction('storage.delete', `ลบไฟล์ ${fullPath}`, {
+    targetCollection: 'storage',
+    targetId: fullPath,
+  });
 };
 
 // ==================== ALL COLLECTIONS ====================
@@ -308,4 +442,5 @@ export const ALL_COLLECTIONS = [
   'userGameStats',
   'fishing_players',
   'adminConfig',
+  'adminAuditLogs',
 ];

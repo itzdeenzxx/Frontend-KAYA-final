@@ -6,6 +6,8 @@ import { cn } from '@/lib/utils';
 import {
   isAdmin,
   initializeAdminConfig,
+  logAdminAction,
+  listAdminAuditLogs,
   getAdminDashboardStats,
   getAllUsers,
   searchUsers,
@@ -24,13 +26,18 @@ import {
   getAdminIds,
   addAdminId,
   removeAdminId,
+  setAdminActorContext,
   ALL_COLLECTIONS,
+  type AdminAuditLogEntry,
   type StorageItem,
 } from '@/lib/adminFirestore';
 import {
   ensureBadgeCatalogSeeded,
+  getBadgeProgressSnapshot,
   getBadgeCatalog,
+  getUserBadges,
   upsertBadgeCatalogItem,
+  type BadgeProgressSnapshot,
   type FirestoreBadgeCatalogItem,
 } from '@/lib/firestore';
 import { toast } from 'sonner';
@@ -66,7 +73,7 @@ import {
   Loader2, ChevronRight, ArrowLeft, Download, Image,
   UserX, UserCheck, Edit3, Save, X, AlertTriangle, FileText, Folder,
   Activity, TrendingUp, Fish, MousePointer, Hammer,
-  LayoutDashboard, Crown, Zap, Award,
+  LayoutDashboard, Crown, Zap, Award, CalendarDays, History,
 } from 'lucide-react';
 
 // ==================== HELPERS ====================
@@ -115,6 +122,69 @@ const prettyFieldLabel = (key: string): string =>
     .replace(/\s+/g, ' ')
     .trim();
 
+const escapeCsvCell = (value: unknown): string => {
+  if (value === null || value === undefined) return '';
+  const raw = typeof value === 'object' ? JSON.stringify(value) : String(value);
+  return `"${raw.replace(/"/g, '""')}"`;
+};
+
+const exportRowsToCsv = (filename: string, rows: Array<Record<string, unknown>>): void => {
+  if (rows.length === 0) {
+    toast.error('ไม่มีข้อมูลสำหรับ export');
+    return;
+  }
+
+  const headers = Array.from(rows.reduce((set, row) => {
+    Object.keys(row).forEach((key) => set.add(key));
+    return set;
+  }, new Set<string>()));
+
+  const csv = [
+    headers.map((header) => escapeCsvCell(header)).join(','),
+    ...rows.map((row) => headers.map((header) => escapeCsvCell(row[header])).join(',')),
+  ].join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(link.href);
+};
+
+const getBadgeProgressValue = (badgeId: string, snapshot: BadgeProgressSnapshot): number => {
+  if (badgeId === 'workout_first' || /^workout_\d+_sessions$/.test(badgeId)) {
+    return snapshot.totalWorkouts;
+  }
+  if (/^workout_\d+_minutes$/.test(badgeId)) {
+    return snapshot.totalWorkoutTime;
+  }
+  if (/^workout_\d+_calories$/.test(badgeId)) {
+    return snapshot.totalCaloriesBurned;
+  }
+  if (/^workout_streak_current_\d+$/.test(badgeId)) {
+    return snapshot.currentWorkoutStreak24h;
+  }
+  if (/^workout_streak_record_\d+$/.test(badgeId)) {
+    return snapshot.bestWorkoutStreak24h;
+  }
+  if (badgeId === 'game_first' || /^game_\d+_sessions$/.test(badgeId)) {
+    return snapshot.totalGamesPlayed;
+  }
+  if (badgeId === 'nutrition_first_log' || /^nutrition_\d+_logs$/.test(badgeId)) {
+    return snapshot.totalNutritionLogs;
+  }
+  if (badgeId === 'nutrition_hydration_goal') {
+    return snapshot.hydrationGoalDays > 0 ? 1 : 0;
+  }
+  if (/^nutrition_hydration_\d+_days$/.test(badgeId)) {
+    return snapshot.hydrationGoalDays;
+  }
+  return 0;
+};
+
 // ==================== MAIN COMPONENT ====================
 export default function AdminKaya() {
   const { lineProfile, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -124,6 +194,13 @@ export default function AdminKaya() {
   const [activeTab, setActiveTab] = useState('dashboard');
 
   useEffect(() => {
+    if (lineProfile?.userId) {
+      setAdminActorContext({
+        userId: lineProfile.userId,
+        displayName: lineProfile.displayName || 'Admin',
+      });
+    }
+
     const checkAccess = async () => {
       if (!lineProfile?.userId) {
         setIsCheckingAdmin(false);
@@ -178,6 +255,7 @@ export default function AdminKaya() {
     { id: 'games', label: 'เกม', icon: Gamepad2 },
     { id: 'storage', label: 'ไฟล์', icon: FolderOpen },
     { id: 'firestore', label: 'ฐานข้อมูล', icon: Database },
+    { id: 'audit', label: 'audit', icon: History },
     { id: 'settings', label: 'ตั้งค่า', icon: Settings },
   ];
 
@@ -242,6 +320,7 @@ export default function AdminKaya() {
           <TabsContent value="games"><GameManagementTab /></TabsContent>
           <TabsContent value="storage"><StorageBrowserTab /></TabsContent>
           <TabsContent value="firestore"><FirestoreExplorerTab /></TabsContent>
+          <TabsContent value="audit"><AuditLogsTab /></TabsContent>
           <TabsContent value="settings"><AdminSettingsTab /></TabsContent>
         </Tabs>
       </div>
@@ -324,7 +403,15 @@ const RecursiveEditor = ({ data, onChange }: { data: Record<string, unknown>; on
 // ==================== TAB 1: DASHBOARD ====================
 function DashboardTab() {
   const [stats, setStats] = useState<Record<string, number> | null>(null);
-  const [userGrowth, setUserGrowth] = useState<Array<{ label: string; count: number }>>([]);
+  const [allUsers, setAllUsers] = useState<Array<{ id: string; data: Record<string, unknown> }>>([]);
+  const [growthDays, setGrowthDays] = useState<7 | 30 | 90>(30);
+  const [useCustomRange, setUseCustomRange] = useState(false);
+  const [customStart, setCustomStart] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 29);
+    return d.toISOString().slice(0, 10);
+  });
+  const [customEnd, setCustomEnd] = useState(() => new Date().toISOString().slice(0, 10));
   const [loading, setLoading] = useState(true);
 
   const loadStats = useCallback(async () => {
@@ -332,38 +419,10 @@ function DashboardTab() {
     try {
       const [s, users] = await Promise.all([
         getAdminDashboardStats(),
-        getAllUsers(500),
+        getAllUsers(2000),
       ]);
       setStats(s);
-
-      const dayBuckets = Array.from({ length: 7 }, (_, index) => {
-        const d = new Date();
-        d.setHours(0, 0, 0, 0);
-        d.setDate(d.getDate() - (6 - index));
-        const key = d.toISOString().slice(0, 10);
-        return {
-          key,
-          label: d.toLocaleDateString('th-TH', { weekday: 'short' }),
-          count: 0,
-        };
-      });
-
-      const bucketMap = new Map(dayBuckets.map((bucket) => [bucket.key, bucket]));
-      users.forEach((user) => {
-        const sourceDate = toDateFromUnknown(user.data.createdAt)
-          || toDateFromUnknown(user.data.firstLoginAt)
-          || toDateFromUnknown(user.data.lastLoginAt);
-        if (!sourceDate) return;
-
-        const normalized = new Date(sourceDate);
-        normalized.setHours(0, 0, 0, 0);
-        const key = normalized.toISOString().slice(0, 10);
-        const bucket = bucketMap.get(key);
-        if (bucket) {
-          bucket.count += 1;
-        }
-      });
-      setUserGrowth(dayBuckets.map(({ label, count }) => ({ label, count })));
+      setAllUsers(users);
     } catch (e: unknown) {
       toast.error('โหลดข้อมูลไม่สำเร็จ');
     } finally {
@@ -384,10 +443,107 @@ function DashboardTab() {
     { label: 'ผู้เล่นตกปลา', key: 'totalFishingPlayers', icon: Fish, gradient: 'from-teal-500 to-cyan-400', bg: 'bg-teal-500/10' },
   ];
 
+  const growthRange = useMemo(() => {
+    if (!useCustomRange) {
+      const end = new Date();
+      end.setHours(0, 0, 0, 0);
+      const start = new Date(end);
+      start.setDate(end.getDate() - (growthDays - 1));
+      return {
+        start,
+        end,
+        valid: true,
+        error: null as string | null,
+      };
+    }
+
+    const start = new Date(customStart);
+    const end = new Date(customEnd);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      return { start, end, valid: false, error: 'วันที่ไม่ถูกต้อง' };
+    }
+    if (end < start) {
+      return { start, end, valid: false, error: 'วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม' };
+    }
+
+    const diffDays = Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+    if (diffDays > 90) {
+      return { start, end, valid: false, error: 'เลือกช่วงเวลาได้ไม่เกิน 90 วัน' };
+    }
+
+    return {
+      start,
+      end,
+      valid: true,
+      error: null as string | null,
+    };
+  }, [useCustomRange, growthDays, customStart, customEnd]);
+
+  const userGrowth = useMemo(() => {
+    if (!growthRange.valid) return [] as Array<{ label: string; count: number; showTick: boolean }>;
+
+    const totalDays = Math.floor((growthRange.end.getTime() - growthRange.start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+    const dayBuckets = Array.from({ length: totalDays }, (_, index) => {
+      const d = new Date(growthRange.start);
+      d.setDate(growthRange.start.getDate() + index);
+      const key = d.toISOString().slice(0, 10);
+      return {
+        key,
+        date: d,
+        count: 0,
+      };
+    });
+
+    const bucketMap = new Map(dayBuckets.map((bucket) => [bucket.key, bucket]));
+    allUsers.forEach((user) => {
+      const sourceDate = toDateFromUnknown(user.data.createdAt)
+        || toDateFromUnknown(user.data.firstLoginAt)
+        || toDateFromUnknown(user.data.lastLoginAt);
+      if (!sourceDate) return;
+
+      const normalized = new Date(sourceDate);
+      normalized.setHours(0, 0, 0, 0);
+      const key = normalized.toISOString().slice(0, 10);
+      const bucket = bucketMap.get(key);
+      if (bucket) {
+        bucket.count += 1;
+      }
+    });
+
+    return dayBuckets.map((bucket, index) => {
+      const label = totalDays <= 14
+        ? bucket.date.toLocaleDateString('th-TH', { weekday: 'short' })
+        : bucket.date.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' });
+      const showTick = totalDays <= 10 || index === 0 || index === dayBuckets.length - 1 || index % Math.ceil(totalDays / 6) === 0;
+      return {
+        label,
+        count: bucket.count,
+        showTick,
+      };
+    });
+  }, [allUsers, growthRange]);
+
   const maxGrowth = useMemo(() => {
     if (!userGrowth.length) return 1;
     return Math.max(...userGrowth.map((point) => point.count), 1);
   }, [userGrowth]);
+
+  const linePoints = useMemo(() => {
+    if (userGrowth.length === 0) return '';
+    if (userGrowth.length === 1) {
+      const y = 44 - (userGrowth[0].count / maxGrowth) * 40;
+      return `0,${Math.max(2, y)}`;
+    }
+
+    return userGrowth.map((point, index) => {
+      const x = (index / (userGrowth.length - 1)) * 100;
+      const y = 44 - (point.count / maxGrowth) * 40;
+      return `${x},${Math.max(2, y)}`;
+    }).join(' ');
+  }, [userGrowth, maxGrowth]);
 
   return (
     <div>
@@ -432,31 +588,113 @@ function DashboardTab() {
       <GlassCard className="mt-5 p-4 md:p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-base md:text-lg font-semibold text-white">แนวโน้มผู้ใช้เพิ่มขึ้น (7 วันล่าสุด)</h3>
+            <h3 className="text-base md:text-lg font-semibold text-white">แนวโน้มผู้ใช้เพิ่มขึ้น (กราฟเส้น)</h3>
             <p className="text-sm text-gray-400">อ้างอิงจาก createdAt / firstLoginAt / lastLoginAt</p>
           </div>
-          <div className="text-sm text-gray-400">รวม {userGrowth.reduce((sum, point) => sum + point.count, 0)} คน</div>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <div className="inline-flex rounded-lg border border-white/[0.08] bg-white/[0.03] p-0.5">
+              {[7, 30, 90].map((days) => (
+                <button
+                  key={days}
+                  onClick={() => {
+                    setUseCustomRange(false);
+                    setGrowthDays(days as 7 | 30 | 90);
+                  }}
+                  className={cn(
+                    'px-2.5 py-1.5 rounded-md text-xs transition-colors',
+                    !useCustomRange && growthDays === days
+                      ? 'bg-orange-500/20 text-orange-300 border border-orange-500/20'
+                      : 'text-gray-400 hover:text-gray-200 hover:bg-white/[0.05]'
+                  )}
+                >
+                  {days} วัน
+                </button>
+              ))}
+              <button
+                onClick={() => setUseCustomRange(true)}
+                className={cn(
+                  'px-2.5 py-1.5 rounded-md text-xs transition-colors flex items-center gap-1',
+                  useCustomRange
+                    ? 'bg-orange-500/20 text-orange-300 border border-orange-500/20'
+                    : 'text-gray-400 hover:text-gray-200 hover:bg-white/[0.05]'
+                )}
+              >
+                <CalendarDays className="w-3 h-3" />กำหนดเอง
+              </button>
+            </div>
+            <div className="text-sm text-gray-400">รวม {userGrowth.reduce((sum, point) => sum + point.count, 0)} คน</div>
+          </div>
         </div>
+
+        {useCustomRange && (
+          <div className="mb-3 flex flex-wrap items-end gap-2">
+            <div>
+              <p className="text-xs text-gray-500 mb-1">เริ่ม</p>
+              <Input
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                className="h-9 text-sm bg-white/[0.03] border-white/[0.08] text-gray-200"
+              />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 mb-1">สิ้นสุด</p>
+              <Input
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                className="h-9 text-sm bg-white/[0.03] border-white/[0.08] text-gray-200"
+              />
+            </div>
+            {growthRange.error && <p className="text-xs text-red-400 pb-2">{growthRange.error}</p>}
+          </div>
+        )}
 
         {loading ? (
           <div className="h-36 rounded-xl bg-white/[0.03] animate-pulse" />
         ) : (
-          <div className="grid grid-cols-7 gap-2 items-end h-44">
-            {userGrowth.map((point) => {
-              const heightPercent = Math.max((point.count / maxGrowth) * 100, point.count > 0 ? 14 : 6);
-              return (
-                <div key={point.label} className="flex flex-col items-center justify-end gap-2 h-full">
-                  <span className="text-sm font-semibold text-orange-300">{point.count}</span>
-                  <div className="w-full max-w-[48px] rounded-lg bg-white/[0.04] border border-white/[0.08] h-full flex items-end p-1">
-                    <div
-                      className="w-full rounded-md bg-gradient-to-t from-orange-600 to-amber-400"
-                      style={{ height: `${heightPercent}%` }}
-                    />
-                  </div>
-                  <span className="text-xs text-gray-400">{point.label}</span>
-                </div>
-              );
-            })}
+          <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 md:p-4">
+            <svg viewBox="0 0 100 48" className="w-full h-48 md:h-56">
+              <defs>
+                <linearGradient id="growthLine" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#fb923c" />
+                  <stop offset="100%" stopColor="#f97316" />
+                </linearGradient>
+              </defs>
+              <line x1="0" y1="44" x2="100" y2="44" stroke="rgba(255,255,255,0.14)" strokeWidth="0.5" />
+              <polyline
+                points={linePoints}
+                fill="none"
+                stroke="url(#growthLine)"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              {userGrowth.map((point, index) => {
+                const x = userGrowth.length <= 1 ? 0 : (index / (userGrowth.length - 1)) * 100;
+                const y = Math.max(2, 44 - (point.count / maxGrowth) * 40);
+                return (
+                  <g key={`${point.label}-${index}`}>
+                    <circle cx={x} cy={y} r="1.1" fill="#fb923c" />
+                    {point.count > 0 && (
+                      <text x={x} y={Math.max(3, y - 2)} fill="#fdba74" fontSize="3" textAnchor="middle">
+                        {point.count}
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
+            </svg>
+            <div className="mt-2 grid gap-2" style={{ gridTemplateColumns: `repeat(${userGrowth.length}, minmax(0, 1fr))` }}>
+              {userGrowth.map((point, index) => (
+                <span
+                  key={`tick-${point.label}-${index}`}
+                  className={cn('text-center text-[10px] text-gray-500 truncate', !point.showTick && 'opacity-0')}
+                >
+                  {point.label}
+                </span>
+              ))}
+            </div>
           </div>
         )}
       </GlassCard>
@@ -570,6 +808,21 @@ function UserManagementTab() {
     }
   };
 
+  const handleExportUsersCsv = () => {
+    const rows = users.map((user) => ({
+      userId: user.id,
+      displayName: String(user.data.displayName || ''),
+      nickname: String(user.data.nickname || ''),
+      tier: String(user.data.tier || ''),
+      points: Number(user.data.points || 0),
+      streakDays: Number(user.data.streakDays || 0),
+      banned: user.data.banned === true ? 'true' : 'false',
+      lastLoginAt: formatTimestamp(user.data.lastLoginAt),
+      createdAt: formatTimestamp(user.data.createdAt),
+    }));
+    exportRowsToCsv(`kaya-users-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+  };
+
   const tierColors: Record<string, string> = {
     bronze: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
     silver: 'bg-gray-400/10 text-gray-300 border-gray-400/20',
@@ -585,9 +838,14 @@ function UserManagementTab() {
         title="จัดการผู้ใช้"
         subtitle={`ทั้งหมด ${users.length} คน`}
         action={
-          <Button variant="ghost" size="sm" onClick={loadUsers} disabled={loading} className="text-gray-400 hover:text-white hover:bg-white/[0.06] h-8">
-            <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleExportUsersCsv} className="h-8 text-xs border-white/[0.1] text-gray-300 hover:text-white hover:bg-white/[0.06]">
+              <Download className="w-3.5 h-3.5 mr-1" />CSV
+            </Button>
+            <Button variant="ghost" size="sm" onClick={loadUsers} disabled={loading} className="text-gray-400 hover:text-white hover:bg-white/[0.06] h-8">
+              <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+            </Button>
+          </div>
         }
       />
 
@@ -779,6 +1037,9 @@ function BadgeManagementTab() {
   const [searchTerm, setSearchTerm] = useState('');
   const [saving, setSaving] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [disableTarget, setDisableTarget] = useState<FirestoreBadgeCatalogItem | null>(null);
+  const [disableImpact, setDisableImpact] = useState<{ sampleSize: number; eligibleNow: number; alreadyEarned: number; wouldBeBlocked: number } | null>(null);
+  const [loadingDisableImpact, setLoadingDisableImpact] = useState(false);
   const [newBadge, setNewBadge] = useState({
     badgeId: '',
     nameTh: '',
@@ -788,6 +1049,7 @@ function BadgeManagementTab() {
     target: 1,
     description: '',
     requirement: '',
+    active: true,
   });
 
   const loadBadges = useCallback(async () => {
@@ -830,6 +1092,16 @@ function BadgeManagementTab() {
         requirement: selected.requirement,
         category: selected.category,
         target: selected.target,
+        active: selected.active !== false,
+      });
+      await logAdminAction('badge.update', 'แก้ไขแบดจ์', {
+        targetCollection: 'badgeCatalog',
+        targetId: selected.badgeId,
+        details: {
+          active: selected.active !== false,
+          category: selected.category,
+          target: selected.target,
+        },
       });
       toast.success('บันทึก badge สำเร็จ');
       setSelected(null);
@@ -869,6 +1141,16 @@ function BadgeManagementTab() {
         requirement: newBadge.requirement,
         category: newBadge.category,
         target: Number(newBadge.target) || 1,
+        active: newBadge.active,
+      });
+      await logAdminAction('badge.create', 'สร้างแบดจ์ใหม่', {
+        targetCollection: 'badgeCatalog',
+        targetId: badgeId,
+        details: {
+          active: newBadge.active,
+          category: newBadge.category,
+          target: Number(newBadge.target) || 1,
+        },
       });
       toast.success('สร้างแบดจ์ใหม่สำเร็จ');
       setShowCreateDialog(false);
@@ -881,10 +1163,137 @@ function BadgeManagementTab() {
         target: 1,
         description: '',
         requirement: '',
+        active: true,
       });
       await loadBadges();
     } catch (error) {
       toast.error('สร้างแบดจ์ใหม่ไม่สำเร็จ');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleExportBadgesCsv = () => {
+    const rows = badges.map((badge) => ({
+      badgeId: badge.badgeId,
+      nameTh: badge.nameTh,
+      nameEn: badge.nameEn,
+      category: badge.category,
+      target: badge.target,
+      active: badge.active === false ? 'false' : 'true',
+      requirement: badge.requirement,
+      description: badge.description,
+    }));
+    exportRowsToCsv(`kaya-badges-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+  };
+
+  const estimateDisableImpact = async (badge: FirestoreBadgeCatalogItem) => {
+    setLoadingDisableImpact(true);
+    setDisableImpact(null);
+    try {
+      const sampleUsers = await getAllUsers(300);
+      const batchSize = 12;
+      let eligibleNow = 0;
+      let alreadyEarned = 0;
+      let wouldBeBlocked = 0;
+
+      for (let i = 0; i < sampleUsers.length; i += batchSize) {
+        const batch = sampleUsers.slice(i, i + batchSize);
+        const batchResult = await Promise.all(batch.map(async (user) => {
+          const [snapshot, earned] = await Promise.all([
+            getBadgeProgressSnapshot(user.id),
+            getUserBadges(user.id),
+          ]);
+          const target = Number(badge.target) || 1;
+          const progress = getBadgeProgressValue(badge.badgeId, snapshot);
+          const meetsTarget = progress >= target;
+          const hasEarned = earned.some((item) => item.badgeId === badge.badgeId);
+          return { meetsTarget, hasEarned };
+        }));
+
+        batchResult.forEach((item) => {
+          if (!item.meetsTarget) return;
+          eligibleNow += 1;
+          if (item.hasEarned) {
+            alreadyEarned += 1;
+          } else {
+            wouldBeBlocked += 1;
+          }
+        });
+      }
+
+      setDisableImpact({
+        sampleSize: sampleUsers.length,
+        eligibleNow,
+        alreadyEarned,
+        wouldBeBlocked,
+      });
+    } catch {
+      toast.error('คำนวณผลกระทบไม่สำเร็จ');
+    } finally {
+      setLoadingDisableImpact(false);
+    }
+  };
+
+  const confirmDisableBadge = async () => {
+    if (!disableTarget) return;
+    try {
+      setSaving(true);
+      await upsertBadgeCatalogItem(disableTarget.badgeId, {
+        badgeId: disableTarget.badgeId,
+        nameEn: disableTarget.nameEn,
+        nameTh: disableTarget.nameTh,
+        description: disableTarget.description,
+        icon: disableTarget.icon,
+        requirement: disableTarget.requirement,
+        category: disableTarget.category,
+        target: Number(disableTarget.target) || 1,
+        active: false,
+      });
+      await logAdminAction('badge.disable', 'ปิดใช้งานแบดจ์', {
+        targetCollection: 'badgeCatalog',
+        targetId: disableTarget.badgeId,
+        details: disableImpact || undefined,
+      });
+      toast.success('ปิดใช้งานแบดจ์แล้ว');
+      setDisableTarget(null);
+      setDisableImpact(null);
+      await loadBadges();
+    } catch {
+      toast.error('ปิดใช้งานแบดจ์ไม่สำเร็จ');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleToggleActive = async (badge: FirestoreBadgeCatalogItem) => {
+    if (badge.active !== false) {
+      setDisableTarget(badge);
+      estimateDisableImpact(badge);
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await upsertBadgeCatalogItem(badge.badgeId, {
+        badgeId: badge.badgeId,
+        nameEn: badge.nameEn,
+        nameTh: badge.nameTh,
+        description: badge.description,
+        icon: badge.icon,
+        requirement: badge.requirement,
+        category: badge.category,
+        target: Number(badge.target) || 1,
+        active: true,
+      });
+      await logAdminAction('badge.enable', 'เปิดใช้งานแบดจ์', {
+        targetCollection: 'badgeCatalog',
+        targetId: badge.badgeId,
+      });
+      toast.success('เปิดใช้งานแบดจ์แล้ว');
+      await loadBadges();
+    } catch {
+      toast.error('เปลี่ยนสถานะแบดจ์ไม่สำเร็จ');
     } finally {
       setSaving(false);
     }
@@ -897,6 +1306,9 @@ function BadgeManagementTab() {
         subtitle={`ทั้งหมด ${badges.length} รายการ`}
         action={
           <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={handleExportBadgesCsv} className="h-9 px-3 text-xs border-white/[0.1] text-gray-300 hover:text-white hover:bg-white/[0.06]">
+              <Download className="w-3.5 h-3.5 mr-1" />CSV
+            </Button>
             <Button size="sm" onClick={() => setShowCreateDialog(true)} className="bg-orange-500 hover:bg-orange-600 text-white h-9 px-4 text-sm rounded-lg">
               <Plus className="w-4 h-4 mr-1" />สร้างใหม่
             </Button>
@@ -935,12 +1347,30 @@ function BadgeManagementTab() {
                   <div className="flex items-center gap-2 mb-0.5">
                     <p className="font-semibold text-base text-white truncate">{badge.nameTh}</p>
                     <span className="text-xs px-2 py-0.5 rounded-full border bg-white/[0.03] border-white/[0.08] text-gray-300">{badge.category}</span>
+                    <span
+                      className={cn(
+                        'text-xs px-2 py-0.5 rounded-full border',
+                        badge.active === false
+                          ? 'bg-red-500/10 border-red-500/20 text-red-300'
+                          : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+                      )}
+                    >
+                      {badge.active === false ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
+                    </span>
                   </div>
                   <p className="text-sm text-gray-400 truncate">{badge.badgeId} • target {badge.target}</p>
                 </div>
-                <Button variant="ghost" size="sm" className="h-9 w-9 p-0 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg" onClick={() => setSelected(badge)}>
-                  <Edit3 className="w-4 h-4" />
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={badge.active !== false}
+                    disabled={saving}
+                    onCheckedChange={() => handleToggleActive(badge)}
+                    className="data-[state=checked]:bg-emerald-500"
+                  />
+                  <Button variant="ghost" size="sm" className="h-9 w-9 p-0 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg" onClick={() => setSelected(badge)}>
+                    <Edit3 className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
             </GlassCard>
           ))}
@@ -995,6 +1425,10 @@ function BadgeManagementTab() {
             <div>
               <label className="text-sm font-medium text-gray-300 mb-1 block">Requirement</label>
               <Textarea value={newBadge.requirement} onChange={(e) => setNewBadge({ ...newBadge, requirement: e.target.value })} className="bg-white/[0.03] border-white/[0.08] text-gray-200 min-h-[72px]" />
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch checked={newBadge.active} onCheckedChange={(value) => setNewBadge({ ...newBadge, active: value })} className="data-[state=checked]:bg-emerald-500" />
+              <span className="text-sm text-gray-300">เปิดใช้งานทันที</span>
             </div>
           </div>
           <DialogFooter>
@@ -1053,6 +1487,10 @@ function BadgeManagementTab() {
                 <label className="text-xs font-medium text-gray-400 mb-1 block">Requirement</label>
                 <Textarea value={selected.requirement} onChange={(e) => setSelected({ ...selected, requirement: e.target.value })} className="bg-white/[0.03] border-white/[0.08] text-gray-200 min-h-[72px]" />
               </div>
+              <div className="flex items-center gap-2">
+                <Switch checked={selected.active !== false} onCheckedChange={(value) => setSelected({ ...selected, active: value })} className="data-[state=checked]:bg-emerald-500" />
+                <span className="text-sm text-gray-300">เปิดใช้งานแบดจ์</span>
+              </div>
             </div>
           )}
           <DialogFooter>
@@ -1064,6 +1502,53 @@ function BadgeManagementTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!disableTarget} onOpenChange={(open) => { if (!open) { setDisableTarget(null); setDisableImpact(null); } }}>
+        <AlertDialogContent className="bg-[#1a1d2e] border-white/[0.08]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white">ยืนยันปิดใช้งานแบดจ์</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-400">
+              แบดจ์ {disableTarget?.nameTh || disableTarget?.badgeId} จะไม่ถูกแจกให้ผู้ใช้ใหม่หลังจากนี้
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3">
+            {loadingDisableImpact ? (
+              <div className="flex items-center gap-2 text-sm text-gray-300">
+                <Loader2 className="w-4 h-4 animate-spin text-orange-400" />กำลังประเมินผลกระทบ...
+              </div>
+            ) : disableImpact ? (
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] p-2">
+                  <p className="text-gray-500">จำนวนตัวอย่าง</p>
+                  <p className="text-white font-semibold">{disableImpact.sampleSize.toLocaleString()} คน</p>
+                </div>
+                <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] p-2">
+                  <p className="text-gray-500">เข้าเงื่อนไขตอนนี้</p>
+                  <p className="text-orange-300 font-semibold">{disableImpact.eligibleNow.toLocaleString()} คน</p>
+                </div>
+                <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] p-2">
+                  <p className="text-gray-500">ได้แบดจ์แล้ว</p>
+                  <p className="text-emerald-300 font-semibold">{disableImpact.alreadyEarned.toLocaleString()} คน</p>
+                </div>
+                <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] p-2">
+                  <p className="text-gray-500">อาจถูกบล็อกหลังปิด</p>
+                  <p className="text-red-300 font-semibold">{disableImpact.wouldBeBlocked.toLocaleString()} คน</p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500">ไม่สามารถประเมินผลกระทบได้</p>
+            )}
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-white/[0.05] border-white/[0.08] text-gray-300 hover:bg-white/[0.1] hover:text-white">ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDisableBadge} className="bg-red-600 hover:bg-red-700 text-white" disabled={saving || loadingDisableImpact}>
+              ปิดใช้งานแบดจ์
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -1746,11 +2231,26 @@ function StorageBrowserTab() {
     { label: 'สแกนอาหาร', path: 'nutrition-scans', icon: Image },
   ];
 
+  const handleExportStorageCsv = () => {
+    const rows = items.map((item) => ({
+      currentPath,
+      name: item.name,
+      fullPath: item.fullPath,
+      type: item.isFolder ? 'folder' : 'file',
+    }));
+    exportRowsToCsv(`kaya-storage-${(currentPath || 'root').replace(/[\\/]/g, '-')}-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+  };
+
   return (
     <div>
       <SectionHeader
         title="จัดการไฟล์"
         subtitle="Firebase Cloud Storage"
+        action={
+          <Button variant="outline" size="sm" onClick={handleExportStorageCsv} className="h-8 text-xs border-white/[0.1] text-gray-300 hover:text-white hover:bg-white/[0.06]">
+            <Download className="w-3.5 h-3.5 mr-1" />CSV
+          </Button>
+        }
       />
 
       {/* Quick Nav */}
@@ -1866,8 +2366,21 @@ function StorageBrowserTab() {
               {String(filePreview.metadata?.contentType || '').startsWith('audio/') && (
                 <audio controls src={filePreview.url} className="w-full" />
               )}
-              <div className="p-3 rounded-lg overflow-auto max-h-48 bg-white/[0.03] border border-white/[0.06]">
-                  <DynamicViewer data={filePreview.metadata} />
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                {Object.entries(filePreview.metadata).slice(0, 6).map(([key, value]) => (
+                  <div key={key} className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-2.5 py-2">
+                    <p className="text-gray-500">{prettyFieldLabel(key)}</p>
+                    <p className="text-gray-200 font-medium truncate">{formatReadableValue(value)}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="p-3 rounded-lg overflow-auto max-h-64 bg-white/[0.03] border border-white/[0.06]">
+                <p className="text-xs text-gray-400 mb-2">ข้อมูลไฟล์ (JSON)</p>
+                <textarea
+                  readOnly
+                  className="w-full min-h-[180px] resize-y font-mono text-sm leading-6 p-3 bg-black/35 border border-white/[0.08] rounded-lg text-gray-200 outline-none"
+                  value={JSON.stringify(filePreview.metadata, null, 2)}
+                />
               </div>
               <div className="flex gap-2">
                 <a href={filePreview.url} target="_blank" rel="noreferrer">
@@ -1985,6 +2498,16 @@ function FirestoreExplorerTab() {
     }
   };
 
+  const handleExportFirestoreCsv = () => {
+    const rows = documents.map((item) => ({
+      collection: selectedCollection,
+      docId: item.id,
+      fieldsCount: Object.keys(item.data || {}).length,
+      data: JSON.stringify(item.data || {}),
+    }));
+    exportRowsToCsv(`kaya-firestore-${selectedCollection}-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+  };
+
   return (
     <div>
       <SectionHeader
@@ -1992,6 +2515,9 @@ function FirestoreExplorerTab() {
         subtitle="เรียกดูและแก้ไขข้อมูล"
         action={
           <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={handleExportFirestoreCsv} className="h-8 px-3 text-xs border-white/[0.1] text-gray-300 hover:text-white hover:bg-white/[0.06]">
+              <Download className="w-3.5 h-3.5 mr-1" />CSV
+            </Button>
             <Button size="sm" onClick={() => setShowCreateDialog(true)} className="bg-orange-500 hover:bg-orange-600 text-white h-8 px-3 text-xs rounded-lg">
               <Plus className="w-3.5 h-3.5 mr-1" />เอกสารใหม่
             </Button>
@@ -2170,6 +2696,194 @@ function FirestoreExplorerTab() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+function AuditLogsTab() {
+  const [logs, setLogs] = useState<AdminAuditLogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionFilter, setActionFilter] = useState('all');
+  const [actorFilter, setActorFilter] = useState('');
+  const [timeFilter, setTimeFilter] = useState<'all' | 'today' | '7d' | '30d' | 'custom'>('all');
+  const [customStart, setCustomStart] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6);
+    return d.toISOString().slice(0, 10);
+  });
+  const [customEnd, setCustomEnd] = useState(() => new Date().toISOString().slice(0, 10));
+
+  const loadLogs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await listAdminAuditLogs(300);
+      setLogs(data);
+    } catch {
+      toast.error('โหลด audit log ไม่สำเร็จ');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadLogs();
+  }, [loadLogs]);
+
+  const actions = useMemo(() => Array.from(new Set(logs.map((item) => item.action).filter(Boolean))), [logs]);
+
+  const filteredLogs = useMemo(() => {
+    const now = new Date();
+    const startOfToday = new Date(now);
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const customStartDate = new Date(customStart);
+    customStartDate.setHours(0, 0, 0, 0);
+    const customEndDate = new Date(customEnd);
+    customEndDate.setHours(23, 59, 59, 999);
+
+    return logs.filter((item) => {
+      if (actionFilter !== 'all' && item.action !== actionFilter) return false;
+      const q = actorFilter.trim().toLowerCase();
+      const textMatch = !q || (
+        String(item.actorName || '').toLowerCase().includes(q)
+        || String(item.actorUserId || '').toLowerCase().includes(q)
+        || String(item.summary || '').toLowerCase().includes(q)
+      );
+
+      const createdDate = toDateFromUnknown(item.createdAt);
+      let timeMatch = true;
+      if (timeFilter === 'today') {
+        timeMatch = !!createdDate && createdDate >= startOfToday;
+      } else if (timeFilter === '7d') {
+        const from = new Date(startOfToday);
+        from.setDate(from.getDate() - 6);
+        timeMatch = !!createdDate && createdDate >= from;
+      } else if (timeFilter === '30d') {
+        const from = new Date(startOfToday);
+        from.setDate(from.getDate() - 29);
+        timeMatch = !!createdDate && createdDate >= from;
+      } else if (timeFilter === 'custom') {
+        if (Number.isNaN(customStartDate.getTime()) || Number.isNaN(customEndDate.getTime()) || customEndDate < customStartDate) {
+          timeMatch = false;
+        } else {
+          timeMatch = !!createdDate && createdDate >= customStartDate && createdDate <= customEndDate;
+        }
+      }
+
+      return textMatch && timeMatch;
+    });
+  }, [logs, actionFilter, actorFilter, timeFilter, customStart, customEnd]);
+
+  const timeFilterInvalid = useMemo(() => {
+    if (timeFilter !== 'custom') return false;
+    const start = new Date(customStart);
+    const end = new Date(customEnd);
+    return Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start;
+  }, [timeFilter, customStart, customEnd]);
+
+  return (
+    <div>
+      <SectionHeader
+        title="Audit Log"
+        subtitle={`บันทึกการแก้ไขล่าสุด ${filteredLogs.length} รายการ`}
+        action={
+          <Button variant="ghost" size="sm" onClick={loadLogs} disabled={loading} className="text-gray-400 hover:text-white hover:bg-white/[0.06] h-8">
+            <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+          </Button>
+        }
+      />
+
+      <div className="grid md:grid-cols-3 gap-2 mb-3">
+        <Select value={actionFilter} onValueChange={setActionFilter}>
+          <SelectTrigger className="bg-white/[0.03] border-white/[0.08] text-gray-200">
+            <SelectValue placeholder="เลือก action" />
+          </SelectTrigger>
+          <SelectContent className="bg-[#1a1d2e] border-white/[0.08]">
+            <SelectItem value="all" className="text-gray-200">ทั้งหมด</SelectItem>
+            {actions.map((action) => (
+              <SelectItem key={action} value={action} className="text-gray-200">{action}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          value={actorFilter}
+          onChange={(e) => setActorFilter(e.target.value)}
+          placeholder="ค้นหาตามชื่อแอดมินหรือ userId"
+          className="bg-white/[0.03] border-white/[0.08] text-gray-200 placeholder:text-gray-600"
+        />
+        <Select value={timeFilter} onValueChange={(value: 'all' | 'today' | '7d' | '30d' | 'custom') => setTimeFilter(value)}>
+          <SelectTrigger className="bg-white/[0.03] border-white/[0.08] text-gray-200">
+            <SelectValue placeholder="ช่วงเวลา" />
+          </SelectTrigger>
+          <SelectContent className="bg-[#1a1d2e] border-white/[0.08]">
+            <SelectItem value="all" className="text-gray-200">ทุกช่วงเวลา</SelectItem>
+            <SelectItem value="today" className="text-gray-200">วันนี้</SelectItem>
+            <SelectItem value="7d" className="text-gray-200">7 วันล่าสุด</SelectItem>
+            <SelectItem value="30d" className="text-gray-200">30 วันล่าสุด</SelectItem>
+            <SelectItem value="custom" className="text-gray-200">กำหนดเอง</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {timeFilter === 'custom' && (
+        <div className="flex flex-wrap items-end gap-2 mb-4">
+          <div>
+            <p className="text-xs text-gray-500 mb-1">เริ่ม</p>
+            <Input
+              type="date"
+              value={customStart}
+              onChange={(e) => setCustomStart(e.target.value)}
+              className="h-9 text-sm bg-white/[0.03] border-white/[0.08] text-gray-200"
+            />
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 mb-1">สิ้นสุด</p>
+            <Input
+              type="date"
+              value={customEnd}
+              onChange={(e) => setCustomEnd(e.target.value)}
+              className="h-9 text-sm bg-white/[0.03] border-white/[0.08] text-gray-200"
+            />
+          </div>
+          {timeFilterInvalid && <p className="text-xs text-red-400 pb-2">ช่วงวันที่ไม่ถูกต้อง</p>}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-orange-400" /></div>
+      ) : filteredLogs.length === 0 ? (
+        <GlassCard className="p-8 text-center">
+          <History className="w-10 h-10 text-gray-600 mx-auto mb-3" />
+          <p className="text-sm text-gray-500">ยังไม่มีบันทึกที่ตรงกับเงื่อนไข</p>
+        </GlassCard>
+      ) : (
+        <div className="space-y-2">
+          {filteredLogs.map((item) => (
+            <GlassCard key={item.id} className="p-3 border-white/[0.08]">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-300 border border-orange-500/20">{item.action}</span>
+                    <span className="text-xs text-gray-500">{formatTimestamp(item.createdAt)}</span>
+                  </div>
+                  <p className="text-sm text-white mt-1">{item.summary}</p>
+                  <p className="text-xs text-gray-500 mt-1">โดย {item.actorName || '-'} ({item.actorUserId || '-'})</p>
+                  {(item.targetCollection || item.targetId) && (
+                    <p className="text-xs text-gray-500 mt-1">เป้าหมาย: {item.targetCollection || '-'} / {item.targetId || '-'}</p>
+                  )}
+                </div>
+                {item.details && (
+                  <div className="max-w-[360px] w-full hidden md:block">
+                    <pre className="text-[10px] font-mono leading-5 p-2 rounded-lg bg-black/30 border border-white/[0.08] text-gray-400 overflow-x-auto">
+                      {JSON.stringify(item.details, null, 2)}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            </GlassCard>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
