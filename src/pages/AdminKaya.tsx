@@ -776,15 +776,26 @@ function DashboardTab() {
                 );
               })}
             </svg>
-            <div className="mt-2 grid gap-2" style={{ gridTemplateColumns: `repeat(${userGrowth.length}, minmax(0, 1fr))` }}>
-              {userGrowth.map((point, index) => (
-                <span
-                  key={`tick-${point.label}-${index}`}
-                  className={cn('text-center text-xs md:text-sm text-gray-400 whitespace-nowrap', !point.showTick && 'opacity-0')}
-                >
-                  {point.label}
-                </span>
-              ))}
+            <div className="mt-3 h-6 relative">
+              {userGrowth.map((point, index) => {
+                if (!point.showTick) return null;
+                const x = userGrowth.length <= 1 ? 0 : (index / (userGrowth.length - 1)) * 100;
+                const edgeClass = index === 0
+                  ? 'translate-x-0'
+                  : index === userGrowth.length - 1
+                    ? '-translate-x-full'
+                    : '-translate-x-1/2';
+
+                return (
+                  <span
+                    key={`tick-${point.label}-${index}`}
+                    className={cn('absolute top-0 text-xs md:text-sm text-gray-400 whitespace-nowrap', edgeClass)}
+                    style={{ left: `${x}%` }}
+                  >
+                    {point.label}
+                  </span>
+                );
+              })}
             </div>
           </div>
         )}
