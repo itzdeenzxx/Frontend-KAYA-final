@@ -579,19 +579,22 @@ function DashboardTab() {
     return Math.max(...userGrowth.map((point) => getGrowthValue(point)), 1);
   }, [userGrowth, getGrowthValue]);
 
+  const chartBaselineY = 40;
+  const chartTopPadding = 34;
+
   const linePoints = useMemo(() => {
     if (userGrowth.length === 0) return '';
     if (userGrowth.length === 1) {
-      const y = 44 - (getGrowthValue(userGrowth[0]) / maxGrowth) * 40;
+      const y = chartBaselineY - (getGrowthValue(userGrowth[0]) / maxGrowth) * chartTopPadding;
       return `0,${Math.max(2, y)}`;
     }
 
     return userGrowth.map((point, index) => {
       const x = (index / (userGrowth.length - 1)) * 100;
-      const y = 44 - (getGrowthValue(point) / maxGrowth) * 40;
+      const y = chartBaselineY - (getGrowthValue(point) / maxGrowth) * chartTopPadding;
       return `${x},${Math.max(2, y)}`;
     }).join(' ');
-  }, [userGrowth, maxGrowth, getGrowthValue]);
+  }, [userGrowth, maxGrowth, getGrowthValue, chartBaselineY, chartTopPadding]);
 
   return (
     <div>
@@ -740,14 +743,14 @@ function DashboardTab() {
           <div className="h-36 rounded-xl bg-white/[0.03] animate-pulse" />
         ) : (
           <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 md:p-4">
-            <svg viewBox="0 0 100 48" className="w-full h-48 md:h-56">
+            <svg viewBox="0 0 100 52" className="w-full h-48 md:h-56">
               <defs>
                 <linearGradient id="growthLine" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#fb923c" />
                   <stop offset="100%" stopColor="#f97316" />
                 </linearGradient>
               </defs>
-              <line x1="0" y1="44" x2="100" y2="44" stroke="rgba(255,255,255,0.14)" strokeWidth="0.5" />
+              <line x1="0" y1={chartBaselineY} x2="100" y2={chartBaselineY} stroke="rgba(255,255,255,0.14)" strokeWidth="0.5" />
               <polyline
                 points={linePoints}
                 fill="none"
@@ -759,7 +762,7 @@ function DashboardTab() {
               {userGrowth.map((point, index) => {
                 const x = userGrowth.length <= 1 ? 0 : (index / (userGrowth.length - 1)) * 100;
                 const pointValue = getGrowthValue(point);
-                const y = Math.max(2, 44 - (pointValue / maxGrowth) * 40);
+                const y = Math.max(2, chartBaselineY - (pointValue / maxGrowth) * chartTopPadding);
                 const isEdge = index === 0 || index === userGrowth.length - 1;
                 const prevValue = index > 0 ? getGrowthValue(userGrowth[index - 1]) : pointValue;
                 const changedFromPrevious = index > 0 && pointValue !== prevValue;
@@ -775,28 +778,20 @@ function DashboardTab() {
                   </g>
                 );
               })}
-            </svg>
-            <div className="mt-3 h-6 relative">
               {userGrowth.map((point, index) => {
                 if (!point.showTick) return null;
                 const x = userGrowth.length <= 1 ? 0 : (index / (userGrowth.length - 1)) * 100;
-                const edgeClass = index === 0
-                  ? 'translate-x-0'
-                  : index === userGrowth.length - 1
-                    ? '-translate-x-full'
-                    : '-translate-x-1/2';
-
+                const anchor = index === 0 ? 'start' : index === userGrowth.length - 1 ? 'end' : 'middle';
                 return (
-                  <span
-                    key={`tick-${point.label}-${index}`}
-                    className={cn('absolute top-0 text-xs md:text-sm text-gray-400 whitespace-nowrap', edgeClass)}
-                    style={{ left: `${x}%` }}
-                  >
-                    {point.label}
-                  </span>
+                  <g key={`axis-${point.label}-${index}`}>
+                    <line x1={x} y1={chartBaselineY} x2={x} y2={chartBaselineY + 1.8} stroke="rgba(148,163,184,0.4)" strokeWidth="0.4" />
+                    <text x={x} y={48} textAnchor={anchor} fill="#94a3b8" fontSize="2.8">
+                      {point.label}
+                    </text>
+                  </g>
                 );
               })}
-            </div>
+            </svg>
           </div>
         )}
       </GlassCard>
