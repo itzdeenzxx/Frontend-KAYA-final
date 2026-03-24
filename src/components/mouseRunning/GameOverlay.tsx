@@ -201,6 +201,24 @@ export function GameOverlay({
                 How to Play
               </div>
             </button>
+
+            {/* Exit Button */}
+            {onBack && (
+              <button onClick={onBack}
+                className="group relative w-full py-4 rounded-2xl font-bold text-lg text-white/80 uppercase tracking-wider transition-all duration-200 hover:scale-105 hover:text-white active:scale-95"
+                style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1.5px solid rgba(255,255,255,0.1)',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                }}>
+                <div className="flex items-center justify-center gap-3">
+                  <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M19 12H5M12 19l-7-7 7-7"/>
+                  </svg>
+                  Exit
+                </div>
+              </button>
+            )}
           </div>
 
           {/* Bottom tip */}

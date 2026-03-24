@@ -2,14 +2,16 @@ import { CheeseIcon } from './icons/CheeseIcon';
 import { LevelTheme } from '@/types/game';
 
 interface CheeseGoalProps {
-  progress: number;
+  progress: number; // This is absolute distance (mousePosition)
+  goalDistance?: number;
   side?: 'LEFT' | 'RIGHT' | 'CENTER';
   levelTheme?: LevelTheme;
 }
 
-export function CheeseGoal({ progress, side = 'CENTER', levelTheme }: CheeseGoalProps) {
-  const isNear = progress > 80;
-  const pct = Math.round(progress);
+export function CheeseGoal({ progress, goalDistance = 100, side = 'CENTER', levelTheme }: CheeseGoalProps) {
+  const percentage = Math.min(100, (progress / goalDistance) * 100);
+  const isNear = percentage > 80;
+  const pct = Math.round(percentage);
   const primary = levelTheme?.primaryColor || '#fbbf24';
   
   const getHorizontalPosition = () => {

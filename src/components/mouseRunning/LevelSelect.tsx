@@ -5,12 +5,12 @@ import { LevelIcon } from './icons/LevelIcon';
 
 interface LevelSelectProps {
   onSelectLevel: (level: Level) => void;
-  onSelectMode: (mode: GameMode) => void;
-  selectedMode: GameMode;
+  onSelectMode?: (mode: GameMode) => void;
+  selectedMode?: GameMode;
   onBack: () => void;
 }
 
-export function LevelSelect({ onSelectLevel, onSelectMode, selectedMode, onBack }: LevelSelectProps) {
+export function LevelSelect({ onSelectLevel, onBack }: LevelSelectProps) {
   const levelColors: Record<string, { from: string; to: string; glow: string; border: string }> = {
     easy:   { from: '#22c55e', to: '#15803d', glow: 'rgba(34,197,94,0.5)', border: '#4ade80' },
     medium: { from: '#f59e0b', to: '#b45309', glow: 'rgba(245,158,11,0.5)', border: '#fbbf24' },
@@ -44,39 +44,6 @@ export function LevelSelect({ onSelectLevel, onSelectMode, selectedMode, onBack 
             style={{ textShadow: '0 2px 0 rgba(0,0,0,0.3), 0 0 20px rgba(52,211,153,0.3)' }}>
             Select Game Mode
           </h1>
-        </div>
-
-        {/* Player Mode Toggle */}
-        <div className="w-full max-w-md mb-6">
-          <div className="p-1 rounded-2xl inline-flex w-full"
-            style={{ background: 'rgba(255,255,255,0.08)', border: '2px solid rgba(255,255,255,0.1)' }}>
-            <button onClick={() => onSelectMode('SINGLE')}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-base transition-all duration-300 ${
-                selectedMode === 'SINGLE'
-                  ? 'text-white shadow-lg'
-                  : 'text-white/50 hover:text-white/80'
-              }`}
-              style={selectedMode === 'SINGLE' ? {
-                background: 'linear-gradient(180deg, #22c55e 0%, #15803d 100%)',
-                boxShadow: '0 4px 12px rgba(34,197,94,0.4)',
-              } : {}}>
-              <PlayersIcon className="w-8 h-6" count={1} />
-              <span>1 Player</span>
-            </button>
-            <button onClick={() => onSelectMode('MULTIPLAYER')}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-base transition-all duration-300 ${
-                selectedMode === 'MULTIPLAYER'
-                  ? 'text-white shadow-lg'
-                  : 'text-white/50 hover:text-white/80'
-              }`}
-              style={selectedMode === 'MULTIPLAYER' ? {
-                background: 'linear-gradient(180deg, #3b82f6 0%, #1d4ed8 100%)',
-                boxShadow: '0 4px 12px rgba(59,130,246,0.4)',
-              } : {}}>
-              <PlayersIcon className="w-10 h-6" count={2} />
-              <span>2 Players</span>
-            </button>
-          </div>
         </div>
 
         {/* Level Cards Grid */}
@@ -156,18 +123,6 @@ export function LevelSelect({ onSelectLevel, onSelectMode, selectedMode, onBack 
             );
           })}
         </div>
-
-        {/* Multiplayer note */}
-        {selectedMode === 'MULTIPLAYER' && (
-          <div className="w-full max-w-md mb-4 p-3 rounded-xl text-center"
-            style={{ background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)' }}>
-            <p className="text-blue-300 text-xs font-medium">
-              <PlayersIcon className="w-5 h-4 inline-block mr-1 align-middle" count={2} />
-              Both players stand in front of the camera<br />
-              Left = <span className="text-blue-400 font-bold">Blue Mouse</span> · Right = <span className="text-pink-400 font-bold">Pink Mouse</span>
-            </p>
-          </div>
-        )}
 
         {/* Back button */}
         <button onClick={onBack}

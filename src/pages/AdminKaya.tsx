@@ -228,40 +228,6 @@ function SectionHeader({ title, subtitle, action }: { title: string; subtitle?: 
   );
 }
 
-// ==================== Shared RecursiveEditor ====================
-const RecursiveEditor = ({ data, onChange }: { data: Record<string, any>; onChange: (newData: Record<string, any>) => void }) => {
-  const [jsonText, setJsonText] = useState(JSON.stringify(data, null, 2));
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setJsonText(JSON.stringify(data, null, 2));
-  }, [data]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const val = e.target.value;
-    setJsonText(val);
-    try {
-      const parsed = JSON.parse(val);
-      setError(null);
-      onChange(parsed);
-    } catch (err) {
-      setError("Invalid JSON format");
-    }
-  };
-
-  return (
-    <div className="w-full">
-      <textarea 
-        className={cn("w-full h-64 font-mono text-[13px] p-4 bg-black/40 border rounded-xl text-gray-200 outline-none transition-colors", error ? "border-red-500/50 focus:border-red-500" : "border-white/10 focus:border-white/20")}
-        value={jsonText}
-        onChange={handleChange}
-        spellCheck={false}
-      />
-      {error && <p className="text-red-400 text-xs mt-2 ml-1">{error}</p>}
-    </div>
-  );
-};
-
 // ==================== TAB 1: DASHBOARD ====================
 function DashboardTab() {
   const [stats, setStats] = useState<Record<string, number> | null>(null);

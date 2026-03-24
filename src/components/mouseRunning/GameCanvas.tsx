@@ -22,7 +22,7 @@ import { GameMode, Level, LEVELS, GameState } from '@/types/game';
 
 type Screen = 'MENU' | 'LEVEL_SELECT' | 'PLAYING';
 
-export function GameCanvas() {
+export function GameCanvas({ onExit }: { onExit?: () => void }) {
   const [screen, setScreen] = useState<Screen>('MENU');
   const [gameMode, setGameMode] = useState<GameMode>('SINGLE');
   const [selectedLevel, setSelectedLevel] = useState<Level>(LEVELS[1]);
@@ -481,11 +481,25 @@ export function GameCanvas() {
 
             {/* Cheese goals */}
             {gameMode === 'SINGLE' ? (
-              <CheeseGoal progress={player1State.mousePosition} levelTheme={selectedLevel.theme} />
+              <CheeseGoal 
+                progress={player1State.mousePosition} 
+                goalDistance={selectedLevel.config.goalDistance}
+                levelTheme={selectedLevel.theme} 
+              />
             ) : (
               <>
-                <CheeseGoal progress={player1State.mousePosition} side="LEFT" levelTheme={selectedLevel.theme} />
-                <CheeseGoal progress={player2State.mousePosition} side="RIGHT" levelTheme={selectedLevel.theme} />
+                <CheeseGoal 
+                  progress={player1State.mousePosition} 
+                  goalDistance={selectedLevel.config.goalDistance}
+                  side="LEFT" 
+                  levelTheme={selectedLevel.theme} 
+                />
+                <CheeseGoal 
+                  progress={player2State.mousePosition} 
+                  goalDistance={selectedLevel.config.goalDistance}
+                  side="RIGHT" 
+                  levelTheme={selectedLevel.theme} 
+                />
               </>
             )}
 
@@ -493,6 +507,7 @@ export function GameCanvas() {
             {gameMode === 'SINGLE' ? (
               <MouseCharacter 
                 position={player1State.mousePosition} 
+                goalDistance={selectedLevel.config.goalDistance}
                 isRunning={singlePlayer.isRunning}
                 gameState={player1State.gameState}
                 levelId={selectedLevel.id}
@@ -501,6 +516,7 @@ export function GameCanvas() {
               <>
                 <MouseCharacter 
                   position={player1State.mousePosition} 
+                  goalDistance={selectedLevel.config.goalDistance}
                   isRunning={multiPlayer.leftPlayer.isRunning}
                   gameState={player1State.gameState}
                   side="LEFT"
@@ -509,6 +525,7 @@ export function GameCanvas() {
                 />
                 <MouseCharacter 
                   position={player2State.mousePosition} 
+                  goalDistance={selectedLevel.config.goalDistance}
                   isRunning={multiPlayer.rightPlayer.isRunning}
                   gameState={player2State.gameState}
                   side="RIGHT"
@@ -594,6 +611,7 @@ export function GameCanvas() {
             hitCount={0}
             onStart={handleStart}
             onRestart={handleRestart}
+            onBack={onExit}
             gameMode={gameMode}
             levelId={selectedLevel.id}
           />
