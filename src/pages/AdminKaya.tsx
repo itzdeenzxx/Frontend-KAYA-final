@@ -609,6 +609,21 @@ function DashboardTab() {
     ];
   }, [pointValues, growthMode, periodAddedUsers, totalRangeDays]);
 
+  const headerSummary = useMemo(() => {
+    if (growthMode === 'cumulative') {
+      return {
+        title: 'รวมทั้งหมด',
+        mainValue: `${latestTotalUsers.toLocaleString()} คน`,
+        subValue: `+${periodAddedUsers.toLocaleString()} ในช่วงที่เลือก`,
+      };
+    }
+    return {
+      title: 'ผู้ใช้ใหม่รวม',
+      mainValue: `${periodAddedUsers.toLocaleString()} คน`,
+      subValue: 'ในช่วงที่เลือก',
+    };
+  }, [growthMode, latestTotalUsers, periodAddedUsers]);
+
   const maxGrowth = useMemo(() => {
     if (!userGrowth.length) return 1;
     return Math.max(...userGrowth.map((point) => getGrowthValue(point)), 1);
@@ -739,10 +754,10 @@ function DashboardTab() {
                 <CalendarDays className="w-3 h-3" />กำหนดเอง
               </button>
             </div>
-            <div className="text-base text-gray-300">
-              {growthMode === 'cumulative'
-                ? `รวมทั้งหมด ${latestTotalUsers.toLocaleString()} คน (+${periodAddedUsers.toLocaleString()} ในช่วงที่เลือก)`
-                : `ผู้ใช้ใหม่รวม ${periodAddedUsers.toLocaleString()} คนในช่วงที่เลือก`}
+            <div className="min-w-[260px] rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-right tabular-nums">
+              <p className="text-[11px] text-gray-500">{headerSummary.title}</p>
+              <p className="text-base text-gray-100 font-semibold leading-tight">{headerSummary.mainValue}</p>
+              <p className="text-xs text-gray-400">{headerSummary.subValue}</p>
             </div>
           </div>
         </div>
