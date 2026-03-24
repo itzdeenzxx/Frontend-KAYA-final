@@ -229,7 +229,7 @@ function SectionHeader({ title, subtitle, action }: { title: string; subtitle?: 
 }
 
 // ==================== Shared DynamicViewer ====================
-const DynamicViewer = ({ data }: { data: any }) => {
+const DynamicViewer = ({ data }: { data: unknown }) => {
   if (data === null || data === undefined) return <span className="text-gray-500 italic">null</span>;
   if (typeof data !== 'object') return <span>{String(data)}</span>;
   return (
@@ -240,7 +240,7 @@ const DynamicViewer = ({ data }: { data: any }) => {
 };
 
 // ==================== Shared RecursiveEditor ====================
-const RecursiveEditor = ({ data, onChange }: { data: Record<string, any>; onChange: (newData: Record<string, any>) => void }) => {
+const RecursiveEditor = ({ data, onChange }: { data: Record<string, unknown>; onChange: (newData: Record<string, unknown>) => void }) => {
   const [jsonText, setJsonText] = useState(JSON.stringify(data, null, 2));
   const [error, setError] = useState<string | null>(null);
 
@@ -878,8 +878,8 @@ function ContentManagementTab() {
   const [items, setItems] = useState<Array<{ id: string; data: Record<string, unknown> }>>([]);
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
-  const [editingItem, setEditingItem] = useState<{ id: string; data: Record<string, any> } | null>(null);
-  const [newItem, setNewItem] = useState<Record<string, any>>({});
+  const [editingItem, setEditingItem] = useState<{ id: string; data: Record<string, unknown> } | null>(null);
+  const [newItem, setNewItem] = useState<Record<string, unknown>>({});
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const loadItems = useCallback(async () => {
@@ -1458,10 +1458,10 @@ function FirestoreExplorerTab() {
   const [documents, setDocuments] = useState<Array<{ id: string; data: Record<string, unknown> }>>([]);
   const [loading, setLoading] = useState(false);
   const [showDocDialog, setShowDocDialog] = useState(false);
-  const [editDoc, setEditDoc] = useState<{ id: string; data: Record<string, any> } | null>(null);
+  const [editDoc, setEditDoc] = useState<{ id: string; data: Record<string, unknown> } | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newDocId, setNewDocId] = useState('');
-  const [newDocItem, setNewDocItem] = useState<Record<string, any>>({});
+  const [newDocItem, setNewDocItem] = useState<Record<string, unknown>>({});
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [subcollectionView, setSubcollectionView] = useState<{ parentCol: string; parentId: string; subName: string } | null>(null);
   const [subDocs, setSubDocs] = useState<Array<{ id: string; data: Record<string, unknown> }>>([]);
@@ -1480,7 +1480,7 @@ function FirestoreExplorerTab() {
 
   useEffect(() => { loadCollection(); }, [loadCollection]);
 
-  const handleViewDoc = (d: { id: string; data: Record<string, any> }) => {
+  const handleViewDoc = (d: { id: string; data: Record<string, unknown> }) => {
     setEditDoc({ id: d.id, data: d.data });
     setShowDocDialog(true);
   };
