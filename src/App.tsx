@@ -28,6 +28,7 @@ import WorkoutComplete from "./pages/WorkoutComplete";
 import Challenges from "./pages/Challenges";
 import WorkoutHistory from "./pages/WorkoutHistory";
 import BadgesPage from "./pages/Badges";
+import AdminBadges from "./pages/AdminBadges";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
@@ -105,7 +106,7 @@ const AppRoutes = () => {
           if (shared) {
             sonnerToast.success('แชร์ความสำเร็จไปที่ LINE แล้ว');
           } else {
-            sonnerToast.error('ไม่สามารถเปิด Share Target Picker ได้ (กรุณาเปิดผ่าน LINE App)');
+            sonnerToast.error('ไม่สามารถแชร์ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง');
           }
         }}
       />
@@ -129,6 +130,7 @@ const AppRoutes = () => {
           <Route path="/challenges" element={<Challenges />} />
           <Route path="/workout-history" element={<WorkoutHistory />} />
           <Route path="/badges" element={<BadgesPage />} />
+          <Route path="/admin/badges" element={<AdminBadges />} />
         </Route>
         
         {/* Full Screen Routes */}

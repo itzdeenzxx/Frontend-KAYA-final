@@ -220,11 +220,11 @@ export const shareBadgeAchievement = async (
     `มาฟิตไปด้วยกันที่ KAYA!`;
 
   if (!liff.isApiAvailable('shareTargetPicker')) {
-    console.warn('Aggregate badge share requires shareTargetPicker.', {
+    console.warn('Aggregate badge share fallback: shareTargetPicker unavailable.', {
       inClient: liff.isInClient(),
       shareTargetPickerAvailable: liff.isApiAvailable('shareTargetPicker'),
     });
-    return false;
+    return shareBadgeAsMiniAppLink(message);
   }
 
   const workoutEntryUrl = getWorkoutEntryUrl();
@@ -418,13 +418,12 @@ export const shareBadgeAchievement = async (
     return true;
   }
 
-  // For badge shares, require Share Target Picker.
-  console.warn('Aggregate badge share failed via shareTargetPicker', {
+  console.warn('Aggregate badge share fallback: shareTargetPicker failed', {
     inClient: liff.isInClient(),
     shareTargetPickerAvailable: liff.isApiAvailable('shareTargetPicker'),
     messagePreview: message,
   });
-  return false;
+  return shareBadgeAsMiniAppLink(message);
 };
 
 const getTwemojiUrl = (emoji: string): string | null => {
@@ -472,12 +471,12 @@ export const shareSingleBadgeAchievement = async (
     `✨ ${badge.description || 'มาออกกำลังกายไปด้วยกันกับ KAYA'}`;
 
   if (!liff.isApiAvailable('shareTargetPicker')) {
-    console.warn('Single badge share requires shareTargetPicker.', {
+    console.warn('Single badge share fallback: shareTargetPicker unavailable.', {
       inClient: liff.isInClient(),
       shareTargetPickerAvailable: liff.isApiAvailable('shareTargetPicker'),
       messagePreview: message,
     });
-    return false;
+    return shareBadgeAsMiniAppLink(message);
   }
 
   // LINE Flex image requires web-safe image formats such as PNG/JPEG (SVG can fail and trigger text fallback).
@@ -682,12 +681,12 @@ export const shareSingleBadgeAchievement = async (
     return true;
   }
 
-  console.warn('Single badge share failed via shareTargetPicker', {
+  console.warn('Single badge share fallback: shareTargetPicker failed', {
     inClient: liff.isInClient(),
     shareTargetPickerAvailable: liff.isApiAvailable('shareTargetPicker'),
     messagePreview: message,
   });
-  return false;
+  return shareBadgeAsMiniAppLink(message);
 };
 
 // Send message to LINE chat

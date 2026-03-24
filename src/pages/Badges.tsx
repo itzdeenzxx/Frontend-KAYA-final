@@ -65,7 +65,7 @@ export default function BadgesPage() {
     if (shared) {
       toast.success('แชร์ความสำเร็จไปที่ LINE แล้ว');
     } else {
-      toast.error('ไม่สามารถเปิด Share Target Picker ได้ (กรุณาเปิดผ่าน LINE App)');
+      toast.error('ไม่สามารถแชร์ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง');
     }
   };
 
@@ -91,7 +91,7 @@ export default function BadgesPage() {
     if (shared) {
       toast.success('แชร์เหรียญนี้ไปที่ LINE แล้ว');
     } else {
-      toast.error('ไม่สามารถเปิด Share Target Picker ได้ (กรุณาเปิดผ่าน LINE App)');
+      toast.error('ไม่สามารถแชร์ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง');
     }
   };
 

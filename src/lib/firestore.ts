@@ -62,7 +62,7 @@ export interface FirestoreDailyStats {
   caloriesBurned: number;
   workoutTime: number; // in seconds
   totalWorkouts: number;
-  waterIntake: number; // number of glasses (0-8)
+  waterIntake: number; // number of glasses (0+)
   updatedAt: Timestamp;
 }
 
@@ -132,15 +132,11 @@ export const updateDailyStats = async (
   });
 };
 
-// Increment water intake (max 8)
+// Increment water intake (no max)
 export const incrementWaterIntake = async (userId: string): Promise<number> => {
   const stats = await initializeDailyStats(userId);
   const currentWater = stats.waterIntake || 0;
-  
-  if (currentWater >= 8) {
-    return currentWater; // Already at max
-  }
-  
+
   const newWater = currentWater + 1;
   await updateDailyStats(userId, { waterIntake: newWater });
 
@@ -469,9 +465,10 @@ export const updateUserPoints = async (userId: string, pointsToAdd: number): Pro
     const newPoints = currentPoints + pointsToAdd;
     
     // Calculate new tier based on new point thresholds
-    // Bronze: 0-999, Silver: 1000-1999, Gold: 2000-2999, Platinum: 3000-3999, Diamond: 4000+
+    // Bronze: 0-999, Silver: 1000-1999, Gold: 2000-2999, Platinum: 3000-3999, Diamond: 4000-4999, Master: 5000+
     let newTier: UserTier = 'bronze';
-    if (newPoints >= 4000) newTier = 'diamond';
+    if (newPoints >= 5000) newTier = 'master';
+    else if (newPoints >= 4000) newTier = 'diamond';
     else if (newPoints >= 3000) newTier = 'platinum';
     else if (newPoints >= 2000) newTier = 'gold';
     else if (newPoints >= 1000) newTier = 'silver';
@@ -770,6 +767,17 @@ export interface FirestoreNutritionScan {
     health_tips: string;
   };
   scannedAt: Timestamp;
+}
+
+export interface BadgeCatalogUpdateInput {
+  badgeId: string;
+  nameEn: string;
+  nameTh: string;
+  description: string;
+  icon: string;
+  requirement: string;
+  category: 'workout' | 'game' | 'nutrition';
+  target: number;
 }
 
 // Save nutrition scan
@@ -1092,6 +1100,49 @@ export const ensureBadgeCatalogSeeded = async (): Promise<void> => {
   if (writes > 0) {
     await batch.commit();
   }
+};
+
+export const upsertBadgeCatalogItem = async (
+  badgeId: string,
+  payload: BadgeCatalogUpdateInput
+): Promise<void> => {
+  const trimmedId = badgeId.trim();
+  if (!trimmedId) {
+    throw new Error('badgeId is required');
+  }
+
+  const badgeDocRef = doc(db, COLLECTIONS.BADGE_CATALOG, trimmedId);
+  await setDoc(badgeDocRef, {
+    badgeId: trimmedId,
+    nameEn: payload.nameEn.trim(),
+    nameTh: payload.nameTh.trim(),
+    description: payload.description.trim(),
+    icon: payload.icon.trim(),
+    requirement: payload.requirement.trim(),
+    category: payload.category,
+    target: Number.isFinite(payload.target) ? Math.max(1, Math.floor(payload.target)) : 1,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+};
+
+export const resetBadgeCatalogFromDefinitions = async (): Promise<void> => {
+  const batch = writeBatch(db);
+  for (const definition of BADGE_DEFINITIONS) {
+    const badgeDocRef = doc(db, COLLECTIONS.BADGE_CATALOG, definition.id);
+    batch.set(badgeDocRef, {
+      badgeId: definition.id,
+      nameEn: definition.nameEn,
+      nameTh: definition.nameTh,
+      description: definition.description,
+      icon: definition.icon,
+      requirement: definition.requirement,
+      category: definition.category,
+      target: definition.target,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+  }
+
+  await batch.commit();
 };
 
 export const getBadgeCatalog = async (): Promise<FirestoreBadgeCatalogItem[]> => {

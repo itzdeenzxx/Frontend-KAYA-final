@@ -21,7 +21,8 @@ const tierConfig = {
   silver: { name: 'SILVER', color: 'from-gray-300 to-gray-500', icon: Star },
   gold: { name: 'GOLD', color: 'from-yellow-400 to-amber-600', icon: Crown },
   platinum: { name: 'PLATINUM', color: 'from-cyan-300 to-blue-500', icon: Crown },
-  diamond: { name: 'DIAMOND', color: 'from-purple-400 via-pink-400 to-blue-400', icon: Crown }
+  diamond: { name: 'DIAMOND', color: 'from-purple-400 via-pink-400 to-blue-400', icon: Crown },
+  master: { name: 'MASTER', color: 'from-pink-500 via-rose-400 to-fuchsia-500', icon: Crown }
 };
 
 const navItems = [

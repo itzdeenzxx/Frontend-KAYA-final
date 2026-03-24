@@ -48,6 +48,13 @@ const tierConfig = {
     textColor: 'text-purple-300',
     icon: Crown,
     glow: 'shadow-purple-500/40'
+  },
+  master: {
+    name: 'MASTER',
+    color: 'from-pink-500 via-rose-400 to-fuchsia-500',
+    textColor: 'text-pink-200',
+    icon: Crown,
+    glow: 'shadow-pink-500/40'
   }
 };
 
@@ -131,7 +138,7 @@ export default function Dashboard() {
 
   // Handle adding water
   const handleAddWater = async () => {
-    if (isAddingWater || waterIntake >= waterGoal) return;
+    if (isAddingWater) return;
     
     setIsAddingWater(true);
     try {
@@ -258,8 +265,7 @@ export default function Dashboard() {
               onClick={handleAddWater}
               className={cn(
                 "group relative overflow-hidden rounded-2xl p-5 transition-all hover:scale-[1.02] cursor-pointer",
-                isDark ? "bg-gradient-to-br from-cyan-500/20 to-blue-500/10 border border-cyan-500/20" : "bg-white shadow-lg shadow-cyan-500/10",
-                waterIntake >= waterGoal && "opacity-70"
+                isDark ? "bg-gradient-to-br from-cyan-500/20 to-blue-500/10 border border-cyan-500/20" : "bg-white shadow-lg shadow-cyan-500/10"
               )}
             >
               <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-cyan-500/20 to-transparent rounded-full blur-2xl" />
@@ -284,21 +290,19 @@ export default function Dashboard() {
                         <Minus className="w-5 h-5" />
                       </button>
                     )}
-                    {waterIntake < waterGoal && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleAddWater(); }}
-                        disabled={isAddingWater}
-                        className={cn(
-                          "w-8 h-8 rounded-full flex items-center justify-center transition-all",
-                          isDark 
-                            ? "bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-400" 
-                            : "bg-cyan-100 hover:bg-cyan-200 text-cyan-600",
-                          isAddingWater && "animate-pulse"
-                        )}
-                      >
-                        <Plus className="w-5 h-5" />
-                      </button>
-                    )}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleAddWater(); }}
+                      disabled={isAddingWater}
+                      className={cn(
+                        "w-8 h-8 rounded-full flex items-center justify-center transition-all",
+                        isDark 
+                          ? "bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-400" 
+                          : "bg-cyan-100 hover:bg-cyan-200 text-cyan-600",
+                        isAddingWater && "animate-pulse"
+                      )}
+                    >
+                      <Plus className="w-5 h-5" />
+                    </button>
                   </div>
                 </div>
                 <p className="text-3xl font-black mb-1">{waterIntake}/{waterGoal}</p>
@@ -309,7 +313,7 @@ export default function Dashboard() {
                 <div className={cn("mt-2 h-1.5 rounded-full overflow-hidden", isDark ? "bg-white/10" : "bg-gray-200")}>
                   <div 
                     className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full transition-all duration-300" 
-                    style={{ width: `${(waterIntake / waterGoal) * 100}%` }} 
+                    style={{ width: `${Math.min((waterIntake / waterGoal) * 100, 100)}%` }} 
                   />
                 </div>
               </div>
@@ -680,8 +684,7 @@ export default function Dashboard() {
                 "backdrop-blur border rounded-2xl p-4 relative overflow-hidden group transition-colors cursor-pointer",
                 isDark 
                   ? "bg-white/5 border-white/10 hover:border-cyan-500/50" 
-                  : "bg-white border-gray-200 shadow-sm hover:border-cyan-500/50",
-                waterIntake >= waterGoal && "opacity-70"
+                  : "bg-white border-gray-200 shadow-sm hover:border-cyan-500/50"
               )}
             >
               <div className={cn(
@@ -709,21 +712,19 @@ export default function Dashboard() {
                         <Minus className="w-4 h-4" />
                       </button>
                     )}
-                    {waterIntake < waterGoal && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleAddWater(); }}
-                        disabled={isAddingWater}
-                        className={cn(
-                          "w-7 h-7 rounded-full flex items-center justify-center transition-all",
-                          isDark 
-                            ? "bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-400" 
-                            : "bg-cyan-100 hover:bg-cyan-200 text-cyan-600",
-                          isAddingWater && "animate-pulse"
-                        )}
-                      >
-                        <Plus className="w-4 h-4" />
-                      </button>
-                    )}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleAddWater(); }}
+                      disabled={isAddingWater}
+                      className={cn(
+                        "w-7 h-7 rounded-full flex items-center justify-center transition-all",
+                        isDark 
+                          ? "bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-400" 
+                          : "bg-cyan-100 hover:bg-cyan-200 text-cyan-600",
+                        isAddingWater && "animate-pulse"
+                      )}
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
                 <p className="text-2xl font-bold">{waterIntake}/{waterGoal}</p>
@@ -734,7 +735,7 @@ export default function Dashboard() {
                 <div className={cn("mt-2 h-1 rounded-full overflow-hidden", isDark ? "bg-white/10" : "bg-gray-200")}>
                   <div 
                     className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full transition-all duration-300" 
-                    style={{ width: `${(waterIntake / waterGoal) * 100}%` }} 
+                    style={{ width: `${Math.min((waterIntake / waterGoal) * 100, 100)}%` }} 
                   />
                 </div>
               </div>

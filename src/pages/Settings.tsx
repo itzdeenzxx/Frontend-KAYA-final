@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, Bell, Sun, Moon, ChevronRight, LogOut, Check, Palette } from "lucide-react";
+import { ArrowLeft, Bell, Sun, Moon, ChevronRight, LogOut, Check, Palette, Shield } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
@@ -10,8 +10,10 @@ import { CoachSettings } from "@/components/settings/CoachSettings";
 export default function Settings() {
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
-  const { logout } = useAuth();
+  const { logout, lineProfile } = useAuth();
   const isDark = theme === 'dark';
+  const rawAdminIds = (import.meta.env.VITE_ADMIN_USER_IDS as string | undefined) ?? '';
+  const isAdmin = !!lineProfile?.userId && rawAdminIds.split(',').map((id) => id.trim()).includes(lineProfile.userId);
   
   const [notifications, setNotifications] = useState({
     workoutReminders: true,
@@ -183,6 +185,28 @@ export default function Settings() {
 
           {/* Coach Settings */}
           <CoachSettings isDark={isDark} />
+
+          {/* Admin Tools */}
+          {isAdmin && (
+            <Link
+              to="/admin/badges"
+              className={cn(
+                "rounded-2xl p-4 w-full flex items-center gap-3 border transition-colors",
+                isDark
+                  ? "bg-cyan-500/10 border-cyan-500/20 text-cyan-300 hover:bg-cyan-500/20"
+                  : "bg-white border-cyan-200 text-cyan-700 hover:bg-cyan-50"
+              )}
+            >
+              <Shield className="w-5 h-5" />
+              <div className="flex-1 text-left">
+                <p className="font-medium">Admin: Badge Manager</p>
+                <p className={cn("text-sm", isDark ? "text-cyan-200/80" : "text-cyan-700/80")}>
+                  จัดการ Badge Catalog
+                </p>
+              </div>
+              <ChevronRight className="w-4 h-4" />
+            </Link>
+          )}
 
           {/* Notifications */}
           <div className={cn(

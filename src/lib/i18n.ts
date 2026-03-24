@@ -49,9 +49,12 @@ const resources = {
       
       // Tiers
       tiers: {
+        bronze: 'Bronze',
         silver: 'Silver',
         gold: 'Gold',
+        platinum: 'Platinum',
         diamond: 'Diamond',
+        master: 'Master',
         diamondPlus: 'Diamond+',
       },
       
@@ -297,9 +300,12 @@ const resources = {
       
       // Tiers
       tiers: {
+        bronze: 'บรอนซ์',
         silver: 'เงิน',
         gold: 'ทอง',
+        platinum: 'แพลทินัม',
         diamond: 'เพชร',
+        master: 'มาสเตอร์',
         diamondPlus: 'เพชร+',
       },
       
