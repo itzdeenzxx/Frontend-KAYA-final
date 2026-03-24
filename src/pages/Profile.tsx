@@ -484,7 +484,7 @@ export default function Profile() {
     : "0";
 
   const userTier = (userProfile?.tier || "bronze") as keyof typeof tierConfig;
-  const tier = tierConfig[userTier];
+  const tier = tierConfig[userTier] || tierConfig.bronze;
   const TierIcon = tier.icon;
   const SecondaryIcon = tier.secondaryIcon;
   const userPoints = userProfile?.points || 0;
@@ -495,10 +495,10 @@ export default function Profile() {
   const isDark = theme === 'dark';
   
   // Calculate progress to next tier based on new thresholds
-  // Bronze: 0-999, Silver: 1000-1999, Gold: 2000-2999, Platinum: 3000-3999, Diamond: 4000+
+  // Bronze: 0-999, Silver: 1000-1999, Gold: 2000-2999, Platinum: 3000-3999, Diamond: 4000-4999, Master: 5000+
   const calculateProgressToNext = () => {
-    if (!tier.pointsToNext) return 100; // Diamond has no next tier
-    const pointsInCurrentTier = userPoints - tier.minPoints;
+    if (!tier.pointsToNext) return 100; // Master has no next tier
+    const pointsInCurrentTier = Math.max(userPoints - tier.minPoints, 0);
     const pointsNeededForNextTier = tier.pointsToNext - tier.minPoints;
     return Math.min((pointsInCurrentTier / pointsNeededForNextTier) * 100, 100);
   };

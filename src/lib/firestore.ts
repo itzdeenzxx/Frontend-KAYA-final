@@ -16,6 +16,7 @@ import {
   Timestamp,
   DocumentReference,
   writeBatch,
+  runTransaction,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { BADGE_DEFINITIONS } from './badges';
@@ -381,6 +382,20 @@ export const DEFAULT_TTS_SETTINGS = {
   customCoachName: '',
 };
 
+const normalizePoints = (value: unknown): number => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+  return Math.max(0, Math.floor(value));
+};
+
+export const getTierFromPoints = (points: number): UserTier => {
+  if (points >= 5000) return 'master';
+  if (points >= 4000) return 'diamond';
+  if (points >= 3000) return 'platinum';
+  if (points >= 2000) return 'gold';
+  if (points >= 1000) return 'silver';
+  return 'bronze';
+};
+
 // ==================== USER OPERATIONS ====================
 
 // Create or update user profile from LINE login
@@ -393,20 +408,42 @@ export const createOrUpdateUserFromLine = async (
   const userSnap = await getDoc(userRef);
 
   if (userSnap.exists()) {
-    // Update existing user
-    await updateDoc(userRef, {
+    const existing = userSnap.data();
+    const normalizedPoints = normalizePoints(existing.points);
+    const expectedTier = getTierFromPoints(normalizedPoints);
+    const currentTier = (existing.tier as UserTier | undefined) || 'bronze';
+
+    const updates: Record<string, unknown> = {
       displayName,
       pictureUrl,
       lastLoginAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-    });
+    };
+
+    if (normalizedPoints !== existing.points) {
+      updates.points = normalizedPoints;
+    }
+    if (currentTier !== expectedTier) {
+      updates.tier = expectedTier;
+    }
+
+    // Update existing user
+    await updateDoc(userRef, updates);
 
     // Ensure login-related badges are evaluated on every successful login.
     await evaluateAndAwardBadges(lineUserId).catch((error) => {
       console.warn('Badge evaluation on login failed:', error);
     });
 
-    return { ...userSnap.data(), id: lineUserId } as FirestoreUserProfile;
+    return {
+      ...existing,
+      id: lineUserId,
+      lineUserId,
+      displayName,
+      pictureUrl,
+      points: normalizedPoints,
+      tier: expectedTier,
+    } as FirestoreUserProfile;
   } else {
     // Create new user
     const newUser: Omit<FirestoreUserProfile, 'id'> = {
@@ -438,7 +475,25 @@ export const getUserProfile = async (userId: string): Promise<FirestoreUserProfi
   const userSnap = await getDoc(userRef);
   
   if (userSnap.exists()) {
-    return { ...userSnap.data(), id: userId } as FirestoreUserProfile;
+    const data = userSnap.data();
+    const normalizedPoints = normalizePoints(data.points);
+    const expectedTier = getTierFromPoints(normalizedPoints);
+    const currentTier = (data.tier as UserTier | undefined) || 'bronze';
+
+    if (normalizedPoints !== data.points || currentTier !== expectedTier) {
+      await updateDoc(userRef, {
+        points: normalizedPoints,
+        tier: expectedTier,
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    return {
+      ...data,
+      id: userId,
+      points: normalizedPoints,
+      tier: expectedTier,
+    } as FirestoreUserProfile;
   }
   return null;
 };
@@ -458,27 +513,22 @@ export const updateUserProfile = async (
 // Update user points
 export const updateUserPoints = async (userId: string, pointsToAdd: number): Promise<void> => {
   const userRef = doc(db, COLLECTIONS.USERS, userId);
-  const userSnap = await getDoc(userRef);
-  
-  if (userSnap.exists()) {
-    const currentPoints = userSnap.data().points || 0;
-    const newPoints = currentPoints + pointsToAdd;
-    
-    // Calculate new tier based on new point thresholds
-    // Bronze: 0-999, Silver: 1000-1999, Gold: 2000-2999, Platinum: 3000-3999, Diamond: 4000-4999, Master: 5000+
-    let newTier: UserTier = 'bronze';
-    if (newPoints >= 5000) newTier = 'master';
-    else if (newPoints >= 4000) newTier = 'diamond';
-    else if (newPoints >= 3000) newTier = 'platinum';
-    else if (newPoints >= 2000) newTier = 'gold';
-    else if (newPoints >= 1000) newTier = 'silver';
-    
-    await updateDoc(userRef, {
+  const delta = Number.isFinite(pointsToAdd) ? Math.trunc(pointsToAdd) : 0;
+
+  await runTransaction(db, async (transaction) => {
+    const userSnap = await transaction.get(userRef);
+    if (!userSnap.exists()) return;
+
+    const currentPoints = normalizePoints(userSnap.data().points);
+    const newPoints = Math.max(0, currentPoints + delta);
+    const newTier = getTierFromPoints(newPoints);
+
+    transaction.update(userRef, {
       points: newPoints,
       tier: newTier,
       updatedAt: serverTimestamp(),
     });
-  }
+  });
 };
 
 // Update streak
@@ -1438,12 +1488,13 @@ export const getLeaderboard = async (limitCount: number = 50): Promise<Leaderboa
   const querySnap = await getDocs(q);
   return querySnap.docs.map((doc, index) => {
     const data = doc.data();
+    const points = normalizePoints(data.points);
     return {
       rank: index + 1,
       userId: doc.id,
       nickname: data.nickname || data.displayName,
-      tier: data.tier as UserTier,
-      points: data.points,
+      tier: getTierFromPoints(points),
+      points,
       avatar: data.pictureUrl,
     };
   });
@@ -1456,7 +1507,7 @@ export const getUserRank = async (userId: string): Promise<number> => {
   
   if (!userSnap.exists()) return 0;
   
-  const userPoints = userSnap.data().points || 0;
+  const userPoints = normalizePoints(userSnap.data().points);
   const q = query(usersRef, where('points', '>', userPoints));
   const higher = await getDocs(q);
   
