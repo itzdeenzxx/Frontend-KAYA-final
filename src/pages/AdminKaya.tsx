@@ -404,6 +404,7 @@ const RecursiveEditor = ({ data, onChange }: { data: Record<string, unknown>; on
 function DashboardTab() {
   const [stats, setStats] = useState<Record<string, number> | null>(null);
   const [allUsers, setAllUsers] = useState<Array<{ id: string; data: Record<string, unknown> }>>([]);
+  const [growthMode, setGrowthMode] = useState<'cumulative' | 'daily'>('cumulative');
   const [growthDays, setGrowthDays] = useState<7 | 30 | 90>(30);
   const [useCustomRange, setUseCustomRange] = useState(false);
   const [customStart, setCustomStart] = useState(() => {
@@ -546,24 +547,28 @@ function DashboardTab() {
     return userGrowth.reduce((sum, point) => sum + point.added, 0);
   }, [userGrowth]);
 
+  const getGrowthValue = useCallback((point: { count: number; added: number }) => {
+    return growthMode === 'cumulative' ? point.count : point.added;
+  }, [growthMode]);
+
   const maxGrowth = useMemo(() => {
     if (!userGrowth.length) return 1;
-    return Math.max(...userGrowth.map((point) => point.count), 1);
-  }, [userGrowth]);
+    return Math.max(...userGrowth.map((point) => getGrowthValue(point)), 1);
+  }, [userGrowth, getGrowthValue]);
 
   const linePoints = useMemo(() => {
     if (userGrowth.length === 0) return '';
     if (userGrowth.length === 1) {
-      const y = 44 - (userGrowth[0].count / maxGrowth) * 40;
+      const y = 44 - (getGrowthValue(userGrowth[0]) / maxGrowth) * 40;
       return `0,${Math.max(2, y)}`;
     }
 
     return userGrowth.map((point, index) => {
       const x = (index / (userGrowth.length - 1)) * 100;
-      const y = 44 - (point.count / maxGrowth) * 40;
+      const y = 44 - (getGrowthValue(point) / maxGrowth) * 40;
       return `${x},${Math.max(2, y)}`;
     }).join(' ');
-  }, [userGrowth, maxGrowth]);
+  }, [userGrowth, maxGrowth, getGrowthValue]);
 
   return (
     <div>
@@ -608,10 +613,40 @@ function DashboardTab() {
       <GlassCard className="mt-5 p-4 md:p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-base md:text-lg font-semibold text-white">แนวโน้มผู้ใช้สะสมทั้งหมด (กราฟเส้น)</h3>
-            <p className="text-sm text-gray-400">แสดงยอดผู้ใช้สะสมทั้งหมดจาก createdAt / firstLoginAt / lastLoginAt</p>
+            <h3 className="text-base md:text-lg font-semibold text-white">
+              {growthMode === 'cumulative' ? 'แนวโน้มผู้ใช้สะสมทั้งหมด (กราฟเส้น)' : 'แนวโน้มผู้ใช้ใหม่รายวัน (กราฟเส้น)'}
+            </h3>
+            <p className="text-sm text-gray-400">
+              {growthMode === 'cumulative'
+                ? 'แสดงยอดผู้ใช้สะสมทั้งหมดจาก createdAt / firstLoginAt / lastLoginAt'
+                : 'แสดงจำนวนผู้ใช้ใหม่รายวันจาก createdAt / firstLoginAt / lastLoginAt'}
+            </p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-3">
+            <div className="inline-flex rounded-lg border border-white/[0.08] bg-white/[0.03] p-0.5">
+              <button
+                onClick={() => setGrowthMode('cumulative')}
+                className={cn(
+                  'px-2.5 py-1.5 rounded-md text-xs transition-colors',
+                  growthMode === 'cumulative'
+                    ? 'bg-orange-500/20 text-orange-300 border border-orange-500/20'
+                    : 'text-gray-400 hover:text-gray-200 hover:bg-white/[0.05]'
+                )}
+              >
+                ยอดสะสมทั้งหมด
+              </button>
+              <button
+                onClick={() => setGrowthMode('daily')}
+                className={cn(
+                  'px-2.5 py-1.5 rounded-md text-xs transition-colors',
+                  growthMode === 'daily'
+                    ? 'bg-orange-500/20 text-orange-300 border border-orange-500/20'
+                    : 'text-gray-400 hover:text-gray-200 hover:bg-white/[0.05]'
+                )}
+              >
+                ผู้ใช้ใหม่รายวัน
+              </button>
+            </div>
             <div className="inline-flex rounded-lg border border-white/[0.08] bg-white/[0.03] p-0.5">
               {[7, 30, 90].map((days) => (
                 <button
@@ -642,7 +677,11 @@ function DashboardTab() {
                 <CalendarDays className="w-3 h-3" />กำหนดเอง
               </button>
             </div>
-            <div className="text-sm text-gray-400">รวมทั้งหมด {latestTotalUsers.toLocaleString()} คน (+{periodAddedUsers.toLocaleString()} ในช่วงที่เลือก)</div>
+            <div className="text-sm text-gray-400">
+              {growthMode === 'cumulative'
+                ? `รวมทั้งหมด ${latestTotalUsers.toLocaleString()} คน (+${periodAddedUsers.toLocaleString()} ในช่วงที่เลือก)`
+                : `ผู้ใช้ใหม่รวม ${periodAddedUsers.toLocaleString()} คนในช่วงที่เลือก`}
+            </div>
           </div>
         </div>
 
@@ -692,13 +731,14 @@ function DashboardTab() {
               />
               {userGrowth.map((point, index) => {
                 const x = userGrowth.length <= 1 ? 0 : (index / (userGrowth.length - 1)) * 100;
-                const y = Math.max(2, 44 - (point.count / maxGrowth) * 40);
+                const pointValue = getGrowthValue(point);
+                const y = Math.max(2, 44 - (pointValue / maxGrowth) * 40);
                 return (
                   <g key={`${point.label}-${index}`}>
                     <circle cx={x} cy={y} r="1.1" fill="#fb923c" />
-                    {point.count > 0 && (
+                    {pointValue > 0 && (
                       <text x={x} y={Math.max(3, y - 2)} fill="#fdba74" fontSize="3" textAnchor="middle">
-                        {point.count}
+                        {pointValue}
                       </text>
                     )}
                   </g>
