@@ -613,10 +613,10 @@ function DashboardTab() {
       <GlassCard className="mt-5 p-4 md:p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-base md:text-lg font-semibold text-white">
+            <h3 className="text-lg md:text-xl font-semibold text-white">
               {growthMode === 'cumulative' ? 'แนวโน้มผู้ใช้สะสมทั้งหมด (กราฟเส้น)' : 'แนวโน้มผู้ใช้ใหม่รายวัน (กราฟเส้น)'}
             </h3>
-            <p className="text-sm text-gray-400">
+            <p className="text-sm md:text-base text-gray-400">
               {growthMode === 'cumulative'
                 ? 'แสดงยอดผู้ใช้สะสมทั้งหมดจาก createdAt / firstLoginAt / lastLoginAt'
                 : 'แสดงจำนวนผู้ใช้ใหม่รายวันจาก createdAt / firstLoginAt / lastLoginAt'}
@@ -677,7 +677,7 @@ function DashboardTab() {
                 <CalendarDays className="w-3 h-3" />กำหนดเอง
               </button>
             </div>
-            <div className="text-sm text-gray-400">
+            <div className="text-base text-gray-300">
               {growthMode === 'cumulative'
                 ? `รวมทั้งหมด ${latestTotalUsers.toLocaleString()} คน (+${periodAddedUsers.toLocaleString()} ในช่วงที่เลือก)`
                 : `ผู้ใช้ใหม่รวม ${periodAddedUsers.toLocaleString()} คนในช่วงที่เลือก`}
@@ -733,11 +733,15 @@ function DashboardTab() {
                 const x = userGrowth.length <= 1 ? 0 : (index / (userGrowth.length - 1)) * 100;
                 const pointValue = getGrowthValue(point);
                 const y = Math.max(2, 44 - (pointValue / maxGrowth) * 40);
+                const isEdge = index === 0 || index === userGrowth.length - 1;
+                const prevValue = index > 0 ? getGrowthValue(userGrowth[index - 1]) : pointValue;
+                const changedFromPrevious = index > 0 && pointValue !== prevValue;
+                const shouldShowValue = pointValue > 0 && (isEdge || (point.showTick && changedFromPrevious));
                 return (
                   <g key={`${point.label}-${index}`}>
                     <circle cx={x} cy={y} r="1.1" fill="#fb923c" />
-                    {pointValue > 0 && (
-                      <text x={x} y={Math.max(3, y - 2)} fill="#fdba74" fontSize="3" textAnchor="middle">
+                    {shouldShowValue && (
+                      <text x={x} y={Math.max(3, y - 2)} fill="#fdba74" fontSize="3.8" textAnchor="middle">
                         {pointValue}
                       </text>
                     )}
@@ -749,7 +753,7 @@ function DashboardTab() {
               {userGrowth.map((point, index) => (
                 <span
                   key={`tick-${point.label}-${index}`}
-                  className={cn('text-center text-[10px] text-gray-500 truncate', !point.showTick && 'opacity-0')}
+                  className={cn('text-center text-xs md:text-sm text-gray-500 truncate', !point.showTick && 'opacity-0')}
                 >
                   {point.label}
                 </span>
