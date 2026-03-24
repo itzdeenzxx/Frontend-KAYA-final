@@ -228,6 +228,17 @@ function SectionHeader({ title, subtitle, action }: { title: string; subtitle?: 
   );
 }
 
+// ==================== Shared DynamicViewer ====================
+const DynamicViewer = ({ data }: { data: any }) => {
+  if (data === null || data === undefined) return <span className="text-gray-500 italic">null</span>;
+  if (typeof data !== 'object') return <span>{String(data)}</span>;
+  return (
+    <pre className="text-[11px] font-mono bg-black/30 p-3 rounded-lg text-gray-300 overflow-x-auto whitespace-pre-wrap word-break">
+      {JSON.stringify(data, null, 2)}
+    </pre>
+  );
+};
+
 // ==================== Shared RecursiveEditor ====================
 const RecursiveEditor = ({ data, onChange }: { data: Record<string, any>; onChange: (newData: Record<string, any>) => void }) => {
   const [jsonText, setJsonText] = useState(JSON.stringify(data, null, 2));
