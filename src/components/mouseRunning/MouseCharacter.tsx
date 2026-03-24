@@ -4,25 +4,29 @@ import { RocketIcon } from './icons/RocketIcon';
 
 interface MouseCharacterProps {
   position: number;
+  goalDistance?: number;
   isRunning: boolean;
   gameState: GameState;
   side?: 'LEFT' | 'RIGHT' | 'CENTER';
   color?: 'pink' | 'blue';
   rocketPosition?: { x: number; y: number };
+  levelId?: string;
 }
 
 export function MouseCharacter({ 
-  position, 
+  position,
+  goalDistance = 100,
   isRunning, 
   gameState, 
   side = 'CENTER',
   color = 'pink',
+  levelId = '',
 }: MouseCharacterProps) {
   const isHit = gameState === 'HIT';
   const isWin = gameState === 'WIN';
   const isWarning = (gameState === 'RED_LIGHT' || gameState === 'YELLOW_LIGHT') && isRunning;
   
-  const yPercent = Math.min(position, 100);
+  const yPercent = Math.min((position / goalDistance) * 100, 100);
   
   // Position based on side
   const getHorizontalPosition = () => {
@@ -70,6 +74,7 @@ export function MouseCharacter({
           isRunning={isRunning && (gameState === 'GREEN_LIGHT' || gameState === 'YELLOW_LIGHT')}
           isHit={isHit}
           color={color}
+          levelId={levelId}
         />
         
         {/* Win sparkles */}

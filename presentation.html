@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KAYA Architecture & AI Overview</title>
+    <!-- Reveal.js CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.0.4/reset.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.0.4/reveal.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.0.4/theme/night.min.css" id="theme">
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Mermaid CSS/JS -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600&display=swap');
+        
+        .reveal {
+            font-family: 'Kanit', sans-serif;
+        }
+        .reveal h1, .reveal h2, .reveal h3, .reveal h4 {
+            font-family: 'Kanit', sans-serif;
+            text-transform: none;
+            letter-spacing: normal;
+            font-weight: 600;
+        }
+        
+        .text-gradient {
+            background: linear-gradient(120deg, #00f2fe 0%, #4facfe 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .text-gradient-orange {
+            background: linear-gradient(120deg, #f6d365 0%, #fda085 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .mermaid-container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            margin: 0 auto;
+            max-width: 95%;
+            overflow: visible;
+        }
+
+        /* Adjust sizing for presentation */
+        .reveal .slides section .fragment.visible {
+            opacity: 1;
+        }
+        
+        /* Grid Layouts */
+        .glass-panel {
+            background: rgba(43, 48, 59, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 30px;
+            margin: 15px;
+            text-align: left;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+        
+    </style>
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'base',
+            themeVariables: {
+                primaryColor: '#e0f7fa',
+                primaryTextColor: '#1a1a1a',
+                primaryBorderColor: '#00bcd4',
+                lineColor: '#263238',
+                secondaryColor: '#fff3e0',
+                tertiaryColor: '#f3e5f5'
+            },
+            flowchart: { curve: 'basis' },
+            securityLevel: 'loose'
+        });
+    </script>
+</head>
+<body>
+
+    <div class="reveal">
+        <div class="slides">
+
+            <!-- Title Slide -->
+            <section>
+                <h1 class="text-gradient" style="font-size: 5rem; margin-bottom: 2rem;"><i class="fa-solid fa-bolt"></i> KAYA</h1>
+                <h3>System Architecture & AI Platform</h3>
+                <p style="color: #8892b0; font-size: 1.2rem;">Detailed Diagram Overview of APIs & Sub-functions</p>
+                <div style="margin-top: 50px;">
+                    <span style="display: inline-block; padding: 10px 20px; border-radius: 30px; background: rgba(0, 242, 254, 0.1); border: 1px solid #00f2fe; color: #00f2fe; font-size: 0.9rem;">
+                        <i class="fa-solid fa-arrow-right"></i> กดปุ่มลูกศรขวาเพื่อเริ่ม
+                    </span>
+                </div>
+            </section>
+
+            <!-- 1. Overall System Architecture Diagram -->
+            <section>
+                <h2 class="text-gradient">Core System Architecture</h2>
+                <div class="mermaid-container" style="transform: scale(0.85); transform-origin: top center;">
+                    <div class="mermaid">
+                    graph TD
+                        %% Define Styles
+                        classDef client fill:#e3f2fd,stroke:#00acc1,stroke-width:2px,color:#006064
+                        classDef hook fill:#f3e5f5,stroke:#ab47bc,stroke-width:2px,color:#4a148c
+                        classDef api fill:#fff3e0,stroke:#ff9800,stroke-width:2px,color:#e65100
+                        classDef ai fill:#e8f5e9,stroke:#00c853,stroke-width:2px,color:#1b5e20
+
+                        %% Nodes
+                        Client["📱 Frontend (React + Vite)"]:::client
+                        
+                        subgraph "Frontend Hooks (src/hooks/)"
+                            H1["useMediaPose.ts"]:::hook
+                            H2["useTTS.ts"]:::hook
+                            H3["useGameMediaPipe.ts"]:::hook
+                        end
+
+                        subgraph "API Routes (/api/)"
+                            AIFT["🗣️ AIFT API"]:::api
+                            G["🤖 Gemma API"]:::api
+                            Nutri["🥗 Nutrition API"]:::api
+                            Gemini["🎙️ Gemini API"]:::api
+                        end
+
+                        subgraph "AI Core Processing"
+                            A1["Computer Vision (MediaPipe)"]:::ai
+                            A2["Natural Language (LLM)"]:::ai
+                            A3["Audio Processing (TTS/QA)"]:::ai
+                        end
+
+                        %% Connections
+                        Client --> H1 & H2 & H3
+                        H1 --> A1
+                        H3 --> A1
+                        
+                        Client --> AIFT & G & Nutri & Gemini
+                        
+                        AIFT --> A3
+                        Gemini --> A3
+                        G --> A2
+                        Nutri --> A2
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2. AI For Thai (AIFT) & Gemini Detail -->
+            <section>
+                <h2 class="text-gradient">🗣️ Voice & Chat APIs (AIFT & Gemini)</h2>
+                <div class="glass-panel" style="font-size: 1.1rem; max-width: 900px; margin: 0 auto; margin-bottom: 20px;">
+                    โฟลเดอร์ <code>api/aift/</code> และ <code>api/gemini/</code> จัดการเรื่องการสื่อสารและเสียง
+                </div>
+                <div class="mermaid-container" style="transform: scale(0.9); transform-origin: top center; background: #fffcf2;">
+                    <div class="mermaid">
+                    graph LR
+                        classDef base fill:#fff,stroke:#333,stroke-width:2px;
+                        classDef func fill:#e1f5fe,stroke:#1e88e5,stroke-width:2px;
+                        classDef model fill:#fce4ec,stroke:#8e24aa,stroke-width:2px;
+
+                        subgraph "AIFT Endpoints"
+                            A["/audioqa.ts"]:::func
+                            B["/text-chat.ts"]:::func
+                            C["/vqa.ts"]:::func
+                            D["/tts.ts & /vajax-tts.ts"]:::func
+                        end
+
+                        subgraph "Gemini Endpoints"
+                            E["/tts.ts"]:::func
+                        end
+
+                        M1["Audio Processing"]:::model
+                        M2["LLM Analysis"]:::model
+                        M3["Vision Analysis"]:::model
+                        M4["Voice Synthesis"]:::model
+
+                        A -->|"รับไฟล์เสียง"| M1
+                        B -->|"รับข้อความ"| M2
+                        C -->|"รับรูปภาพ"| M3
+                        D -->|"แปลงข้อความเป็นเสียง"| M4
+                        E -->|"แปลงข้อความเป็นเสียง"| M4
+                    </div>
+                </div>
+            </section>
+
+            <!-- 3. Gemma & Nutrition Detail -->
+            <section>
+                <h2 class="text-gradient-orange">🥗 Nutrition & Workout AI (Gemma)</h2>
+                <div class="mermaid-container" style="background: #fafafa; padding: 30px; margin-top: 20px;">
+                    <div class="mermaid">
+                    graph TD
+                        classDef endp fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+                        classDef db fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#e65100
+
+                        subgraph "/api/gemma/"
+                            G1["/nutrition-analyze.ts<br>(วิเคราะห์สารอาหาร/แคลอรี่)"]:::endp
+                            G2["/personalized-food.ts<br>(จัดอาหารตามโปรไฟล์)"]:::endp
+                            G3["/menu-recommend.ts<br>(แนะนำเมนูถัดไป)"]:::endp
+                            G4["/workout-recommend.ts<br>(จัดตารางออกกำลังกาย)"]:::endp
+                        end
+
+                        subgraph "/api/nutrition/"
+                            N1["/ai-recommend.ts<br>(แนะนำโภชนาการรวม)"]:::endp
+                            N2["/search.ts<br>(ค้นหาข้อมูลอาหาร)"]:::endp
+                        end
+
+                        User["👤 ข้อมูลผู้ใช้ (น้ำหนัก/เป้าหมาย)"]:::db
+                        FoodPic["📸 รูปภาพอาหาร"]:::db
+
+                        User --> G2 & G4 & N1
+                        FoodPic --> G1
+                        G1 --> G3
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4. Frontend AI Coaching Logic -->
+            <section>
+                <h2 class="text-gradient">🏋️ AI Coaching Flow Diagram</h2>
+                <p style="font-size: 1.1rem; color: #aaa;">การทำงานร่วมกันของ Hook & AI Functions ระหว่างผู้ใช้และระบบ</p>
+                <div class="mermaid-container" style="transform: scale(0.9); margin-top: 10px;">
+                    <div class="mermaid">
+                    sequenceDiagram
+                        participant User as 🏃‍♂️ ผู้ใช้
+                        participant MediaPipe as 📷 useMediaPipePose
+                        participant Math as 🧮 exerciseAnalyzers
+                        participant Voice as 🗣️ useTTS (AIFT/Gemini)
+
+                        User->>MediaPipe: เริ่มออกกำลังกาย (หน้ากล้อง)
+                        loop ทุกๆ เฟรมภาพ
+                            MediaPipe->>Math: ส่งพิกัดข้อต่อ (x, y, z) 33 จุด
+                            Math->>Math: คำนวณองศาแขน/ขา (เช่น ย่อตัวลึกพอไหม)
+                            alt ท่าผิด หรือ จังหวะช้าไป
+                                Math->>Voice: Trigger ข้อความเตือน ("ย่อต่ำอีกนิด!")
+                                Voice->>User: ส่งเสียงพูดแนะนำแบบ Real-time
+                            else ท่าถูกต้อง
+                                Math->>User: นับจำนวนครั้ง (Rep Count) ขึ้นจอ
+                            end
+                        end
+                    </div>
+                </div>
+            </section>
+
+            <!-- 5. Gamification System -->
+            <section>
+                <h2 class="text-gradient">🎮 Gamification Logic</h2>
+                <div class="glass-panel" style="font-size: 1.1rem; margin-bottom: 20px;">
+                    ระบบแปลงโครงสร้างร่างกายเป็นการควบคุมเกม (Physics to Game Engine)
+                </div>
+                <div class="mermaid-container" style="background: #fff; transform: scale(0.9);">
+                    <div class="mermaid">
+                    graph LR
+                        classDef game fill:#ede7f6,stroke:#0277bd,stroke-width:2px,color:#01579b
+                        classDef input fill:#f1f8e9,stroke:#33691e,stroke-width:2px,color:#1b5e20
+
+                        M["พิกัดร่ายกาย (MediaPipe)"]:::input
+                        
+                        subgraph "🎮 Game Controller (src/lib/poseScoring.ts)"
+                            Hit["Collision Detection<br>(เช็คข้อมือชนวัตถุ)"]:::game
+                            Speed["Tempo Analyzer<br>(เช็คความเร็วการสลับเข่า)"]:::game
+                        end
+
+                        subgraph "🕹️ Minigames"
+                            G1["Whack-A-Mole<br>เกมตีตุ่น"]:::game
+                            G2["Mouse Running<br>เกมวิ่งเก็บเหรียญ"]:::game
+                        end
+
+                        M -->|พิกัดข้อมือ| Hit
+                        Hit --> G1
+                        M -->|พิกัดเข่า| Speed
+                        Speed --> G2
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </div>
+
+    <!-- Reveal.js Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/5.0.4/reveal.min.js"></script>
+    <script>
+        Reveal.initialize({
+            hash: true,
+            center: true,
+            transition: 'slide', 
+            controls: true,
+            progress: true,
+            slideNumber: 'c/t'
+        });
+    </script>
+</body>
+</html>

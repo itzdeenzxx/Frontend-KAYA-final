@@ -26,6 +26,7 @@ export interface WorkoutSession {
   remoteAction?: RemoteAction;
   musicState?: MusicState;
   ttsState?: TTSState; // TTS state for voice interaction
+  voiceMessage?: VoiceMessage; // Voice message from remote for BigScreen to process
   createdAt: Timestamp;
   lastActivity: Timestamp;
 }
@@ -35,6 +36,16 @@ export interface TTSState {
   text?: string; // Text being spoken
   status: 'idle' | 'processing' | 'speaking';
   timestamp: number;
+}
+
+export interface VoiceMessage {
+  transcript: string; // STT transcript from remote
+  status: 'pending' | 'thinking' | 'speaking' | 'done';
+  response?: string; // LLM response text (BigScreen writes back)
+  timestamp: number;
+  coachId?: string;
+  customCoach?: { name: string; personality: string; gender: 'male' | 'female' };
+  userContext?: Record<string, unknown>;
 }
 
 export interface MusicState {
@@ -55,7 +66,7 @@ export interface MusicState {
 }
 
 export interface RemoteAction {
-  type: 'play' | 'pause' | 'next' | 'previous' | 'volume' | 'end' | 'toggleSkeleton';
+  type: 'play' | 'pause' | 'next' | 'previous' | 'volume' | 'end' | 'toggleSkeleton' | 'toggleCamera' | 'toggleVisualGuide' | 'toggleTTS' | 'captureScreenshot';
   timestamp: number;
   data?: Record<string, unknown>;
 }
@@ -277,6 +288,41 @@ export async function clearTTSState(pairingCode: string): Promise<void> {
   const upperCode = pairingCode.toUpperCase();
   await updateDoc(doc(db, 'workout_sessions', upperCode), {
     ttsState: null,
+    lastActivity: serverTimestamp(),
+  });
+}
+
+// Send voice message from Remote to BigScreen for LLM processing
+export async function sendVoiceMessage(pairingCode: string, voiceMessage: VoiceMessage): Promise<void> {
+  const upperCode = pairingCode.toUpperCase();
+  await updateDoc(doc(db, 'workout_sessions', upperCode), {
+    voiceMessage,
+    lastActivity: serverTimestamp(),
+  });
+}
+
+// Update voice message status (BigScreen updates as it processes)
+export async function updateVoiceMessageStatus(
+  pairingCode: string, 
+  status: VoiceMessage['status'], 
+  response?: string
+): Promise<void> {
+  const upperCode = pairingCode.toUpperCase();
+  const update: Record<string, unknown> = {
+    'voiceMessage.status': status,
+    lastActivity: serverTimestamp(),
+  };
+  if (response !== undefined) {
+    update['voiceMessage.response'] = response;
+  }
+  await updateDoc(doc(db, 'workout_sessions', upperCode), update);
+}
+
+// Clear voice message after processing is complete
+export async function clearVoiceMessage(pairingCode: string): Promise<void> {
+  const upperCode = pairingCode.toUpperCase();
+  await updateDoc(doc(db, 'workout_sessions', upperCode), {
+    voiceMessage: null,
     lastActivity: serverTimestamp(),
   });
 }

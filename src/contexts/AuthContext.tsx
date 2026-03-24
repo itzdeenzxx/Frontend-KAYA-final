@@ -101,18 +101,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // Initialize LIFF
       await initializeLiff();
 
-      // If opened from LINE external browser, force into LIFF in-client context first.
-      // This is required for shareTargetPicker/Flex messaging features.
+      // Try to ensure proper LINE client context for share features
+      // But don't block login if not in LINE app - just log warning
       const inProperClientContext = ensureInLineClientContext();
       if (!inProperClientContext) {
-        setState(prev => ({
-          ...prev,
-          isInitialized: true,
-          isLoading: false,
-        }));
-        return;
+        console.warn('Not in proper LINE context - share features may be limited');
       }
-      
+
       // Initialize Firebase Analytics (ignore errors)
       try {
         await initAnalytics();
@@ -128,32 +123,45 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // Check if user is logged in
       if (liffIsLoggedIn()) {
         // ลบ flag เมื่อ login สำเร็จ
-        sessionStorage.removeItem('liff_login_redirecting');
+        try { sessionStorage.removeItem('liff_login_redirecting'); } catch {}
         
         // Get LINE profile
         const lineProfile = await getLineProfile();
         
         if (lineProfile) {
-          // Create or update user in Firestore (with error handling)
+          // Create or update user in Firestore (with error handling + timeout)
           let userProfile = null;
           let healthData = null;
           let userSettings = null;
           
           try {
-            userProfile = await createOrUpdateUserFromLine(
-              lineProfile.userId,
-              lineProfile.displayName,
-              lineProfile.pictureUrl
-            );
-            
-            // Initialize default settings if needed
-            await initializeUserSettings(lineProfile.userId);
-            
-            // Get additional data
-            [healthData, userSettings] = await Promise.all([
-              getHealthData(lineProfile.userId),
-              getUserSettings(lineProfile.userId),
+            const firestoreOps = async () => {
+              const profile = await createOrUpdateUserFromLine(
+                lineProfile.userId,
+                lineProfile.displayName,
+                lineProfile.pictureUrl
+              );
+              
+              // Initialize default settings if needed
+              await initializeUserSettings(lineProfile.userId);
+              
+              // Get additional data
+              const [health, settings] = await Promise.all([
+                getHealthData(lineProfile.userId),
+                getUserSettings(lineProfile.userId),
+              ]);
+              
+              return { profile, health, settings };
+            };
+
+            const result = await Promise.race([
+              firestoreOps(),
+              new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Firestore timeout')), 10000)),
             ]);
+
+            userProfile = result.profile;
+            healthData = result.health;
+            userSettings = result.settings;
           } catch (firestoreError) {
             console.warn('Firestore error (offline mode):', firestoreError);
           }
@@ -183,7 +191,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       } else {
         // ถ้ายังไม่ได้ login ให้บังคับ login ด้วย LINE ทันที
         // แต่ต้องเช็คว่าไม่ได้อยู่ในขั้นตอน redirect กลับมา
-        const isRedirecting = sessionStorage.getItem('liff_login_redirecting');
+        let isRedirecting = false;
+        try { isRedirecting = !!sessionStorage.getItem('liff_login_redirecting'); } catch {}
         
         setState(prev => ({
           ...prev,
@@ -194,11 +203,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         
         // ถ้ายังไม่เคย redirect ไป login
         if (!isRedirecting) {
-          sessionStorage.setItem('liff_login_redirecting', 'true');
+          try { sessionStorage.setItem('liff_login_redirecting', 'true'); } catch {}
           loginWithLine();
         } else {
           // ถ้า redirect กลับมาแล้วแต่ยังไม่ login สำเร็จ ให้ลบ flag แล้วลองใหม่
-          sessionStorage.removeItem('liff_login_redirecting');
+          try { sessionStorage.removeItem('liff_login_redirecting'); } catch {}
         }
       }
     } catch (error) {

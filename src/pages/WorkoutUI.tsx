@@ -17,6 +17,7 @@ import { WorkoutLoader } from "@/components/shared/WorkoutLoader";
 import { useAuth } from "@/contexts/AuthContext";
 import { getUserSettings, DEFAULT_TTS_SETTINGS } from "@/lib/firestore";
 import { getCoachById, Coach, migrateSpeakerId, migrateCoachId } from "@/lib/coachConfig";
+import { REP_FRAME_COUNT } from "@/lib/poseScoring";
 
 // Rep count messages - only speak at 1, 5, 9, 10
 const REP_MESSAGES: Record<number, string> = {
@@ -205,9 +206,18 @@ export default function WorkoutUI() {
     targetReps: number;
     formScore: number;
     duration: number;
+    kayaExercise?: string;
+    repFrames?: [number, number][][][];
   }>>([]);
   const exerciseStartTimeRef = useRef(Date.now());
   const screenshotsRef = useRef<string[]>([]);
+
+  // Frame collection for AI pose scoring — rolling buffer, capture on rep complete
+  const frameBufferRef = useRef<[number, number][][]>([]); // rolling buffer of recent frames
+  const allRepFramesRef = useRef<[number, number][][][]>([]); // saved frames per completed rep
+  const lastCollectedRepRef = useRef(0);
+  // Track which exercises have been finalized (saved with frames) — prevent overwrite
+  const finalizedExercisesRef = useRef<Set<number>>(new Set());
   
   // Simple loading state - auto skip after 3 seconds
   const [showLoader, setShowLoader] = useState(true);
@@ -497,9 +507,11 @@ export default function WorkoutUI() {
         if (shouldCountDown) {
           setTimeLeft((prev) => {
             if (prev <= 1) {
-              // Call via ref so the updater stays pure (no captured-closure side-effects)
-              // and handleNext is always the latest version without adding it to deps.
-              handleNextRef.current();
+              // For KAYA rep-based exercises, auto-advance handles the transition
+              // — don't let the timer also call handleNext (causes double-save)
+              if (!isKayaWorkout || currentExerciseIsTimeBased) {
+                handleNextRef.current();
+              }
               return 0;
             }
             return prev - 1;
@@ -524,11 +536,22 @@ export default function WorkoutUI() {
     const exerciseData = exercises[currentExercise];
     if (!exerciseData) return;
 
+    // If this exercise was already finalized (saved with frames), skip entirely
+    if (finalizedExercisesRef.current.has(currentExercise)) {
+      console.log(`⏭️ [SaveExercise] Exercise ${currentExercise} already finalized, skipping`);
+      return;
+    }
+
     const duration = Math.floor((Date.now() - exerciseStartTimeRef.current) / 1000);
     const reps = isKayaWorkout ? kayaAnalysis.reps : (exerciseData.reps || 0);
     const targetReps = exerciseData.reps || 10;
     const formScore = isKayaWorkout ? kayaAnalysis.formScore : 80;
-    
+
+    const kayaExType = (exerciseData as any).kayaExercise as string | undefined;
+
+    // Only save rep frames if reps were actually completed (no movement = no score)
+    const repFramesToSave = allRepFramesRef.current.length > 0 ? [...allRepFramesRef.current] : undefined;
+
     exerciseResultsRef.current[currentExercise] = {
       name: exerciseData.name,
       nameTh: exerciseData.nameTh,
@@ -536,15 +559,24 @@ export default function WorkoutUI() {
       targetReps,
       formScore,
       duration,
+      kayaExercise: kayaExType,
+      repFrames: repFramesToSave,
     };
-    
+
+    // Lock this exercise if it has frames — no future saves can overwrite
+    if (repFramesToSave && repFramesToSave.length > 0) {
+      finalizedExercisesRef.current.add(currentExercise);
+    }
+
     // Log exercise completion
     console.log('\n✅ ======== EXERCISE SAVED ========');
     console.log(`🏋️ ท่า: ${exerciseData.nameTh || exerciseData.name}`);
     console.log(`🔢 Rep: ${reps}/${targetReps}`);
     console.log(`⭐ คะแนนฟอร์ม: ${formScore}%`);
     console.log(`⏱️ เวลา: ${duration} วินาที`);
-    
+    console.log(`📐 AI Frames: ${repFramesToSave?.length || 0} reps captured, total frames: ${repFramesToSave?.reduce((s, r) => s + r.length, 0) || 0}`);
+    console.log(`🔒 Finalized: ${finalizedExercisesRef.current.has(currentExercise)}`);
+
     // Reset timer for next exercise
     exerciseStartTimeRef.current = Date.now();
   }, [currentExercise, exercises, isKayaWorkout, kayaAnalysis]);
@@ -1142,6 +1174,38 @@ export default function WorkoutUI() {
     }
   }, [isKayaWorkout, kayaAnalysis.reps, kayaAnalysis.formScore, currentExercise, exercises, speakRepCount]);
 
+  // Collect landmark frames into rolling buffer for AI pose scoring
+  useEffect(() => {
+    if (!isKayaWorkout || !landmarks || landmarks.length !== 33) return;
+    const frame: [number, number][] = landmarks.map(lm => [lm.x, lm.y]);
+    frameBufferRef.current.push(frame);
+    // Keep buffer capped at 200 frames to limit memory
+    if (frameBufferRef.current.length > 200) {
+      frameBufferRef.current = frameBufferRef.current.slice(-200);
+    }
+  }, [isKayaWorkout, landmarks]);
+
+  // When a rep completes → capture last N frames from buffer (backwards capture)
+  useEffect(() => {
+    if (!isKayaWorkout) return;
+    if (kayaAnalysis.reps > lastCollectedRepRef.current && kayaAnalysis.reps > 0) {
+      const kayaExType = exercises[currentExercise]?.kayaExercise as string | undefined;
+      const frameCount = kayaExType ? (REP_FRAME_COUNT[kayaExType] || 45) : 45;
+      const buffer = frameBufferRef.current;
+
+      if (buffer.length >= 2) {
+        // Take the last N frames from the rolling buffer
+        const repFrames = buffer.slice(-frameCount);
+        allRepFramesRef.current.push(repFrames);
+        console.log(
+          `📐 [FrameCapture] Rep ${kayaAnalysis.reps} complete → captured ${repFrames.length}/${frameCount} frames (buffer had ${buffer.length})`
+        );
+      }
+
+      lastCollectedRepRef.current = kayaAnalysis.reps;
+    }
+  }, [isKayaWorkout, kayaAnalysis.reps, currentExercise, exercises]);
+
   // Reset rep refs and halfway flag when exercise changes
   useEffect(() => {
     lastRepRef.current = 0;
@@ -1159,6 +1223,10 @@ export default function WorkoutUI() {
     stageUpEnteredTimeRef.current = 0;
     holdCountdownRef.current = 4;
     holdAnnouncedRef.current = false;
+    // Reset frame collection for new exercise
+    frameBufferRef.current = [];
+    allRepFramesRef.current = [];
+    lastCollectedRepRef.current = 0;
   }, [currentExercise]);
 
   // Capture screenshot for voice interaction
@@ -2068,6 +2136,19 @@ export default function WorkoutUI() {
                 {showSkeleton ? <Bone className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
               </button>
             )}
+            {/* Visual Pose Guide Toggle - Desktop */}
+            {isKayaWorkout && cameraEnabled && (
+              <button
+                onClick={() => setShowVisualGuide(!showVisualGuide)}
+                className={cn(
+                  "w-10 h-10 rounded-full backdrop-blur-sm flex items-center justify-center transition-colors",
+                  showVisualGuide ? "bg-orange-500 text-white" : "bg-black/30 text-white/70 hover:bg-black/50"
+                )}
+                title={showVisualGuide ? "ซ่อนไกด์ท่า" : "แสดงไกด์ท่า"}
+              >
+                <Target className="w-4 h-4" />
+              </button>
+            )}
             {/* Music Toggle */}
             <button
               onClick={() => setShowMusicPlayer(!showMusicPlayer)}
@@ -2395,6 +2476,19 @@ export default function WorkoutUI() {
                   title={showSkeleton ? "ซ่อนโครงกระดูก" : "แสดงโครงกระดูก"}
                 >
                   {showSkeleton ? <Bone className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                </button>
+              )}
+              {/* Visual Pose Guide Toggle for Mobile */}
+              {isKayaWorkout && cameraEnabled && (
+                <button 
+                  onClick={() => setShowVisualGuide(!showVisualGuide)}
+                  className={cn(
+                    "w-9 h-9 rounded-xl backdrop-blur-sm flex items-center justify-center transition-colors",
+                    showVisualGuide ? "bg-orange-500/80 text-white" : "bg-white/10 text-white/60"
+                  )}
+                  title={showVisualGuide ? "ซ่อนไกด์ท่า" : "แสดงไกด์ท่า"}
+                >
+                  <Target className="w-4 h-4" />
                 </button>
               )}
               {/* Screenshot Button for Mobile */}

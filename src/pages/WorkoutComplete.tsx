@@ -24,11 +24,17 @@ import {
   Link,
   Check,
   Zap,
+  Brain,
+  Loader2,
 } from 'lucide-react';
-import type { WorkoutResults } from '@/types/workout';
+import type { WorkoutResults, ExerciseAIScoreResult } from '@/types/workout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { addWorkoutToDailyStats, incrementChallengeProgress, updateUserPoints, updateUserStreak, saveWorkoutSession } from '@/lib/firestore';
+import { storage } from '@/lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import liff from '@line/liff';
+import { scoreExerciseReps, isScoringSupported } from '@/lib/poseScoring';
 
 // Calculate calories based on workout intensity and duration
 function calculateCalories(
@@ -63,7 +69,7 @@ const ACHIEVEMENTS: Achievement[] = [
   {
     id: 'perfect_form',
     name: 'Perfect Form',
-    nameTh: 'ฟอร์มเพอร์เฟค',
+    nameTh: 'ท่าทางเพอร์เฟค',
     icon: <Star className="w-6 h-6" />,
     color: 'from-yellow-400 to-orange-500',
     condition: (r) => r.averageFormScore >= 90,
@@ -118,6 +124,7 @@ export default function WorkoutComplete() {
   const [copied, setCopied] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
+  const [isLineSharing, setIsLineSharing] = useState(false);
   const { lineProfile, refreshUser } = useAuth();
 
   // Get workout results from location state or use mock data
@@ -145,6 +152,81 @@ export default function WorkoutComplete() {
       results.averageFormScore
     );
   }
+
+  // AI Pose Scoring state
+  const [aiScores, setAiScores] = useState<Record<number, ExerciseAIScoreResult>>({});
+  const [aiScoringLoading, setAiScoringLoading] = useState(false);
+  const [aiScoringDone, setAiScoringDone] = useState(false);
+  const [overallAIScore, setOverallAIScore] = useState<{ lstm: number; cnn: number; avg: number } | null>(null);
+
+  // Call AI scoring API for exercises that have repFrames
+  useEffect(() => {
+    if (aiScoringDone) return;
+
+    console.log('[AI Scoring] Checking exercises for scoring...');
+    results.exercises.forEach((ex, idx) => {
+      console.log(`  [${idx}] ${ex.name}: kayaExercise=${ex.kayaExercise}, repFrames=${ex.repFrames?.length || 0} reps, supported=${ex.kayaExercise ? isScoringSupported(ex.kayaExercise) : false}`);
+    });
+
+    const exercisesWithFrames = results.exercises
+      .map((ex, idx) => ({ ex, idx }))
+      .filter(({ ex }) => ex.repFrames && ex.repFrames.length > 0 && ex.kayaExercise && isScoringSupported(ex.kayaExercise));
+
+    console.log(`[AI Scoring] Found ${exercisesWithFrames.length} exercises with frames to score`);
+
+    if (exercisesWithFrames.length === 0) {
+      setAiScoringDone(true);
+      return;
+    }
+
+    setAiScoringLoading(true);
+
+    const scoreAll = async () => {
+      const scoreMap: Record<number, ExerciseAIScoreResult> = {};
+
+      // Score each exercise (each exercise scores its reps one-by-one inside scoreExerciseReps)
+      for (const { ex, idx } of exercisesWithFrames) {
+        console.log(`\n🏋️ [AI Scoring] Scoring exercise [${idx}] ${ex.name} (${ex.kayaExercise}) — ${ex.repFrames!.length} reps / target ${ex.targetReps}`);
+        const result = await scoreExerciseReps(ex.kayaExercise!, ex.repFrames!, ex.targetReps);
+        if (result) {
+          scoreMap[idx] = {
+            lstmScore: Math.min(100, result.avgLstmScore),
+            cnnScore: Math.min(100, result.avgCnnScore),
+            avgScore: Math.min(100, result.avgScore),
+            repScores: result.repScores,
+          };
+          console.log(`✅ [AI Scoring] Exercise [${idx}] ${ex.name} → avg_score=${result.avgScore}% (CNN=${result.avgCnnScore}%, LSTM=${result.avgLstmScore}%)`);
+          console.log(`   Per-rep scores:`, result.repScores.map(r => `Rep${r.repIndex + 1}=${r.avg_score}%`).join(' | '));
+        } else {
+          console.warn(`⚠️ [AI Scoring] Exercise [${idx}] ${ex.name} — no score returned`);
+        }
+      }
+
+      setAiScores(scoreMap);
+
+      // Calculate overall AI score across all exercises
+      const scored = Object.values(scoreMap);
+      if (scored.length > 0) {
+        const avgLstm = Math.min(100, Math.round(scored.reduce((s, v) => s + v.lstmScore, 0) / scored.length * 10) / 10);
+        const avgCnn = Math.min(100, Math.round(scored.reduce((s, v) => s + v.cnnScore, 0) / scored.length * 10) / 10);
+        const avgAll = Math.min(100, Math.round(scored.reduce((s, v) => s + v.avgScore, 0) / scored.length * 10) / 10);
+        setOverallAIScore({ lstm: avgLstm, cnn: avgCnn, avg: avgAll });
+
+        console.log(
+          `\n🏆 [AI Scoring] === OVERALL WORKOUT AI SCORE ===\n` +
+          `   LSTM avg : ${avgLstm}%\n` +
+          `   CNN  avg : ${avgCnn}%\n` +
+          `   Overall  : ${avgAll}% (cnn×0.7 + lstm×0.3)\n` +
+          `   Exercises scored: ${scored.length}/${results.exercises.length}`
+        );
+      }
+
+      setAiScoringLoading(false);
+      setAiScoringDone(true);
+    };
+
+    scoreAll();
+  }, [results.exercises, aiScoringDone]);
 
   // Save workout data to Firebase
   useEffect(() => {
@@ -247,12 +329,32 @@ export default function WorkoutComplete() {
     try {
       // Dynamic import html2canvas to avoid SSR issues
       const html2canvas = (await import('html2canvas')).default;
-      const canvas = await html2canvas(shareCardRef.current, {
-        backgroundColor: null,
+      const rawCanvas = await html2canvas(shareCardRef.current, {
+        backgroundColor: '#1a1a2e',
         scale: 2,
         useCORS: true,
       });
-      return canvas.toDataURL('image/png');
+
+      // Resize to 1024x1024 for LINE shareTargetPicker compatibility
+      const MAX = 1024;
+      const resized = document.createElement('canvas');
+      resized.width = MAX;
+      resized.height = MAX;
+      const ctx = resized.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(0, 0, MAX, MAX);
+        // Fit the captured card into the square, centered
+        const srcW = rawCanvas.width;
+        const srcH = rawCanvas.height;
+        const ratio = Math.min(MAX / srcW, MAX / srcH);
+        const dstW = Math.round(srcW * ratio);
+        const dstH = Math.round(srcH * ratio);
+        const offsetX = Math.round((MAX - dstW) / 2);
+        const offsetY = Math.round((MAX - dstH) / 2);
+        ctx.drawImage(rawCanvas, offsetX, offsetY, dstW, dstH);
+      }
+      return resized.toDataURL('image/png');
     } catch (error) {
       console.error('Error capturing share card:', error);
       return null;
@@ -272,9 +374,163 @@ export default function WorkoutComplete() {
     }
   };
 
+  // Share to LINE via shareTargetPicker with stats image
+  const handleShareLine = async () => {
+    setShowShareMenu(false);
+    setIsLineSharing(true);
+
+    try {
+      // 1. Capture the share card as image
+      const dataUrl = await captureShareCard();
+      if (!dataUrl) throw new Error('Failed to capture share card');
+
+      // 2. Upload to Firebase Storage to get a public URL
+      const blob = await (await fetch(dataUrl)).blob();
+      const userId = lineProfile?.userId || 'anonymous';
+      const fileName = `workout-${Date.now()}.png`;
+      const storageRef = ref(storage, `workout-shares/${userId}/${fileName}`);
+      await uploadBytes(storageRef, blob, { contentType: 'image/png' });
+      const imageUrl = await getDownloadURL(storageRef);
+
+      // 3. Check if shareTargetPicker is available
+      if (!liff.isApiAvailable('shareTargetPicker')) {
+        // Fallback: open LINE share URL
+        const shareText = `🎯 เพิ่งออกกำลังกายกับ KAYA เสร็จ!\n💪 ${results.totalReps} ครั้ง\n🔥 ${results.caloriesBurned} แคลอรี่\n⭐ ท่าทาง ${results.averageFormScore}%`;
+        window.open(
+          `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(window.location.origin)}&text=${encodeURIComponent(shareText)}`,
+          '_blank'
+        );
+        return;
+      }
+
+      // 4. Build Flex Message with image
+      const appUrl = "https://miniapp.line.me/2008680520-UNJtwcRg";
+      const profileName = lineProfile?.displayName || 'KAYA User';
+
+      const flexMessage: any = {
+        type: 'flex',
+        altText: `🎯 ${profileName} เพิ่งออกกำลังกายกับ KAYA! 💪 ${results.totalReps} ครั้ง 🔥 ${results.caloriesBurned} แคลอรี่`,
+        contents: {
+          type: 'bubble',
+          size: 'mega',
+          hero: {
+            type: 'image',
+            url: imageUrl,
+            size: 'full',
+            aspectRatio: '1:1',
+            aspectMode: 'cover',
+          },
+          body: {
+            type: 'box',
+            layout: 'vertical',
+            contents: [
+              {
+                type: 'text',
+                text: `${profileName} ออกกำลังกายเสร็จแล้ว! 🎉`,
+                weight: 'bold',
+                size: 'lg',
+                color: '#ffffff',
+                wrap: true,
+              },
+              {
+                type: 'text',
+                text: results.styleNameTh,
+                size: 'sm',
+                color: '#aaaaaa',
+                margin: 'sm',
+              },
+              {
+                type: 'separator',
+                margin: 'lg',
+                color: '#333333',
+              },
+              {
+                type: 'box',
+                layout: 'horizontal',
+                contents: [
+                  {
+                    type: 'box',
+                    layout: 'vertical',
+                    contents: [
+                      { type: 'text', text: String(results.totalReps), size: 'xl', weight: 'bold', color: '#dd6e53', align: 'center' },
+                      { type: 'text', text: 'ครั้ง', size: 'xxs', color: '#888888', align: 'center' },
+                    ],
+                    flex: 1,
+                  },
+                  { type: 'separator', color: '#444444' },
+                  {
+                    type: 'box',
+                    layout: 'vertical',
+                    contents: [
+                      { type: 'text', text: `🔥 ${results.caloriesBurned}`, size: 'xl', weight: 'bold', color: '#ff8c00', align: 'center' },
+                      { type: 'text', text: 'แคลอรี่', size: 'xxs', color: '#888888', align: 'center' },
+                    ],
+                    flex: 1,
+                  },
+                  { type: 'separator', color: '#444444' },
+                  {
+                    type: 'box',
+                    layout: 'vertical',
+                    contents: [
+                      { type: 'text', text: `${results.averageFormScore}%`, size: 'xl', weight: 'bold', color: '#4CAF50', align: 'center' },
+                      { type: 'text', text: 'ท่าทาง', size: 'xxs', color: '#888888', align: 'center' },
+                    ],
+                    flex: 1,
+                  },
+                ],
+                margin: 'lg',
+                paddingTop: 'md',
+                paddingBottom: 'md',
+              },
+              {
+                type: 'text',
+                text: '💪 มาออกกำลังกายด้วยกัน!',
+                size: 'md',
+                color: '#ffffff',
+                align: 'center',
+                margin: 'lg',
+                weight: 'bold',
+              },
+            ],
+            backgroundColor: '#1a1a2e',
+            paddingAll: '20px',
+          },
+          footer: {
+            type: 'box',
+            layout: 'vertical',
+            contents: [
+              {
+                type: 'button',
+                action: { type: 'uri', label: 'เข้าใช้งาน KAYA', uri: appUrl },
+                style: 'primary',
+                color: '#dd6e53',
+                height: 'sm',
+              },
+            ],
+            backgroundColor: '#1a1a2e',
+            paddingAll: '15px',
+            paddingTop: '0px',
+          },
+        },
+      };
+
+      await liff.shareTargetPicker([flexMessage]);
+    } catch (error) {
+      console.error('LINE share failed:', error);
+      // Fallback to URL-based share
+      const shareText = `🎯 เพิ่งออกกำลังกายกับ KAYA เสร็จ!\n💪 ${results.totalReps} ครั้ง\n🔥 ${results.caloriesBurned} แคลอรี่`;
+      window.open(
+        `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(window.location.origin)}&text=${encodeURIComponent(shareText)}`,
+        '_blank'
+      );
+    } finally {
+      setIsLineSharing(false);
+    }
+  };
+
   // Share functions
   const handleShare = async (platform: string) => {
-    const shareText = `🎯 เพิ่งออกกำลังกายกับ KAYA เสร็จ!\n💪 ${results.totalReps} ครั้ง\n🔥 ${results.caloriesBurned} แคลอรี่\n⭐ ฟอร์ม ${results.averageFormScore}%\n\n#KAYAFitness #ออกกำลังกาย`;
+    const shareText = `🎯 เพิ่งออกกำลังกายกับ KAYA เสร็จ!\n💪 ${results.totalReps} ครั้ง\n🔥 ${results.caloriesBurned} แคลอรี่\n⭐ ท่าทาง ${results.averageFormScore}%\n\n#KAYAFitness #ออกกำลังกาย`;
     const shareUrl = window.location.origin;
 
     switch (platform) {
@@ -305,12 +561,6 @@ export default function WorkoutComplete() {
       case 'facebook':
         window.open(
           `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}&quote=${encodeURIComponent(shareText)}`,
-          '_blank'
-        );
-        break;
-      case 'line':
-        window.open(
-          `https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareText)}`,
           '_blank'
         );
         break;
@@ -353,7 +603,8 @@ export default function WorkoutComplete() {
         {/* Share Card (Capture Area) */}
         <div
           ref={shareCardRef}
-          className="max-w-md mx-auto mb-8 p-6 rounded-3xl bg-gradient-to-br from-primary/20 via-background to-orange-500/20 border border-primary/20 shadow-2xl"
+          className="max-w-md mx-auto mb-8 p-6 rounded-3xl shadow-2xl"
+          style={{ backgroundColor: '#1a1a2e', color: '#ffffff' }}
         >
           {/* Card Header */}
           <div className="flex items-center gap-3 mb-6">
@@ -361,27 +612,27 @@ export default function WorkoutComplete() {
               <Sparkles className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h2 className="font-bold text-lg">KAYA Fitness</h2>
-              <p className="text-sm text-muted-foreground">{results.styleNameTh}</p>
+              <h2 className="font-bold text-lg" style={{ color: '#ffffff' }}>KAYA Fitness</h2>
+              <p className="text-sm" style={{ color: '#aaaaaa' }}>{results.styleNameTh}</p>
             </div>
           </div>
 
           {/* Main Stats */}
           <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="text-center p-3 rounded-2xl bg-background/50 backdrop-blur">
-              <div className="text-3xl font-bold text-primary">{results.totalReps}</div>
-              <div className="text-xs text-muted-foreground">ครั้ง</div>
+            <div className="text-center p-3 rounded-2xl" style={{ backgroundColor: '#2a2a4a' }}>
+              <div className="text-3xl font-bold" style={{ color: '#ff6b6b' }}>{results.totalReps}</div>
+              <div className="text-xs" style={{ color: '#aaaaaa' }}>ครั้ง</div>
             </div>
-            <div className="text-center p-3 rounded-2xl bg-background/50 backdrop-blur">
+            <div className="text-center p-3 rounded-2xl" style={{ backgroundColor: '#2a2a4a' }}>
               <div className="flex items-center justify-center gap-1">
                 <Flame className="w-5 h-5 text-orange-500" />
                 <span className="text-3xl font-bold text-orange-500">{results.caloriesBurned}</span>
               </div>
-              <div className="text-xs text-muted-foreground">แคลอรี่</div>
+              <div className="text-xs" style={{ color: '#aaaaaa' }}>แคลอรี่</div>
             </div>
-            <div className="text-center p-3 rounded-2xl bg-background/50 backdrop-blur">
-              <div className="text-3xl font-bold text-blue-500">{formatTime(results.totalTime)}</div>
-              <div className="text-xs text-muted-foreground">เวลา</div>
+            <div className="text-center p-3 rounded-2xl" style={{ backgroundColor: '#2a2a4a' }}>
+              <div className="text-3xl font-bold" style={{ color: '#4ecdc4' }}>{formatTime(results.totalTime)}</div>
+              <div className="text-xs" style={{ color: '#aaaaaa' }}>เวลา</div>
             </div>
           </div>
 
@@ -390,10 +641,10 @@ export default function WorkoutComplete() {
             {/* Completion */}
             <div>
               <div className="flex justify-between text-sm mb-2">
-                <span className="text-muted-foreground">ความสำเร็จ</span>
+                <span style={{ color: '#cccccc' }}>ความสำเร็จ</span>
                 <span className="font-bold text-primary">{results.completionPercentage}%</span>
               </div>
-              <div className="h-3 bg-muted rounded-full overflow-hidden">
+              <div className="h-3 rounded-full overflow-hidden" style={{ backgroundColor: '#333355' }}>
                 <div
                   className="h-full bg-gradient-to-r from-primary to-orange-500 rounded-full transition-all duration-1000"
                   style={{ width: `${results.completionPercentage}%` }}
@@ -404,12 +655,12 @@ export default function WorkoutComplete() {
             {/* Form Score */}
             <div>
               <div className="flex justify-between text-sm mb-2">
-                <span className="text-muted-foreground">คะแนนฟอร์ม</span>
+                <span style={{ color: '#cccccc' }}>คะแนนท่าทาง</span>
                 <span className={cn("font-bold", getFormColor(results.averageFormScore))}>
                   {results.averageFormScore}% - {getFormText(results.averageFormScore)}
                 </span>
               </div>
-              <div className="h-3 bg-muted rounded-full overflow-hidden">
+              <div className="h-3 rounded-full overflow-hidden" style={{ backgroundColor: '#333355' }}>
                 <div
                   className={cn(
                     "h-full rounded-full transition-all duration-1000",
@@ -422,10 +673,60 @@ export default function WorkoutComplete() {
             </div>
           </div>
 
+          {/* AI Pose Score */}
+          {(aiScoringLoading || overallAIScore) && (
+            <div className="mb-6">
+              <div className="flex items-center gap-2 mb-3">
+                <Brain className="w-4 h-4" style={{ color: '#a78bfa' }} />
+                <span className="text-sm font-semibold" style={{ color: '#cccccc' }}>AI ประเมินท่า <span style={{ fontWeight: 400, fontSize: '0.95em' }}>(จากการวิเคราะห์ 10 ครั้ง)</span></span>
+              </div>
+              {aiScoringLoading ? (
+                <div className="flex items-center justify-center gap-2 py-4">
+                  <Loader2 className="w-5 h-5 animate-spin" style={{ color: '#a78bfa' }} />
+                  <span className="text-sm" style={{ color: '#aaaaaa' }}>กำลังวิเคราะห์ท่าออกกำลังกาย...</span>
+                </div>
+              ) : overallAIScore && (
+                <div className="space-y-3">
+                  {/* Overall AI Score */}
+                  <div className="p-3 rounded-xl" style={{ backgroundColor: '#2a2a4a' }}>
+                    <div className="text-center mb-2">
+                      <span className="text-3xl font-bold" style={{ color: '#a78bfa' }}>
+                        {overallAIScore.avg}%
+                      </span>
+                      <p className="text-xs mt-1" style={{ color: '#aaaaaa' }}>คะแนนความถูกต้องเฉลี่ย</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 mt-3">
+                      <div className="text-center p-2 rounded-lg" style={{ backgroundColor: '#1a1a2e' }}>
+                        <div className="text-lg font-bold" style={{ color: '#60a5fa' }}>{overallAIScore.cnn}%</div>
+                        <div className="text-xs" style={{ color: '#888888' }}>ฟอร์มถูกต้อง</div>
+                      </div>
+                      <div className="text-center p-2 rounded-lg" style={{ backgroundColor: '#1a1a2e' }}>
+                        <div className="text-lg font-bold" style={{ color: '#34d399' }}>{overallAIScore.lstm}%</div>
+                        <div className="text-xs" style={{ color: '#888888' }}>จังหวะถูกต้อง</div>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Score bar */}
+                  <div>
+                    <div className="h-3 rounded-full overflow-hidden" style={{ backgroundColor: '#333355' }}>
+                      <div
+                        className="h-full rounded-full transition-all duration-1000"
+                        style={{
+                          width: `${overallAIScore.avg}%`,
+                          background: 'linear-gradient(to right, #a78bfa, #8b5cf6)',
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Achievements */}
           {earnedAchievements.length > 0 && (
             <div className="mb-4">
-              <p className="text-sm text-muted-foreground mb-3">🏆 รางวัลที่ได้รับ</p>
+              <p className="text-sm mb-3" style={{ color: '#cccccc' }}>🏆 รางวัลที่ได้รับ</p>
               <div className="flex flex-wrap gap-2">
                 {earnedAchievements.slice(0, 4).map((achievement) => (
                   <div
@@ -444,9 +745,9 @@ export default function WorkoutComplete() {
           )}
 
           {/* Branding */}
-          <div className="text-center pt-4 border-t border-border/50">
-            <p className="text-xs text-muted-foreground">
-              Powered by <span className="font-bold text-primary">KAYA</span> AI Fitness
+          <div className="text-center pt-4" style={{ borderTop: '1px solid #333355' }}>
+            <p className="text-xs" style={{ color: '#888888' }}>
+              Powered by <span className="font-bold" style={{ color: '#ff6b6b' }}>KAYA</span> AI Fitness
             </p>
           </div>
         </div>
@@ -461,25 +762,75 @@ export default function WorkoutComplete() {
             {results.exercises.map((exercise, idx) => (
               <div
                 key={idx}
-                className="flex items-center justify-between p-4 rounded-2xl bg-card border border-border/50"
+                className="p-4 rounded-2xl bg-card border border-border/50"
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                    <span className="text-lg font-bold text-primary">{idx + 1}</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                      <span className="text-lg font-bold text-primary">{idx + 1}</span>
+                    </div>
+                    <div>
+                      <p className="font-medium text-black">{exercise.nameTh}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {exercise.reps}/{exercise.targetReps} ครั้ง
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-medium text-black">{exercise.nameTh}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {exercise.reps}/{exercise.targetReps} ครั้ง
-                    </p>
+                  <div className="text-right">
+                    <div className={cn("font-bold", getFormColor(exercise.formScore))}>
+                      {exercise.formScore}%
+                    </div>
+                    <div className="text-xs text-muted-foreground">ท่าทาง</div>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className={cn("font-bold", getFormColor(exercise.formScore))}>
-                    {exercise.formScore}%
-                  </div>  
-                  <div className="text-xs text-muted-foreground">ฟอร์ม</div>
-                </div>
+                {/* AI Score per exercise */}
+                {aiScores[idx] && (
+                  <div className="mt-3 pt-3 border-t border-border/30">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Brain className="w-3.5 h-3.5 text-purple-500" />
+                      <span className="text-xs font-medium text-purple-500">AI ประเมินท่า <span style={{ fontWeight: 400, fontSize: '0.95em' }}>(จากการวิเคราะห์ 10 ครั้ง)</span></span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="text-center p-1.5 rounded-lg bg-purple-500/10">
+                        <div className="text-sm font-bold text-purple-500">{aiScores[idx].avgScore}%</div>
+                        <div className="text-[10px] text-muted-foreground">เฉลี่ย</div>
+                      </div>
+                      <div className="text-center p-1.5 rounded-lg bg-blue-500/10">
+                        <div className="text-sm font-bold text-blue-500">{aiScores[idx].cnnScore}%</div>
+                        <div className="text-[10px] text-muted-foreground">ท่าถูกต้อง</div>
+                      </div>
+                      <div className="text-center p-1.5 rounded-lg bg-green-500/10">
+                        <div className="text-sm font-bold text-green-500">{aiScores[idx].lstmScore}%</div>
+                        <div className="text-[10px] text-muted-foreground">จังหวะถูกต้อง</div>
+                      </div>
+                    </div>
+                    {/* Per-rep breakdown */}
+                    {aiScores[idx].repScores.length > 1 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {aiScores[idx].repScores.map((rep, repIdx) => (
+                          <span
+                            key={repIdx}
+                            className={cn(
+                              "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
+                              rep.avg_score >= 80 ? "bg-green-500/15 text-green-600" :
+                              rep.avg_score >= 50 ? "bg-yellow-500/15 text-yellow-600" :
+                              "bg-red-500/15 text-red-600"
+                            )}
+                          >
+                            ครั้งที่ {rep.repIndex + 1}: {Math.round(rep.avg_score)}%
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* Loading indicator for this exercise */}
+                {aiScoringLoading && exercise.kayaExercise && isScoringSupported(exercise.kayaExercise) && !aiScores[idx] && (
+                  <div className="mt-3 pt-3 border-t border-border/30 flex items-center gap-2">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-500" />
+                    <span className="text-xs text-muted-foreground">กำลังวิเคราะห์...</span>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -551,13 +902,18 @@ export default function WorkoutComplete() {
                     </button>
                   )}
                   <button
-                    onClick={() => handleShare('line')}
+                    onClick={handleShareLine}
+                    disabled={isLineSharing}
                     className="flex flex-col items-center gap-1 p-2 rounded-xl hover:bg-muted transition-colors"
                   >
                     <div className="w-10 h-10 rounded-full bg-[#00B900] flex items-center justify-center">
-                      <span className="text-white font-bold text-sm">LINE</span>
+                      {isLineSharing ? (
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <span className="text-white font-bold text-sm">LINE</span>
+                      )}
                     </div>
-                    <span className="text-xs">LINE</span>
+                    <span className="text-xs">{isLineSharing ? 'กำลังส่ง...' : 'LINE'}</span>
                   </button>
                   <button
                     onClick={() => handleShare('facebook')}

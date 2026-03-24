@@ -468,7 +468,7 @@ export const TARGET_POSES: Record<ExerciseType, Record<string, TargetPose>> = {
   },
 
   static_lunge: {
-    down: {
+    hold: {
       left_hip: { x: 0.45, y: 0.50 },
       left_knee: { x: 0.35, y: 0.65 },
       left_ankle: { x: 0.30, y: 0.90 },
@@ -476,7 +476,7 @@ export const TARGET_POSES: Record<ExerciseType, Record<string, TargetPose>> = {
       right_knee: { x: 0.60, y: 0.75 },
       right_ankle: { x: 0.70, y: 0.90 },
     },
-    up: {
+    idle: {
       left_hip: { x: 0.45, y: 0.45 },
       left_knee: { x: 0.40, y: 0.60 },
       left_ankle: { x: 0.35, y: 0.90 },
@@ -605,27 +605,22 @@ export const TARGET_POSES: Record<ExerciseType, Record<string, TargetPose>> = {
       right_wrist: { x: 0.60, y: 0.30 },
       left_hip: { x: 0.55, y: 0.52 },
       right_hip: { x: 0.45, y: 0.50 },
+    },
+    tap: {
+      left_shoulder: { x: 0.55, y: 0.30 },
+      right_shoulder: { x: 0.35, y: 0.32 },
+      left_wrist: { x: 0.40, y: 0.30 },
+      left_hip: { x: 0.55, y: 0.50 },
+      right_hip: { x: 0.45, y: 0.52 },
     }
   },
 
   burpee: {
-    squat: {
+    down: {
       left_hip: { x: 0.55, y: 0.65 },
       left_knee: { x: 0.60, y: 0.80 },
       left_ankle: { x: 0.55, y: 0.95 },
       left_shoulder: { x: 0.55, y: 0.45 },
-    },
-    plank: {
-      left_shoulder: { x: 0.30, y: 0.40 },
-      left_hip: { x: 0.55, y: 0.45 },
-      left_ankle: { x: 0.80, y: 0.50 },
-    },
-    jump: {
-      left_hip: { x: 0.55, y: 0.45 },
-      left_knee: { x: 0.55, y: 0.60 },
-      left_ankle: { x: 0.55, y: 0.80 },
-      left_shoulder: { x: 0.55, y: 0.25 },
-      left_wrist: { x: 0.60, y: 0.10 },
     },
     up: {
       left_hip: { x: 0.55, y: 0.55 },

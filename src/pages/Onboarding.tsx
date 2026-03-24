@@ -4,10 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { 
-  User, 
-  Scale, 
-  Ruler, 
+import {
+  User,
+  Scale,
+  Ruler,
   Calendar,
   Sparkles,
   ArrowRight,
@@ -20,11 +20,19 @@ import {
   AlertCircle,
   UserCircle,
   Users,
-  Volume2
+  Volume2,
+  MessageCircle,
+  Copy,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CoachSelector } from "@/components/coach";
 import { getCoachById } from "@/lib/coachConfig";
+import { useAuth } from "@/contexts/AuthContext";
+import { getUserSettings, updateLineNotificationSettings } from "@/lib/firestore";
 
 interface OnboardingData {
   nickname: string;
@@ -125,6 +133,7 @@ const Confetti = () => {
 };
 
 export default function Onboarding({ lineDisplayName, onComplete }: OnboardingProps) {
+  const { userProfile } = useAuth();
   const [step, setStep] = useState(1);
   const [showConfetti, setShowConfetti] = useState(false);
   const [data, setData] = useState<OnboardingData>({
@@ -136,7 +145,50 @@ export default function Onboarding({ lineDisplayName, onComplete }: OnboardingPr
     selectedCoachId: undefined,
   });
 
-  const totalSteps = 5;
+  // LINE notification step state
+  type LineOnboardStep = 'intro' | 'checking' | 'error' | 'activated';
+  const [lineStep, setLineStep] = useState<LineOnboardStep>('intro');
+  const [lineNotifyHour, setLineNotifyHour] = useState(7);
+  const [savingHour, setSavingHour] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
+
+  const totalSteps = 6;
+
+  const handleCopyLineId = () => {
+    navigator.clipboard.writeText('@426emlbf');
+    setCopiedId(true);
+    setTimeout(() => setCopiedId(false), 2000);
+  };
+
+  const handleCheckLineAccepted = async () => {
+    if (!userProfile?.lineUserId) return;
+    setLineStep('checking');
+    try {
+      const latest = await getUserSettings(userProfile.lineUserId);
+      if (latest?.lineNotification?.accepted === true) {
+        await updateLineNotificationSettings(userProfile.lineUserId, {
+          enabled: true,
+          notifyHour: latest.lineNotification.notifyHour ?? 7,
+        });
+        setLineNotifyHour(latest.lineNotification.notifyHour ?? 7);
+        setLineStep('activated');
+      } else {
+        setLineStep('error');
+      }
+    } catch {
+      setLineStep('error');
+    }
+  };
+
+  const handleSaveLineHour = async () => {
+    if (!userProfile?.lineUserId) return;
+    setSavingHour(true);
+    try {
+      await updateLineNotificationSettings(userProfile.lineUserId, { notifyHour: lineNotifyHour });
+    } finally {
+      setSavingHour(false);
+    }
+  };
 
   const handleNext = () => {
     if (step < totalSteps) {
@@ -171,6 +223,8 @@ export default function Onboarding({ lineDisplayName, onComplete }: OnboardingPr
       case 4:
         return !!data.selectedCoachId;
       case 5:
+        return true; // LINE step — always skippable
+      case 6:
         return true;
       default:
         return false;
@@ -417,10 +471,143 @@ export default function Onboarding({ lineDisplayName, onComplete }: OnboardingPr
             </motion.div>
           )}
 
-          {/* Step 5: Summary & BMI Result */}
+          {/* Step 5: LINE Notification */}
           {step === 5 && (
             <motion.div
               key="step5"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-5"
+            >
+              <div className="text-center mb-6">
+                <div className="w-20 h-20 rounded-full bg-green-500/10 flex items-center justify-center mx-auto mb-4">
+                  <MessageCircle className="w-10 h-10 text-green-500" />
+                </div>
+                <h2 className="text-2xl font-bold mb-2">แจ้งเตือนออกกำลังกาย</h2>
+                <p className="text-muted-foreground">รับการเตือนทุกวันผ่าน LINE</p>
+              </div>
+
+              {/* intro / error state */}
+              {(lineStep === 'intro' || lineStep === 'error') && (
+                <>
+                  <p className="text-sm text-muted-foreground text-center">
+                    เพิ่มเพื่อน <span className="font-semibold text-foreground">KAYA AI Notification</span> เพื่อรับแจ้งเตือนออกกำลังกายรายวัน
+                  </p>
+
+                  {/* LINE OA card */}
+                  <div className="rounded-2xl p-4 flex items-center justify-between border border-green-500/30 bg-green-500/5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center font-bold text-white text-sm">
+                        K
+                      </div>
+                      <div>
+                        <p className="font-semibold text-sm">KAYA AI Notification</p>
+                        <p className="text-xs font-mono text-green-600 dark:text-green-400">@426emlbf</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleCopyLineId}
+                      className={cn(
+                        "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border",
+                        copiedId
+                          ? "bg-green-100 text-green-700 border-green-300 dark:bg-green-500/20 dark:text-green-300 dark:border-green-500/30"
+                          : "bg-muted text-muted-foreground hover:bg-muted/80 border-border"
+                      )}
+                    >
+                      {copiedId ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                      {copiedId ? 'คัดลอกแล้ว' : 'คัดลอก'}
+                    </button>
+                  </div>
+
+                  {lineStep === 'error' && (
+                    <div className="flex items-center gap-2 rounded-xl p-3 text-sm bg-red-50 text-red-600 border border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20">
+                      <XCircle className="w-4 h-4 flex-shrink-0" />
+                      <span>ยืนยันตัวไม่สำเร็จ กรุณาเพิ่มเพื่อนก่อนแล้วลองใหม่</span>
+                    </div>
+                  )}
+
+                  {/* Add friend button */}
+                  <a
+                    href="https://line.me/R/ti/p/%40426emlbf"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 bg-[#06C755] hover:bg-[#05b04c] active:scale-[0.98] text-white transition-all"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    เพิ่มเพื่อนใน LINE
+                  </a>
+
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="w-full"
+                    onClick={handleCheckLineAccepted}
+                  >
+                    <Check className="w-4 h-4 mr-2" />
+                    เพิ่มเพื่อนเรียบร้อยแล้ว →
+                  </Button>
+                </>
+              )}
+
+              {/* checking state */}
+              {lineStep === 'checking' && (
+                <div className="flex flex-col items-center gap-3 py-8">
+                  <Loader2 className="w-8 h-8 animate-spin text-green-500" />
+                  <p className="text-sm text-muted-foreground">กำลังตรวจสอบสถานะ...</p>
+                </div>
+              )}
+
+              {/* activated state */}
+              {lineStep === 'activated' && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 rounded-xl p-3 text-sm font-medium bg-green-50 text-green-700 border border-green-200 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20">
+                    <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                    <span>เปิดใช้งานการแจ้งเตือนเรียบร้อย!</span>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <Clock className="w-4 h-4 text-muted-foreground" />
+                      <p className="text-sm font-medium">เลือกเวลาแจ้งเตือนออกกำลังกายประจำวัน</p>
+                    </div>
+                    <div className="grid grid-cols-4 gap-2">
+                      {Array.from({ length: 24 }, (_, i) => i).map((hour) => (
+                        <button
+                          key={hour}
+                          onClick={() => setLineNotifyHour(hour)}
+                          className={cn(
+                            "py-2 rounded-xl text-sm font-medium transition-all border",
+                            lineNotifyHour === hour
+                              ? "bg-primary text-white border-primary"
+                              : "bg-muted text-muted-foreground hover:bg-muted/80 border-border"
+                          )}
+                        >
+                          {String(hour).padStart(2, '0')}:00
+                        </button>
+                      ))}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-3 w-full"
+                      disabled={savingHour}
+                      onClick={handleSaveLineHour}
+                    >
+                      {savingHour ? (
+                        <><Loader2 className="w-3 h-3 mr-2 animate-spin" />บันทึก...</>
+                      ) : 'บันทึกเวลา'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {/* Step 6: Summary & BMI Result */}
+          {step === 6 && (
+            <motion.div
+              key="step6"
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
@@ -535,52 +722,91 @@ export default function Onboarding({ lineDisplayName, onComplete }: OnboardingPr
 
       {/* Footer */}
       <div className="px-6 py-6 bg-background border-t">
-        <div className="flex gap-3">
-          {step > 1 && (
-            <Button
-              variant="outline"
-              size="lg"
-              onClick={handleBack}
-              className="flex-1"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              ย้อนกลับ
-            </Button>
-          )}
-          
-          {step < totalSteps ? (
-            <Button
-              variant="hero"
-              size="lg"
-              onClick={handleNext}
-              disabled={!canProceed()}
-              className="flex-1"
-            >
-              ถัดไป
-              <ArrowRight className="w-4 h-4 ml-2" />
-            </Button>
-          ) : (
-            <Button
-              variant="hero"
-              size="lg"
-              onClick={handleComplete}
-              disabled={showConfetti}
-              className="flex-1"
-            >
-              {showConfetti ? (
-                <>
-                  <PartyPopper className="w-4 h-4 mr-2 animate-bounce" />
-                  กำลังเข้าสู่แอป...
-                </>
+        {/* Step 5: LINE notification — skip or continue */}
+        {step === 5 ? (
+          <div className="flex flex-col gap-2">
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={handleBack}
+                className="flex-none"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </Button>
+
+              {lineStep === 'activated' ? (
+                <Button
+                  variant="hero"
+                  size="lg"
+                  onClick={handleNext}
+                  className="flex-1"
+                >
+                  ดำเนินการต่อ
+                  <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
               ) : (
-                <>
-                  <Sparkles className="w-4 h-4 mr-2" />
-                  เริ่มต้นใช้งาน KAYA
-                </>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={handleNext}
+                  disabled={lineStep === 'checking'}
+                  className="flex-1 text-muted-foreground"
+                >
+                  ข้ามขั้นตอนนี้
+                  <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
               )}
-            </Button>
-          )}
-        </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex gap-3">
+            {step > 1 && (
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={handleBack}
+                className="flex-1"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                ย้อนกลับ
+              </Button>
+            )}
+
+            {step < totalSteps ? (
+              <Button
+                variant="hero"
+                size="lg"
+                onClick={handleNext}
+                disabled={!canProceed()}
+                className="flex-1"
+              >
+                ถัดไป
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            ) : (
+              <Button
+                variant="hero"
+                size="lg"
+                onClick={handleComplete}
+                disabled={showConfetti}
+                className="flex-1"
+              >
+                {showConfetti ? (
+                  <>
+                    <PartyPopper className="w-4 h-4 mr-2 animate-bounce" />
+                    กำลังเข้าสู่แอป...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    เริ่มต้นใช้งาน KAYA
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

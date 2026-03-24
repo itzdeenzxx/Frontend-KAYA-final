@@ -241,6 +241,440 @@ function calculateDynamicTargetPose(
         };
       }
 
+    // ============================================
+    // === INTERMEDIATE EXERCISES ===
+    // ============================================
+
+    case 'squat_arm_raise':
+      if (targetStage === 'down') {
+        // Squat position with arms raised
+        const leftElbowTarget = {
+          x: leftShoulder.x + leftUpperArm * 0.3,
+          y: leftShoulder.y - leftUpperArm * 0.9,
+        };
+        const rightElbowTarget = {
+          x: rightShoulder.x - rightUpperArm * 0.3,
+          y: rightShoulder.y - rightUpperArm * 0.9,
+        };
+        return {
+          ...basePose,
+          left_elbow: leftElbowTarget,
+          right_elbow: rightElbowTarget,
+          left_wrist: {
+            x: leftElbowTarget.x + leftForearm * 0.2,
+            y: leftElbowTarget.y - leftForearm * 0.95,
+          },
+          right_wrist: {
+            x: rightElbowTarget.x - rightForearm * 0.2,
+            y: rightElbowTarget.y - rightForearm * 0.95,
+          },
+          left_knee: {
+            x: leftHip.x + leftThigh * 0.15,
+            y: leftHip.y + leftThigh * 0.8,
+          },
+          left_ankle: {
+            x: leftHip.x,
+            y: leftHip.y + leftThigh + leftShin * 0.7,
+          },
+          right_knee: {
+            x: rightHip.x - rightThigh * 0.15,
+            y: rightHip.y + rightThigh * 0.8,
+          },
+          right_ankle: {
+            x: rightHip.x,
+            y: rightHip.y + rightThigh + rightShin * 0.7,
+          },
+        };
+      } else {
+        // Standing with arms down
+        const leftElbowTarget = {
+          x: leftShoulder.x + leftUpperArm * 0.15,
+          y: leftShoulder.y + leftUpperArm * 0.95,
+        };
+        const rightElbowTarget = {
+          x: rightShoulder.x - rightUpperArm * 0.15,
+          y: rightShoulder.y + rightUpperArm * 0.95,
+        };
+        return {
+          ...basePose,
+          left_elbow: leftElbowTarget,
+          right_elbow: rightElbowTarget,
+          left_wrist: {
+            x: leftElbowTarget.x,
+            y: leftElbowTarget.y + leftForearm * 0.95,
+          },
+          right_wrist: {
+            x: rightElbowTarget.x,
+            y: rightElbowTarget.y + rightForearm * 0.95,
+          },
+          left_knee: { x: leftHip.x, y: leftHip.y + leftThigh },
+          left_ankle: { x: leftHip.x, y: leftHip.y + leftThigh + leftShin },
+          right_knee: { x: rightHip.x, y: rightHip.y + rightThigh },
+          right_ankle: { x: rightHip.x, y: rightHip.y + rightThigh + rightShin },
+        };
+      }
+
+    case 'push_up':
+      if (targetStage === 'down') {
+        // Push-up down: elbows bent, body low
+        return {
+          ...basePose,
+          left_elbow: {
+            x: leftShoulder.x - leftUpperArm * 0.6,
+            y: leftShoulder.y + leftUpperArm * 0.7,
+          },
+          right_elbow: {
+            x: rightShoulder.x - rightUpperArm * 0.6,
+            y: rightShoulder.y + rightUpperArm * 0.7,
+          },
+          left_wrist: {
+            x: leftShoulder.x - leftUpperArm * 0.8,
+            y: leftShoulder.y + leftUpperArm * 1.2,
+          },
+          right_wrist: {
+            x: rightShoulder.x - rightUpperArm * 0.8,
+            y: rightShoulder.y + rightUpperArm * 1.2,
+          },
+          left_knee: { x: leftHip.x + leftThigh * 0.9, y: leftHip.y + leftThigh * 0.1 },
+          left_ankle: { x: leftHip.x + leftThigh + leftShin * 0.9, y: leftHip.y + leftShin * 0.1 },
+        };
+      } else {
+        // Push-up up: arms straight, plank position
+        return {
+          ...basePose,
+          left_elbow: {
+            x: leftShoulder.x - leftUpperArm * 0.1,
+            y: leftShoulder.y + leftUpperArm * 0.95,
+          },
+          right_elbow: {
+            x: rightShoulder.x - rightUpperArm * 0.1,
+            y: rightShoulder.y + rightUpperArm * 0.95,
+          },
+          left_wrist: {
+            x: leftShoulder.x - leftUpperArm * 0.15,
+            y: leftShoulder.y + leftUpperArm + leftForearm * 0.9,
+          },
+          right_wrist: {
+            x: rightShoulder.x - rightUpperArm * 0.15,
+            y: rightShoulder.y + rightUpperArm + rightForearm * 0.9,
+          },
+          left_knee: { x: leftHip.x + leftThigh * 0.9, y: leftHip.y + leftThigh * 0.1 },
+          left_ankle: { x: leftHip.x + leftThigh + leftShin * 0.9, y: leftHip.y + leftShin * 0.1 },
+        };
+      }
+
+    case 'static_lunge':
+      // Lunge hold position (time-based)
+      if (targetStage === 'hold') {
+        return {
+          ...basePose,
+          left_knee: {
+            x: leftHip.x - leftThigh * 0.5,
+            y: leftHip.y + leftThigh * 0.8,
+          },
+          left_ankle: {
+            x: leftHip.x - leftThigh * 0.7,
+            y: leftHip.y + leftThigh + leftShin * 0.6,
+          },
+          right_knee: {
+            x: rightHip.x + rightThigh * 0.4,
+            y: rightHip.y + rightThigh * 0.9,
+          },
+          right_ankle: {
+            x: rightHip.x + rightThigh * 0.6,
+            y: rightHip.y + rightThigh + rightShin * 0.5,
+          },
+        };
+      } else {
+        // Idle / standing
+        return {
+          ...basePose,
+          left_knee: { x: leftHip.x, y: leftHip.y + leftThigh },
+          left_ankle: { x: leftHip.x, y: leftHip.y + leftThigh + leftShin },
+          right_knee: { x: rightHip.x, y: rightHip.y + rightThigh },
+          right_ankle: { x: rightHip.x, y: rightHip.y + rightThigh + rightShin },
+        };
+      }
+
+    // ============================================
+    // === ADVANCED EXERCISES ===
+    // ============================================
+
+    case 'jump_squat':
+      if (targetStage === 'squat') {
+        // Deep squat
+        return {
+          ...basePose,
+          left_knee: {
+            x: leftHip.x + leftThigh * 0.2,
+            y: leftHip.y + leftThigh * 0.75,
+          },
+          left_ankle: {
+            x: leftHip.x,
+            y: leftHip.y + leftThigh + leftShin * 0.6,
+          },
+          right_knee: {
+            x: rightHip.x - rightThigh * 0.2,
+            y: rightHip.y + rightThigh * 0.75,
+          },
+          right_ankle: {
+            x: rightHip.x,
+            y: rightHip.y + rightThigh + rightShin * 0.6,
+          },
+        };
+      } else if (targetStage === 'jump') {
+        // Jump / standing tall
+        return {
+          ...basePose,
+          left_knee: { x: leftHip.x, y: leftHip.y + leftThigh * 0.85 },
+          left_ankle: { x: leftHip.x, y: leftHip.y + leftThigh + leftShin * 0.7 },
+          right_knee: { x: rightHip.x, y: rightHip.y + rightThigh * 0.85 },
+          right_ankle: { x: rightHip.x, y: rightHip.y + rightThigh + rightShin * 0.7 },
+        };
+      } else {
+        // Down / standing
+        return {
+          ...basePose,
+          left_knee: { x: leftHip.x, y: leftHip.y + leftThigh },
+          left_ankle: { x: leftHip.x, y: leftHip.y + leftThigh + leftShin },
+          right_knee: { x: rightHip.x, y: rightHip.y + rightThigh },
+          right_ankle: { x: rightHip.x, y: rightHip.y + rightThigh + rightShin },
+        };
+      }
+
+    case 'plank_hold':
+      if (targetStage === 'hold') {
+        // Plank: body horizontal
+        return {
+          ...basePose,
+          left_elbow: {
+            x: leftShoulder.x - leftUpperArm * 0.1,
+            y: leftShoulder.y + leftUpperArm * 0.95,
+          },
+          left_wrist: {
+            x: leftShoulder.x - leftUpperArm * 0.15,
+            y: leftShoulder.y + leftUpperArm + leftForearm * 0.9,
+          },
+          left_knee: { x: leftHip.x + leftThigh * 0.9, y: leftHip.y + leftThigh * 0.1 },
+          left_ankle: { x: leftHip.x + leftThigh + leftShin * 0.9, y: leftHip.y + leftShin * 0.05 },
+        };
+      } else {
+        // Idle
+        return {
+          ...basePose,
+          left_knee: { x: leftHip.x, y: leftHip.y + leftThigh },
+          left_ankle: { x: leftHip.x, y: leftHip.y + leftThigh + leftShin },
+        };
+      }
+
+    case 'mountain_climber':
+      if (targetStage === 'left_up') {
+        // Left knee driven forward
+        return {
+          ...basePose,
+          left_knee: {
+            x: leftHip.x - leftThigh * 0.6,
+            y: leftHip.y + leftThigh * 0.3,
+          },
+          left_ankle: {
+            x: leftHip.x - leftThigh * 0.7,
+            y: leftHip.y + leftThigh * 0.5,
+          },
+          right_knee: { x: rightHip.x + rightThigh * 0.8, y: rightHip.y + rightThigh * 0.1 },
+          right_ankle: { x: rightHip.x + rightThigh + rightShin * 0.8, y: rightHip.y + rightShin * 0.1 },
+        };
+      } else if (targetStage === 'right_up') {
+        // Right knee driven forward
+        return {
+          ...basePose,
+          right_knee: {
+            x: rightHip.x - rightThigh * 0.6,
+            y: rightHip.y + rightThigh * 0.3,
+          },
+          right_ankle: {
+            x: rightHip.x - rightThigh * 0.7,
+            y: rightHip.y + rightThigh * 0.5,
+          },
+          left_knee: { x: leftHip.x + leftThigh * 0.8, y: leftHip.y + leftThigh * 0.1 },
+          left_ankle: { x: leftHip.x + leftThigh + leftShin * 0.8, y: leftHip.y + leftShin * 0.1 },
+        };
+      } else {
+        // Plank / down
+        return {
+          ...basePose,
+          left_knee: { x: leftHip.x + leftThigh * 0.8, y: leftHip.y + leftThigh * 0.1 },
+          left_ankle: { x: leftHip.x + leftThigh + leftShin * 0.8, y: leftHip.y + leftShin * 0.1 },
+          right_knee: { x: rightHip.x + rightThigh * 0.8, y: rightHip.y + rightThigh * 0.1 },
+          right_ankle: { x: rightHip.x + rightThigh + rightShin * 0.8, y: rightHip.y + rightShin * 0.1 },
+        };
+      }
+
+    // ============================================
+    // === EXPERT EXERCISES ===
+    // ============================================
+
+    case 'pistol_squat':
+      if (targetStage === 'down') {
+        // Single-leg squat: one leg extended forward
+        return {
+          ...basePose,
+          left_knee: {
+            x: leftHip.x - leftThigh * 0.3,
+            y: leftHip.y + leftThigh * 0.7,
+          },
+          left_ankle: {
+            x: leftHip.x - leftThigh * 0.4,
+            y: leftHip.y + leftThigh + leftShin * 0.4,
+          },
+          // Extended leg forward
+          right_knee: {
+            x: rightHip.x - rightThigh * 0.8,
+            y: rightHip.y + rightThigh * 0.1,
+          },
+          right_ankle: {
+            x: rightHip.x - rightThigh - rightShin * 0.6,
+            y: rightHip.y + rightShin * 0.15,
+          },
+        };
+      } else {
+        // Standing
+        return {
+          ...basePose,
+          left_knee: { x: leftHip.x, y: leftHip.y + leftThigh },
+          left_ankle: { x: leftHip.x, y: leftHip.y + leftThigh + leftShin },
+          right_knee: { x: rightHip.x, y: rightHip.y + rightThigh },
+          right_ankle: { x: rightHip.x, y: rightHip.y + rightThigh + rightShin },
+        };
+      }
+
+    case 'pushup_shoulder_tap':
+      if (targetStage === 'down') {
+        // Push-up down position (front-facing)
+        return {
+          ...basePose,
+          left_elbow: {
+            x: leftShoulder.x + leftUpperArm * 0.5,
+            y: leftShoulder.y + leftUpperArm * 0.7,
+          },
+          right_elbow: {
+            x: rightShoulder.x - rightUpperArm * 0.5,
+            y: rightShoulder.y + rightUpperArm * 0.7,
+          },
+          left_wrist: {
+            x: leftShoulder.x + leftUpperArm * 0.6,
+            y: leftShoulder.y + leftUpperArm + leftForearm * 0.5,
+          },
+          right_wrist: {
+            x: rightShoulder.x - rightUpperArm * 0.6,
+            y: rightShoulder.y + rightUpperArm + rightForearm * 0.5,
+          },
+        };
+      } else if (targetStage === 'tap' || targetStage === 'tap_left') {
+        // Shoulder tap left
+        return {
+          ...basePose,
+          left_elbow: {
+            x: leftShoulder.x - leftUpperArm * 0.3,
+            y: leftShoulder.y + leftUpperArm * 0.2,
+          },
+          left_wrist: {
+            x: rightShoulder.x,
+            y: rightShoulder.y,
+          },
+          right_elbow: {
+            x: rightShoulder.x - rightUpperArm * 0.1,
+            y: rightShoulder.y + rightUpperArm * 0.95,
+          },
+          right_wrist: {
+            x: rightShoulder.x - rightUpperArm * 0.15,
+            y: rightShoulder.y + rightUpperArm + rightForearm * 0.9,
+          },
+        };
+      } else if (targetStage === 'tap_right') {
+        // Shoulder tap right
+        return {
+          ...basePose,
+          right_elbow: {
+            x: rightShoulder.x + rightUpperArm * 0.3,
+            y: rightShoulder.y + rightUpperArm * 0.2,
+          },
+          right_wrist: {
+            x: leftShoulder.x,
+            y: leftShoulder.y,
+          },
+          left_elbow: {
+            x: leftShoulder.x + leftUpperArm * 0.1,
+            y: leftShoulder.y + leftUpperArm * 0.95,
+          },
+          left_wrist: {
+            x: leftShoulder.x + leftUpperArm * 0.15,
+            y: leftShoulder.y + leftUpperArm + leftForearm * 0.9,
+          },
+        };
+      } else {
+        // Up / plank position (front-facing)
+        return {
+          ...basePose,
+          left_elbow: {
+            x: leftShoulder.x + leftUpperArm * 0.1,
+            y: leftShoulder.y + leftUpperArm * 0.95,
+          },
+          right_elbow: {
+            x: rightShoulder.x - rightUpperArm * 0.1,
+            y: rightShoulder.y + rightUpperArm * 0.95,
+          },
+          left_wrist: {
+            x: leftShoulder.x + leftUpperArm * 0.15,
+            y: leftShoulder.y + leftUpperArm + leftForearm * 0.9,
+          },
+          right_wrist: {
+            x: rightShoulder.x - rightUpperArm * 0.15,
+            y: rightShoulder.y + rightUpperArm + rightForearm * 0.9,
+          },
+        };
+      }
+
+    case 'burpee':
+      if (targetStage === 'down') {
+        // Squat / plank down position (side-facing)
+        return {
+          ...basePose,
+          left_knee: {
+            x: leftHip.x + leftThigh * 0.2,
+            y: leftHip.y + leftThigh * 0.75,
+          },
+          left_ankle: {
+            x: leftHip.x,
+            y: leftHip.y + leftThigh + leftShin * 0.6,
+          },
+          left_elbow: {
+            x: leftShoulder.x - leftUpperArm * 0.5,
+            y: leftShoulder.y + leftUpperArm * 0.5,
+          },
+          left_wrist: {
+            x: leftShoulder.x - leftUpperArm * 0.6,
+            y: leftShoulder.y + leftUpperArm + leftForearm * 0.3,
+          },
+        };
+      } else {
+        // Standing up
+        return {
+          ...basePose,
+          left_knee: { x: leftHip.x, y: leftHip.y + leftThigh },
+          left_ankle: { x: leftHip.x, y: leftHip.y + leftThigh + leftShin },
+          right_knee: { x: rightHip.x, y: rightHip.y + rightThigh },
+          right_ankle: { x: rightHip.x, y: rightHip.y + rightThigh + rightShin },
+          left_elbow: {
+            x: leftShoulder.x + leftUpperArm * 0.15,
+            y: leftShoulder.y + leftUpperArm * 0.95,
+          },
+          left_wrist: {
+            x: leftShoulder.x + leftUpperArm * 0.15,
+            y: leftShoulder.y + leftUpperArm + leftForearm * 0.9,
+          },
+        };
+      }
+
     default:
       return null;
   }
@@ -487,6 +921,16 @@ function drawStageIndicator(
     left: '⬅️ ซ้าย',
     right: '➡️ ขวา',
     idle: '⏸️ พร้อม',
+    squat: '🦵 สควอต',
+    hold: '⏱️ ค้างไว้',
+    jump: '🦘 กระโดด',
+    left_up: '⬅️⬆️ ซ้ายขึ้น',
+    right_up: '➡️⬆️ ขวาขึ้น',
+    tap: '👋 แตะ',
+    tap_left: '👈 แตะซ้าย',
+    tap_right: '👉 แตะขวา',
+    plank: '🏋️ แพลงค์',
+    transition: '🔄 เปลี่ยน',
   };
 
   const currentLabel = stageLabels[currentStage] || currentStage;
@@ -543,6 +987,16 @@ export function StageIndicator({
     left: '⬅️',
     right: '➡️',
     idle: '⏸️',
+    squat: '🦵',
+    hold: '⏱️',
+    jump: '🦘',
+    left_up: '⬅️⬆️',
+    right_up: '➡️⬆️',
+    tap: '👋',
+    tap_left: '👈',
+    tap_right: '👉',
+    plank: '🏋️',
+    transition: '🔄',
   };
 
   const stageLabels: Record<ExerciseStage, string> = {
@@ -552,6 +1006,16 @@ export function StageIndicator({
     left: 'ซ้าย',
     right: 'ขวา',
     idle: 'พร้อม',
+    squat: 'สควอต',
+    hold: 'ค้างไว้',
+    jump: 'กระโดด',
+    left_up: 'ซ้ายขึ้น',
+    right_up: 'ขวาขึ้น',
+    tap: 'แตะ',
+    tap_left: 'แตะซ้าย',
+    tap_right: 'แตะขวา',
+    plank: 'แพลงค์',
+    transition: 'เปลี่ยน',
   };
 
   const formColor = formScore >= 80 

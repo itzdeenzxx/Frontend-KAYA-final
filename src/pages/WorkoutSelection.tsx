@@ -58,7 +58,7 @@ const workoutStyles: WorkoutStyle[] = [
     icon: <Brain className="w-8 h-8" />,
     color: 'text-green-400',
     bgGradient: 'from-green-600/90 via-emerald-600/80 to-teal-800/90',
-    duration: '5-10 นาที',
+    duration: '10-20 นาที',
     calories: '30-60',
     level: 'ง่าย',
     features: ['AI Coach', 'Visual Guide', 'TTS', 'นับเซ็ต'],

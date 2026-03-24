@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ArrowLeft, Bell, Sun, Moon, ChevronRight, LogOut, Check, Palette, Shield } from "lucide-react";
+import { useState, useEffect } from "react";
+import { ArrowLeft, Sun, Moon, ChevronRight, LogOut, Check, Palette, Shield, Copy, MessageCircle, Clock, XCircle, Loader2 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
@@ -7,21 +7,85 @@ import { isLineUserAdmin } from "@/lib/adminAccess";
 import { useTheme, ThemeMode } from "@/contexts/ThemeContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { CoachSettings } from "@/components/settings/CoachSettings";
+import { getUserSettings, updateLineNotificationSettings } from "@/lib/firestore";
 
 export default function Settings() {
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
-  const { logout, lineProfile } = useAuth();
+  const { logout, userProfile, userSettings, refreshSettings } = useAuth();
   const isDark = theme === 'dark';
   const rawAdminIds = (import.meta.env.VITE_ADMIN_USER_IDS as string | undefined) ?? '';
-  const isAdmin = isLineUserAdmin(lineProfile?.userId, rawAdminIds);
-  
-  const [notifications, setNotifications] = useState({
-    workoutReminders: true,
-    mealReminders: false,
-    progressUpdates: true,
-    coachTips: true,
-  });
+  const isAdmin = isLineUserAdmin(userProfile?.lineUserId, rawAdminIds);
+
+  type LineSetupStep = 'setup' | 'checking' | 'error' | 'activated';
+  const [lineStep, setLineStep] = useState<LineSetupStep>('setup');
+  const [lineNotifyHour, setLineNotifyHour] = useState(7);
+  const [savingHour, setSavingHour] = useState(false);
+  const [copiedLineId, setCopiedLineId] = useState(false);
+
+  const [lineNotifEnabled, setLineNotifEnabled] = useState(false);
+  const [savingLineToggle, setSavingLineToggle] = useState(false);
+
+  // Initialise from Firestore — show activated if accepted (regardless of enabled)
+  useEffect(() => {
+    const ln = userSettings?.lineNotification;
+    if (ln?.accepted === true) {
+      setLineStep('activated');
+      setLineNotifyHour(ln.notifyHour ?? 7);
+      setLineNotifEnabled(ln.enabled ?? false);
+    }
+  }, [userSettings]);
+
+  const handleLineNotifToggle = async (checked: boolean) => {
+    if (!userProfile?.lineUserId) return;
+    setLineNotifEnabled(checked);
+    setSavingLineToggle(true);
+    try {
+      await updateLineNotificationSettings(userProfile.lineUserId, { enabled: checked });
+      await refreshSettings();
+    } finally {
+      setSavingLineToggle(false);
+    }
+  };
+
+  const handleCheckLineAccepted = async () => {
+    if (!userProfile?.lineUserId) return;
+    setLineStep('checking');
+    try {
+      const latest = await getUserSettings(userProfile.lineUserId);
+      if (latest?.lineNotification?.accepted === true) {
+        await updateLineNotificationSettings(userProfile.lineUserId, {
+          enabled: true,
+          notifyHour: latest.lineNotification.notifyHour ?? 7,
+        });
+        await refreshSettings();
+        setLineNotifyHour(latest.lineNotification.notifyHour ?? 7);
+        setLineNotifEnabled(true);
+        setLineStep('activated');
+      } else {
+        setLineStep('error');
+      }
+    } catch {
+      setLineStep('error');
+    }
+  };
+
+  const handleSaveNotifyHour = async () => {
+    if (!userProfile?.lineUserId) return;
+    setSavingHour(true);
+    try {
+      await updateLineNotificationSettings(userProfile.lineUserId, { notifyHour: lineNotifyHour });
+      await refreshSettings();
+    } finally {
+      setSavingHour(false);
+    }
+  };
+
+  const handleCopyLineId = () => {
+    navigator.clipboard.writeText('@426emlbf');
+    setCopiedLineId(true);
+    setTimeout(() => setCopiedLineId(false), 2000);
+  };
   const [showThemePreview, setShowThemePreview] = useState(false);
   const [previewTheme, setPreviewTheme] = useState<ThemeMode>(theme);
 
@@ -209,92 +273,197 @@ export default function Settings() {
             </Link>
           )}
 
-          {/* Notifications */}
+          {/* LINE Notification */}
           <div className={cn(
             "rounded-2xl overflow-hidden border",
-            isDark 
-              ? "bg-white/5 border-white/10" 
+            isDark
+              ? "bg-white/5 border-white/10"
               : "bg-white border-gray-200 shadow-sm"
           )}>
+            {/* Header */}
             <div className={cn(
               "p-4 border-b flex items-center gap-3",
               isDark ? "border-white/10" : "border-gray-100"
             )}>
               <div className={cn(
                 "w-10 h-10 rounded-xl flex items-center justify-center",
-                isDark ? "bg-orange-500/20" : "bg-coral-light"
+                isDark ? "bg-green-500/20" : "bg-green-100"
               )}>
-                <Bell className={cn("w-5 h-5", isDark ? "text-orange-400" : "text-primary")} />
+                <MessageCircle className={cn("w-5 h-5", isDark ? "text-green-400" : "text-green-600")} />
               </div>
-              <h2 className={cn("font-semibold", isDark ? "text-white" : "text-gray-900")}>
-                การแจ้งเตือน
-              </h2>
+              <div>
+                <h2 className={cn("font-semibold", isDark ? "text-white" : "text-gray-900")}>
+                  แจ้งเตือนออกกำลังกายผ่าน LINE
+                </h2>
+                <p className={cn("text-xs mt-0.5", isDark ? "text-gray-400" : "text-gray-500")}>
+                  รับการแจ้งเตือนรายวันจาก KAYA AI
+                </p>
+              </div>
             </div>
-            <div className={cn("divide-y", isDark ? "divide-white/10" : "divide-gray-100")}>
-              <div className="p-4 flex items-center justify-between">
-                <div>
-                  <p className={cn("font-medium", isDark ? "text-white" : "text-gray-900")}>
-                    เตือนออกกำลังกาย
+
+            <div className="p-4 space-y-4">
+
+              {/* ── STEP: SETUP ── */}
+              {(lineStep === 'setup' || lineStep === 'error') && (
+                <>
+                  {/* Instruction */}
+                  <p className={cn("text-sm", isDark ? "text-gray-300" : "text-gray-600")}>
+                    เพิ่มเพื่อน LINE OA ของ KAYA AI เพื่อรับแจ้งเตือนออกกำลังกายทุกวัน
                   </p>
-                  <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>
-                    รับการแจ้งเตือนให้ออกกำลังกาย
+
+                  {/* LINE OA Card */}
+                  <div className={cn(
+                    "rounded-xl p-4 flex items-center justify-between border",
+                    isDark ? "bg-green-500/10 border-green-500/20" : "bg-green-50 border-green-200"
+                  )}>
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-sm",
+                        "bg-gradient-to-br from-green-400 to-green-600"
+                      )}>
+                        K
+                      </div>
+                      <div>
+                        <p className={cn("font-semibold text-sm", isDark ? "text-white" : "text-gray-900")}>
+                          KAYA AI Notification
+                        </p>
+                        <p className={cn("text-xs font-mono", isDark ? "text-green-400" : "text-green-700")}>
+                          @426emlbf
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleCopyLineId}
+                      className={cn(
+                        "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                        copiedLineId
+                          ? isDark ? "bg-green-500/30 text-green-300" : "bg-green-200 text-green-800"
+                          : isDark ? "bg-white/10 text-gray-200 hover:bg-white/20" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      )}
+                    >
+                      {copiedLineId ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                      {copiedLineId ? 'คัดลอกแล้ว' : 'คัดลอก'}
+                    </button>
+                  </div>
+
+                  {/* Add friend button */}
+                  <a
+                    href="https://line.me/R/ti/p/%40426emlbf"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={cn(
+                      "w-full py-3 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2",
+                      "bg-[#06C755] hover:bg-[#05b04c] active:scale-[0.98] text-white"
+                    )}
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    เพิ่มเพื่อนใน LINE
+                  </a>
+
+                  {/* Error message */}
+                  {lineStep === 'error' && (
+                    <div className={cn(
+                      "flex items-center gap-2 rounded-xl p-3 text-sm",
+                      isDark ? "bg-red-500/10 text-red-400 border border-red-500/20" : "bg-red-50 text-red-600 border border-red-200"
+                    )}>
+                      <XCircle className="w-4 h-4 flex-shrink-0" />
+                      <span>ยืนยันตัวไม่สำเร็จ กรุณาเพิ่มเพื่อนก่อนแล้วลองใหม่อีกครั้ง</span>
+                    </div>
+                  )}
+
+                  {/* Confirm button */}
+                  <button
+                    onClick={handleCheckLineAccepted}
+                    className={cn(
+                      "w-full py-3 rounded-xl font-semibold text-sm transition-all border-2",
+                      isDark
+                        ? "border-green-500/40 text-green-400 hover:bg-green-500/10 active:scale-[0.98]"
+                        : "border-green-500/50 text-green-700 hover:bg-green-50 active:scale-[0.98]"
+                    )}
+                  >
+                    เพิ่มเพื่อนเรียบร้อยแล้ว →
+                  </button>
+                </>
+              )}
+
+              {/* ── STEP: CHECKING ── */}
+              {lineStep === 'checking' && (
+                <div className="flex flex-col items-center gap-3 py-4">
+                  <Loader2 className={cn("w-8 h-8 animate-spin", isDark ? "text-green-400" : "text-green-600")} />
+                  <p className={cn("text-sm", isDark ? "text-gray-300" : "text-gray-600")}>
+                    กำลังตรวจสอบสถานะ...
                   </p>
                 </div>
-                <Switch
-                  checked={notifications.workoutReminders}
-                  onCheckedChange={(checked) =>
-                    setNotifications({ ...notifications, workoutReminders: checked })
-                  }
-                />
-              </div>
-              <div className="p-4 flex items-center justify-between">
-                <div>
-                  <p className={cn("font-medium", isDark ? "text-white" : "text-gray-900")}>
-                    เตือนมื้ออาหาร
-                  </p>
-                  <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>
-                    ติดตามโภชนาการของคุณ
-                  </p>
-                </div>
-                <Switch
-                  checked={notifications.mealReminders}
-                  onCheckedChange={(checked) =>
-                    setNotifications({ ...notifications, mealReminders: checked })
-                  }
-                />
-              </div>
-              <div className="p-4 flex items-center justify-between">
-                <div>
-                  <p className={cn("font-medium", isDark ? "text-white" : "text-gray-900")}>
-                    อัพเดทความก้าวหน้า
-                  </p>
-                  <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>
-                    สรุปประจำสัปดาห์
-                  </p>
-                </div>
-                <Switch
-                  checked={notifications.progressUpdates}
-                  onCheckedChange={(checked) =>
-                    setNotifications({ ...notifications, progressUpdates: checked })
-                  }
-                />
-              </div>
-              <div className="p-4 flex items-center justify-between">
-                <div>
-                  <p className={cn("font-medium", isDark ? "text-white" : "text-gray-900")}>
-                    เคล็ดลับจากโค้ช
-                  </p>
-                  <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>
-                    คำแนะนำจาก AI Coach
-                  </p>
-                </div>
-                <Switch
-                  checked={notifications.coachTips}
-                  onCheckedChange={(checked) =>
-                    setNotifications({ ...notifications, coachTips: checked })
-                  }
-                />
-              </div>
+              )}
+
+              {/* ── STEP: ACTIVATED ── */}
+              {lineStep === 'activated' && (
+                <>
+                  {/* Toggle เปิด/ปิด */}
+                  <div className={cn(
+                    "flex items-center justify-between p-4 rounded-xl border",
+                    isDark ? "bg-white/5 border-white/10" : "bg-gray-50 border-gray-200"
+                  )}>
+                    <div>
+                      <p className={cn("font-medium text-sm", isDark ? "text-white" : "text-gray-900")}>
+                        การแจ้งเตือนออกกำลังกาย
+                      </p>
+                      <p className={cn("text-xs mt-0.5", isDark ? "text-gray-400" : "text-gray-500")}>
+                        {lineNotifEnabled ? "เปิดอยู่ · จะแจ้งเตือนทุกวันเวลา " + String(lineNotifyHour).padStart(2,'0') + ":00" : "ปิดอยู่"}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={lineNotifEnabled}
+                      disabled={savingLineToggle}
+                      onCheckedChange={handleLineNotifToggle}
+                    />
+                  </div>
+
+                  {/* Time picker */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <Clock className={cn("w-4 h-4", isDark ? "text-gray-400" : "text-gray-500")} />
+                      <p className={cn("text-sm font-medium", isDark ? "text-white" : "text-gray-900")}>
+                        เวลาแจ้งเตือนออกกำลังกายประจำวัน
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-4 gap-2">
+                      {Array.from({ length: 24 }, (_, i) => i).map((hour) => (
+                        <button
+                          key={hour}
+                          onClick={() => setLineNotifyHour(hour)}
+                          className={cn(
+                            "py-2 rounded-xl text-sm font-medium transition-all",
+                            lineNotifyHour === hour
+                              ? "bg-primary text-white"
+                              : isDark
+                                ? "bg-white/8 text-gray-300 hover:bg-white/15"
+                                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                          )}
+                        >
+                          {String(hour).padStart(2, '0')}:00
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      onClick={handleSaveNotifyHour}
+                      disabled={savingHour}
+                      className={cn(
+                        "mt-4 w-full py-3 rounded-xl font-semibold text-sm transition-all",
+                        "bg-primary text-white hover:bg-primary/90 active:scale-[0.98]",
+                        savingHour && "opacity-60 pointer-events-none"
+                      )}
+                    >
+                      {savingHour ? (
+                        <span className="flex items-center justify-center gap-2">
+                          <Loader2 className="w-4 h-4 animate-spin" /> บันทึก...
+                        </span>
+                      ) : 'บันทึกเวลาแจ้งเตือน'}
+                    </button>
+                  </div>
+                </>
+              )}
+
             </div>
           </div>
 

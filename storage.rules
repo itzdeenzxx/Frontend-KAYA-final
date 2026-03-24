@@ -13,12 +13,28 @@ service firebase.storage {
     }
 
     // Nutrition scan images
-    // Path: nutrition-scans/{userId}/{filename}
-    // Allow read for anyone, write for images up to 10MB
-    match /nutrition-scans/{userId}/{fileName} {
+    // Path: nutrition-scans/...
+    // Allow read (and list) for anyone
+    match /nutrition-scans/{allPaths=**} {
       allow read: if true;
+    }
+    // Allow write for images up to 10MB
+    match /nutrition-scans/{userId}/{fileName} {
       allow write: if request.resource == null // allow delete
                    || (request.resource.size < 10 * 1024 * 1024
+                       && request.resource.contentType.matches('image/.*'));
+    }
+
+    // Workout share card images
+    // Path: workout-shares/...
+    // Allow read (and list) for anyone
+    match /workout-shares/{allPaths=**} {
+      allow read: if true;
+    }
+    // Allow write for images up to 5MB
+    match /workout-shares/{userId}/{fileName} {
+      allow write: if request.resource == null
+                   || (request.resource.size < 5 * 1024 * 1024
                        && request.resource.contentType.matches('image/.*'));
     }
 

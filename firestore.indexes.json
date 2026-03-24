@@ -60,11 +60,22 @@
       ]
     },
     {
+    {
+      "collectionGroup": "savedFoods",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "savedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "dailyStats",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "userId", "order": "ASCENDING" },
         { "fieldPath": "waterIntake", "order": "ASCENDING" }
+      ]
+    }
       ]
     }
   ],

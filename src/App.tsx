@@ -4,6 +4,7 @@ import { Toaster as Sonner, toast as sonnerToast } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useState, useEffect } from 'react';
 
 import Dashboard from "./pages/Dashboard";
 import WorkoutSelection from "./pages/WorkoutSelection";
@@ -27,6 +28,8 @@ import FishingGame from "./pages/FishingGame";
 import WorkoutComplete from "./pages/WorkoutComplete";
 import Challenges from "./pages/Challenges";
 import WorkoutHistory from "./pages/WorkoutHistory";
+import Leaderboard from "./pages/Leaderboard";
+import UserPublicProfile from "./pages/UserPublicProfile";
 import BadgesPage from "./pages/Badges";
 import AdminBadges from "./pages/AdminBadges";
 import { AppLayout } from "./components/layout/AppLayout";
@@ -37,6 +40,9 @@ import { RunningLoader } from "./components/shared/RunningLoader";
 import { BadgeUnlockModal } from "./components/gamification/BadgeUnlockModal";
 import { shareBadgeAchievement } from "./lib/liff";
 import { BADGES_EARNED_EVENT, type BadgesEarnedEventDetail } from "./lib/badgeEvents";
+import React, { Suspense } from 'react';
+
+const AdminKaya = React.lazy(() => import("./pages/AdminKaya"));
 
 const queryClient = new QueryClient();
 
@@ -44,6 +50,7 @@ const queryClient = new QueryClient();
 const AppRoutes = () => {
   const { isInitialized, isLoading, isAuthenticated, isNewUser, lineProfile, completeOnboarding } = useAuth();
   const { showThemeSelector, setShowThemeSelector, isThemeLoaded, theme } = useTheme();
+  const [loadingTimedOut, setLoadingTimedOut] = useState(false);
   const isDark = theme === "dark";
   const [unlockModalOpen, setUnlockModalOpen] = useState(false);
   const [latestUnlockedBadgeNames, setLatestUnlockedBadgeNames] = useState<string[]>([]);
@@ -67,8 +74,19 @@ const AppRoutes = () => {
     };
   }, [lineProfile?.displayName, lineProfile?.userId]);
 
-  // Show loading while initializing
-  if (!isInitialized || isLoading || !isThemeLoaded) {
+  // Global loading timeout safety net - force through after 12 seconds
+  useEffect(() => {
+    if (!isInitialized || isLoading || !isThemeLoaded) {
+      const timer = setTimeout(() => {
+        console.warn('Loading timed out, forcing app to render');
+        setLoadingTimedOut(true);
+      }, 12000);
+      return () => clearTimeout(timer);
+    }
+  }, [isInitialized, isLoading, isThemeLoaded]);
+
+  // Show loading while initializing (with timeout fallback)
+  if ((!isInitialized || isLoading || !isThemeLoaded) && !loadingTimedOut) {
     return <RunningLoader message="กำลังเตรียมแอพพลิเคชัน..." />;
   }
 
@@ -117,8 +135,6 @@ const AppRoutes = () => {
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/admin" element={<Navigate to="/admin/badges" replace />} />
         <Route path="/admin/*" element={<Navigate to="/admin/badges" replace />} />
-        <Route path="/admin-kaya" element={<Navigate to="/admin/badges" replace />} />
-        <Route path="/admin-kaya/*" element={<Navigate to="/admin/badges" replace />} />
         
         {/* App Routes with Bottom Nav */}
         <Route element={<AppLayout />}>
@@ -133,6 +149,8 @@ const AppRoutes = () => {
           <Route path="/game-mode" element={<GameMode />} />
           <Route path="/challenges" element={<Challenges />} />
           <Route path="/workout-history" element={<WorkoutHistory />} />
+  <Route path="/leaderboard" element={<Leaderboard />} />
+          <Route path="/user-profile/:userId" element={<UserPublicProfile />} />
           <Route path="/badges" element={<BadgesPage />} />
           <Route path="/admin/badges" element={<AdminBadges />} />
         </Route>
@@ -147,6 +165,13 @@ const AppRoutes = () => {
         <Route path="/mouse-running-game" element={<MouseRunningGame />} />
         <Route path="/whack-a-mole-game" element={<WhackAMoleGame />} />
         <Route path="/fishing-game" element={<FishingGame />} />
+        
+        {/* Admin Panel - URL-only access, no nav link */}
+        <Route path="/admin-kaya" element={
+          <Suspense fallback={<RunningLoader message="Loading..." />}>
+            <AdminKaya />
+          </Suspense>
+        } />
         
         {/* Catch-all */}
         <Route path="*" element={<NotFound />} />
