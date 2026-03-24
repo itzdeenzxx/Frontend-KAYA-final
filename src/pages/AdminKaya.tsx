@@ -1,6 +1,6 @@
 // Admin Dashboard - KAYA Fitness App
 // Access: URL-only (/admin-kaya), no buttons/links in app
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import {
@@ -84,6 +84,36 @@ const truncate = (s: unknown, len = 40): string => {
   const str = String(s);
   return str.length > len ? str.slice(0, len) + '...' : str;
 };
+
+const toDateFromUnknown = (value: unknown): Date | null => {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === 'object' && value !== null && 'toDate' in value) {
+    return (value as { toDate: () => Date }).toDate();
+  }
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
+};
+
+const formatReadableValue = (value: unknown): string => {
+  if (value === null || value === undefined) return '-';
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (typeof value === 'number') return Number.isFinite(value) ? value.toLocaleString() : String(value);
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return `Array(${value.length})`;
+  if (typeof value === 'object') return `Object(${Object.keys(value as Record<string, unknown>).length})`;
+  return String(value);
+};
+
+const prettyFieldLabel = (key: string): string =>
+  key
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 
 // ==================== MAIN COMPONENT ====================
 export default function AdminKaya() {
@@ -190,14 +220,14 @@ export default function AdminKaya() {
                   key={tab.id}
                   value={tab.id}
                   className={cn(
-                    'flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all',
+                    'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all',
                     'data-[state=inactive]:text-gray-500 data-[state=inactive]:hover:text-gray-300 data-[state=inactive]:hover:bg-white/[0.04]',
                     'data-[state=active]:bg-gradient-to-r data-[state=active]:from-orange-500/20 data-[state=active]:to-red-500/10',
                     'data-[state=active]:text-orange-400 data-[state=active]:shadow-[0_0_12px_rgba(249,115,22,0.15)]',
                     'data-[state=active]:border data-[state=active]:border-orange-500/20',
                   )}
                 >
-                  <tab.icon className="w-3.5 h-3.5" />
+                  <tab.icon className="w-4 h-4" />
                   <span className="hidden sm:inline">{tab.label}</span>
                 </TabsTrigger>
               ))}
@@ -238,8 +268,8 @@ function SectionHeader({ title, subtitle, action }: { title: string; subtitle?: 
   return (
     <div className="flex items-center justify-between mb-5">
       <div>
-        <h2 className="text-lg font-bold text-white">{title}</h2>
-        {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
+        <h2 className="text-xl font-bold text-white">{title}</h2>
+        {subtitle && <p className="text-sm text-gray-400 mt-0.5">{subtitle}</p>}
       </div>
       {action}
     </div>
@@ -281,7 +311,7 @@ const RecursiveEditor = ({ data, onChange }: { data: Record<string, unknown>; on
   return (
     <div className="w-full">
       <textarea 
-        className={cn("w-full h-64 font-mono text-[13px] p-4 bg-black/40 border rounded-xl text-gray-200 outline-none transition-colors", error ? "border-red-500/50 focus:border-red-500" : "border-white/10 focus:border-white/20")}
+        className={cn("w-full h-64 font-mono text-sm leading-6 p-4 bg-black/40 border rounded-xl text-gray-200 outline-none transition-colors", error ? "border-red-500/50 focus:border-red-500" : "border-white/10 focus:border-white/20")}
         value={jsonText}
         onChange={handleChange}
         spellCheck={false}
@@ -294,13 +324,46 @@ const RecursiveEditor = ({ data, onChange }: { data: Record<string, unknown>; on
 // ==================== TAB 1: DASHBOARD ====================
 function DashboardTab() {
   const [stats, setStats] = useState<Record<string, number> | null>(null);
+  const [userGrowth, setUserGrowth] = useState<Array<{ label: string; count: number }>>([]);
   const [loading, setLoading] = useState(true);
 
   const loadStats = useCallback(async () => {
     setLoading(true);
     try {
-      const s = await getAdminDashboardStats();
+      const [s, users] = await Promise.all([
+        getAdminDashboardStats(),
+        getAllUsers(500),
+      ]);
       setStats(s);
+
+      const dayBuckets = Array.from({ length: 7 }, (_, index) => {
+        const d = new Date();
+        d.setHours(0, 0, 0, 0);
+        d.setDate(d.getDate() - (6 - index));
+        const key = d.toISOString().slice(0, 10);
+        return {
+          key,
+          label: d.toLocaleDateString('th-TH', { weekday: 'short' }),
+          count: 0,
+        };
+      });
+
+      const bucketMap = new Map(dayBuckets.map((bucket) => [bucket.key, bucket]));
+      users.forEach((user) => {
+        const sourceDate = toDateFromUnknown(user.data.createdAt)
+          || toDateFromUnknown(user.data.firstLoginAt)
+          || toDateFromUnknown(user.data.lastLoginAt);
+        if (!sourceDate) return;
+
+        const normalized = new Date(sourceDate);
+        normalized.setHours(0, 0, 0, 0);
+        const key = normalized.toISOString().slice(0, 10);
+        const bucket = bucketMap.get(key);
+        if (bucket) {
+          bucket.count += 1;
+        }
+      });
+      setUserGrowth(dayBuckets.map(({ label, count }) => ({ label, count })));
     } catch (e: unknown) {
       toast.error('โหลดข้อมูลไม่สำเร็จ');
     } finally {
@@ -320,6 +383,11 @@ function DashboardTab() {
     { label: 'อาหารในระบบ', key: 'totalFoodItems', icon: Utensils, gradient: 'from-yellow-500 to-orange-400', bg: 'bg-yellow-500/10' },
     { label: 'ผู้เล่นตกปลา', key: 'totalFishingPlayers', icon: Fish, gradient: 'from-teal-500 to-cyan-400', bg: 'bg-teal-500/10' },
   ];
+
+  const maxGrowth = useMemo(() => {
+    if (!userGrowth.length) return 1;
+    return Math.max(...userGrowth.map((point) => point.count), 1);
+  }, [userGrowth]);
 
   return (
     <div>
@@ -360,6 +428,38 @@ function DashboardTab() {
           </GlassCard>
         ))}
       </div>
+
+      <GlassCard className="mt-5 p-4 md:p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-base md:text-lg font-semibold text-white">แนวโน้มผู้ใช้เพิ่มขึ้น (7 วันล่าสุด)</h3>
+            <p className="text-sm text-gray-400">อ้างอิงจาก createdAt / firstLoginAt / lastLoginAt</p>
+          </div>
+          <div className="text-sm text-gray-400">รวม {userGrowth.reduce((sum, point) => sum + point.count, 0)} คน</div>
+        </div>
+
+        {loading ? (
+          <div className="h-36 rounded-xl bg-white/[0.03] animate-pulse" />
+        ) : (
+          <div className="grid grid-cols-7 gap-2 items-end h-44">
+            {userGrowth.map((point) => {
+              const heightPercent = Math.max((point.count / maxGrowth) * 100, point.count > 0 ? 14 : 6);
+              return (
+                <div key={point.label} className="flex flex-col items-center justify-end gap-2 h-full">
+                  <span className="text-sm font-semibold text-orange-300">{point.count}</span>
+                  <div className="w-full max-w-[48px] rounded-lg bg-white/[0.04] border border-white/[0.08] h-full flex items-end p-1">
+                    <div
+                      className="w-full rounded-md bg-gradient-to-t from-orange-600 to-amber-400"
+                      style={{ height: `${heightPercent}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-gray-400">{point.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </GlassCard>
 
       {/* Quick Actions */}
       <div className="mt-6">
@@ -678,6 +778,17 @@ function BadgeManagementTab() {
   const [selected, setSelected] = useState<FirestoreBadgeCatalogItem | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [newBadge, setNewBadge] = useState({
+    badgeId: '',
+    nameTh: '',
+    nameEn: '',
+    icon: '🏅',
+    category: 'workout' as 'workout' | 'game' | 'nutrition',
+    target: 1,
+    description: '',
+    requirement: '',
+  });
 
   const loadBadges = useCallback(async () => {
     setLoading(true);
@@ -730,15 +841,69 @@ function BadgeManagementTab() {
     }
   };
 
+  const handleCreate = async () => {
+    const badgeId = newBadge.badgeId.trim();
+    if (!badgeId) {
+      toast.error('กรุณาใส่ badgeId');
+      return;
+    }
+    if (!newBadge.nameTh.trim() || !newBadge.nameEn.trim()) {
+      toast.error('กรุณาใส่ชื่อแบดจ์ TH/EN');
+      return;
+    }
+
+    const duplicated = badges.some((badge) => badge.badgeId.toLowerCase() === badgeId.toLowerCase());
+    if (duplicated) {
+      toast.error('badgeId นี้มีอยู่แล้ว');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await upsertBadgeCatalogItem(badgeId, {
+        badgeId,
+        nameEn: newBadge.nameEn,
+        nameTh: newBadge.nameTh,
+        description: newBadge.description,
+        icon: newBadge.icon,
+        requirement: newBadge.requirement,
+        category: newBadge.category,
+        target: Number(newBadge.target) || 1,
+      });
+      toast.success('สร้างแบดจ์ใหม่สำเร็จ');
+      setShowCreateDialog(false);
+      setNewBadge({
+        badgeId: '',
+        nameTh: '',
+        nameEn: '',
+        icon: '🏅',
+        category: 'workout',
+        target: 1,
+        description: '',
+        requirement: '',
+      });
+      await loadBadges();
+    } catch (error) {
+      toast.error('สร้างแบดจ์ใหม่ไม่สำเร็จ');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div>
       <SectionHeader
         title="จัดการแบดจ์"
         subtitle={`ทั้งหมด ${badges.length} รายการ`}
         action={
-          <Button variant="ghost" size="sm" onClick={loadBadges} disabled={loading} className="text-gray-400 hover:text-white hover:bg-white/[0.06] h-8">
-            <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
-          </Button>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={() => setShowCreateDialog(true)} className="bg-orange-500 hover:bg-orange-600 text-white h-9 px-4 text-sm rounded-lg">
+              <Plus className="w-4 h-4 mr-1" />สร้างใหม่
+            </Button>
+            <Button variant="ghost" size="sm" onClick={loadBadges} disabled={loading} className="text-gray-300 hover:text-white hover:bg-white/[0.06] h-9">
+              <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} />
+            </Button>
+          </div>
         }
       />
 
@@ -761,26 +926,85 @@ function BadgeManagementTab() {
       ) : (
         <div className="space-y-2">
           {filtered.map((badge) => (
-            <GlassCard key={badge.badgeId} className="p-3 hover:border-white/[0.12] transition-all">
+            <GlassCard key={badge.badgeId} className="p-4 hover:border-white/[0.12] transition-all">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-white/[0.04] border border-white/[0.08] flex items-center justify-center text-lg">
                   {badge.icon}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
-                    <p className="font-semibold text-sm text-white truncate">{badge.nameTh}</p>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full border bg-white/[0.03] border-white/[0.08] text-gray-300">{badge.category}</span>
+                    <p className="font-semibold text-base text-white truncate">{badge.nameTh}</p>
+                    <span className="text-xs px-2 py-0.5 rounded-full border bg-white/[0.03] border-white/[0.08] text-gray-300">{badge.category}</span>
                   </div>
-                  <p className="text-[11px] text-gray-500 truncate">{badge.badgeId} • target {badge.target}</p>
+                  <p className="text-sm text-gray-400 truncate">{badge.badgeId} • target {badge.target}</p>
                 </div>
-                <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg" onClick={() => setSelected(badge)}>
-                  <Edit3 className="w-3.5 h-3.5" />
+                <Button variant="ghost" size="sm" className="h-9 w-9 p-0 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg" onClick={() => setSelected(badge)}>
+                  <Edit3 className="w-4 h-4" />
                 </Button>
               </div>
             </GlassCard>
           ))}
         </div>
       )}
+
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="max-w-xl bg-[#1a1d2e] border-white/[0.08] text-gray-200">
+          <DialogHeader>
+            <DialogTitle className="text-white">สร้างแบดจ์ใหม่</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium text-gray-300 mb-1 block">Badge ID</label>
+              <Input value={newBadge.badgeId} onChange={(e) => setNewBadge({ ...newBadge, badgeId: e.target.value })} placeholder="เช่น monthly_master" className="bg-white/[0.03] border-white/[0.08] text-gray-200 font-mono" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium text-gray-300 mb-1 block">ชื่อ (TH)</label>
+                <Input value={newBadge.nameTh} onChange={(e) => setNewBadge({ ...newBadge, nameTh: e.target.value })} className="bg-white/[0.03] border-white/[0.08] text-gray-200" />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-300 mb-1 block">ชื่อ (EN)</label>
+                <Input value={newBadge.nameEn} onChange={(e) => setNewBadge({ ...newBadge, nameEn: e.target.value })} className="bg-white/[0.03] border-white/[0.08] text-gray-200" />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="text-sm font-medium text-gray-300 mb-1 block">Icon</label>
+                <Input value={newBadge.icon} onChange={(e) => setNewBadge({ ...newBadge, icon: e.target.value })} className="bg-white/[0.03] border-white/[0.08] text-gray-200" />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-300 mb-1 block">Category</label>
+                <Select value={newBadge.category} onValueChange={(value: 'workout' | 'game' | 'nutrition') => setNewBadge({ ...newBadge, category: value })}>
+                  <SelectTrigger className="bg-white/[0.03] border-white/[0.08] text-gray-200"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-[#1a1d2e] border-white/[0.08]">
+                    <SelectItem value="workout" className="text-gray-200">workout</SelectItem>
+                    <SelectItem value="game" className="text-gray-200">game</SelectItem>
+                    <SelectItem value="nutrition" className="text-gray-200">nutrition</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-300 mb-1 block">Target</label>
+                <Input type="number" value={newBadge.target} onChange={(e) => setNewBadge({ ...newBadge, target: Number(e.target.value) || 1 })} className="bg-white/[0.03] border-white/[0.08] text-gray-200" />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-300 mb-1 block">Description</label>
+              <Textarea value={newBadge.description} onChange={(e) => setNewBadge({ ...newBadge, description: e.target.value })} className="bg-white/[0.03] border-white/[0.08] text-gray-200 min-h-[72px]" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-300 mb-1 block">Requirement</label>
+              <Textarea value={newBadge.requirement} onChange={(e) => setNewBadge({ ...newBadge, requirement: e.target.value })} className="bg-white/[0.03] border-white/[0.08] text-gray-200 min-h-[72px]" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowCreateDialog(false)} className="text-gray-300 hover:text-white">ยกเลิก</Button>
+            <Button onClick={handleCreate} disabled={saving} className="bg-orange-500 hover:bg-orange-600 text-white">
+              {saving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Plus className="w-4 h-4 mr-1" />}สร้าง
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!selected} onOpenChange={(open) => { if (!open) setSelected(null); }}>
         <DialogContent className="max-w-xl bg-[#1a1d2e] border-white/[0.08] text-gray-200">
@@ -1690,6 +1914,11 @@ function FirestoreExplorerTab() {
   const [subcollectionView, setSubcollectionView] = useState<{ parentCol: string; parentId: string; subName: string } | null>(null);
   const [subDocs, setSubDocs] = useState<Array<{ id: string; data: Record<string, unknown> }>>([]);
 
+  const previewEntries = useMemo(() => {
+    if (!editDoc) return [] as Array<[string, unknown]>;
+    return Object.entries(editDoc.data).slice(0, 10);
+  }, [editDoc]);
+
   const loadCollection = useCallback(async () => {
     setLoading(true);
     try {
@@ -1775,7 +2004,7 @@ function FirestoreExplorerTab() {
 
       {/* Collection Selector */}
       <div className="flex gap-3 items-center mb-4">
-        <span className="text-xs font-medium text-gray-500">Collection:</span>
+        <span className="text-sm font-medium text-gray-300">Collection:</span>
         <Select value={selectedCollection} onValueChange={setSelectedCollection}>
           <SelectTrigger className="w-56 bg-white/[0.03] border-white/[0.08] text-gray-200 h-9 rounded-lg">
             <SelectValue />
@@ -1786,7 +2015,7 @@ function FirestoreExplorerTab() {
             ))}
           </SelectContent>
         </Select>
-        <span className="text-[10px] text-gray-600 bg-white/[0.03] px-2 py-1 rounded-md border border-white/[0.06]">
+        <span className="text-xs text-gray-400 bg-white/[0.03] px-2 py-1 rounded-md border border-white/[0.06]">
           {documents.length} docs
         </span>
       </div>
@@ -1808,8 +2037,17 @@ function FirestoreExplorerTab() {
                   <Database className="w-4 h-4 text-blue-400" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-mono text-gray-300 truncate">{truncate(d.id, 32)}</p>
-                  <p className="text-[10px] text-gray-600 truncate">{truncate(JSON.stringify(d.data), 80)}</p>
+                  <p className="text-sm font-mono text-gray-200 truncate">{truncate(d.id, 40)}</p>
+                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                    {Object.keys(d.data).slice(0, 5).map((key) => (
+                      <span key={key} className="text-xs px-2 py-0.5 rounded-md bg-white/[0.03] border border-white/[0.08] text-gray-400">
+                        {prettyFieldLabel(key)}
+                      </span>
+                    ))}
+                    {Object.keys(d.data).length > 5 && (
+                      <span className="text-xs text-gray-500">+{Object.keys(d.data).length - 5} fields</span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg"
@@ -1835,12 +2073,22 @@ function FirestoreExplorerTab() {
 
       {/* Edit Doc Dialog */}
       <Dialog open={showDocDialog} onOpenChange={v => { if (!v) { setShowDocDialog(false); setEditDoc(null); } }}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto bg-[#1a1d2e] border-white/[0.08] text-gray-200">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto bg-[#1a1d2e] border-white/[0.08] text-gray-200">
           <DialogHeader>
-            <DialogTitle className="text-sm text-white">
+            <DialogTitle className="text-base text-white">
               <span className="text-gray-500">{selectedCollection}/</span>{editDoc?.id}
             </DialogTitle>
           </DialogHeader>
+          {editDoc && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
+              {previewEntries.map(([key, value]) => (
+                <div key={key} className="p-2.5 rounded-lg bg-white/[0.03] border border-white/[0.08]">
+                  <p className="text-xs text-gray-500 mb-0.5">{prettyFieldLabel(key)}</p>
+                  <p className="text-sm text-gray-200 break-all">{formatReadableValue(value)}</p>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="py-2">
              {editDoc && (
                <RecursiveEditor 
