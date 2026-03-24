@@ -4,13 +4,15 @@ import { Link } from "react-router-dom";
 import { useTheme } from "@/contexts/ThemeContext";
 import { cn } from "@/lib/utils";
 
+const BUILD_MARKER = "admin-kaya-hotfix-20260324-2";
+
 const NotFound = () => {
   const location = useLocation();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
 
   useEffect(() => {
-    console.error("404 Error: User attempted to access non-existent route:", location.pathname);
+    console.error(`[${BUILD_MARKER}] 404 Error: User attempted to access non-existent route:`, location.pathname);
 
     // Normalize admin aliases that may slip to NotFound in stale deployments.
     if (location.pathname === '/admin' || location.pathname.startsWith('/admin/')) {

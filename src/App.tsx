@@ -41,6 +41,7 @@ import { shareBadgeAchievement } from "./lib/liff";
 import { BADGES_EARNED_EVENT, type BadgesEarnedEventDetail } from "./lib/badgeEvents";
 
 const AdminKaya = React.lazy(() => import("./pages/AdminKaya"));
+const BUILD_MARKER = "admin-kaya-hotfix-20260324-2";
 
 const queryClient = new QueryClient();
 
@@ -52,6 +53,10 @@ const AppRoutes = () => {
   const isDark = theme === "dark";
   const [unlockModalOpen, setUnlockModalOpen] = useState(false);
   const [latestUnlockedBadgeNames, setLatestUnlockedBadgeNames] = useState<string[]>([]);
+
+  useEffect(() => {
+    console.info(`[KAYA build] ${BUILD_MARKER}`);
+  }, []);
 
   useEffect(() => {
     const handleBadgesEarned = (event: Event) => {
@@ -153,7 +158,7 @@ const AppRoutes = () => {
           <Route path="/game-mode" element={<GameMode />} />
           <Route path="/challenges" element={<Challenges />} />
           <Route path="/workout-history" element={<WorkoutHistory />} />
-  <Route path="/leaderboard" element={<Leaderboard />} />
+            <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/user-profile/:userId" element={<UserPublicProfile />} />
           <Route path="/badges" element={<BadgesPage />} />
           <Route path="/admin/badges" element={<AdminBadges />} />
