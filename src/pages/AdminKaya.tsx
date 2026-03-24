@@ -570,9 +570,44 @@ function DashboardTab() {
     return userGrowth.reduce((sum, point) => sum + point.added, 0);
   }, [userGrowth]);
 
+  const totalRangeDays = useMemo(() => {
+    if (!growthRange.valid) return 0;
+    return Math.floor((growthRange.end.getTime() - growthRange.start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+  }, [growthRange]);
+
   const getGrowthValue = useCallback((point: { count: number; added: number }) => {
     return growthMode === 'cumulative' ? point.count : point.added;
   }, [growthMode]);
+
+  const pointValues = useMemo(() => {
+    return userGrowth.map((point) => getGrowthValue(point));
+  }, [userGrowth, getGrowthValue]);
+
+  const summaryCards = useMemo(() => {
+    const startValue = pointValues[0] || 0;
+    const latestValue = pointValues[pointValues.length - 1] || 0;
+    const maxValue = pointValues.length ? Math.max(...pointValues) : 0;
+    const avgPerPoint = pointValues.length
+      ? pointValues.reduce((sum, value) => sum + value, 0) / pointValues.length
+      : 0;
+
+    if (growthMode === 'cumulative') {
+      const avgPerDay = totalRangeDays > 0 ? periodAddedUsers / totalRangeDays : 0;
+      return [
+        { label: 'เริ่มต้นช่วง', value: startValue.toLocaleString() },
+        { label: 'ล่าสุด', value: latestValue.toLocaleString() },
+        { label: 'เพิ่มสุทธิ', value: Math.max(0, latestValue - startValue).toLocaleString() },
+        { label: 'เฉลี่ยผู้ใช้ใหม่/วัน', value: avgPerDay.toFixed(1) },
+      ];
+    }
+
+    return [
+      { label: 'ผู้ใช้ใหม่รวม', value: periodAddedUsers.toLocaleString() },
+      { label: 'ค่าสูงสุด/จุด', value: maxValue.toLocaleString() },
+      { label: 'ค่าเฉลี่ย/จุด', value: avgPerPoint.toFixed(1) },
+      { label: 'ค่าล่าสุด', value: latestValue.toLocaleString() },
+    ];
+  }, [pointValues, growthMode, periodAddedUsers, totalRangeDays]);
 
   const maxGrowth = useMemo(() => {
     if (!userGrowth.length) return 1;
@@ -646,10 +681,7 @@ function DashboardTab() {
               {growthMode === 'cumulative'
                 ? 'แสดงยอดผู้ใช้สะสมทั้งหมดจาก createdAt / firstLoginAt'
                 : 'แสดงจำนวนผู้ใช้ใหม่รายวันจาก createdAt / firstLoginAt'}
-              {userGrowth.length > 0 && (() => {
-                const totalDays = Math.floor((growthRange.end.getTime() - growthRange.start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
-                return totalDays > 60 ? ' (ช่วงยาวจะแสดงแบบรายสัปดาห์เพื่อให้อ่านง่ายขึ้น)' : '';
-              })()}
+              {userGrowth.length > 0 && (totalRangeDays > 60 ? ' (ช่วงยาวจะแสดงแบบรายสัปดาห์เพื่อให้อ่านง่ายขึ้น)' : '')}
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-3">
@@ -763,18 +795,9 @@ function DashboardTab() {
                 const x = userGrowth.length <= 1 ? 0 : (index / (userGrowth.length - 1)) * 100;
                 const pointValue = getGrowthValue(point);
                 const y = Math.max(2, chartBaselineY - (pointValue / maxGrowth) * chartTopPadding);
-                const isEdge = index === 0 || index === userGrowth.length - 1;
-                const prevValue = index > 0 ? getGrowthValue(userGrowth[index - 1]) : pointValue;
-                const changedFromPrevious = index > 0 && pointValue !== prevValue;
-                const shouldShowValue = pointValue > 0 && (isEdge || (point.showTick && changedFromPrevious));
                 return (
                   <g key={`${point.label}-${index}`}>
                     <circle cx={x} cy={y} r="1.1" fill="#fb923c" />
-                    {shouldShowValue && (
-                      <text x={x} y={Math.max(3, y - 2)} fill="#fdba74" fontSize="3.8" textAnchor="middle">
-                        {pointValue}
-                      </text>
-                    )}
                   </g>
                 );
               })}
@@ -792,6 +815,14 @@ function DashboardTab() {
                 );
               })}
             </svg>
+            <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2">
+              {summaryCards.map((card) => (
+                <div key={card.label} className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2.5">
+                  <p className="text-[11px] text-gray-500">{card.label}</p>
+                  <p className="text-base md:text-lg font-semibold text-gray-100 mt-0.5">{card.value}</p>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </GlassCard>
