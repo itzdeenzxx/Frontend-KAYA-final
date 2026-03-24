@@ -26,13 +26,14 @@ const TIER_GRADIENT: Record<UserTier, string> = {
   gold:     "from-yellow-400 to-amber-600",
   platinum: "from-cyan-300 to-blue-500",
   diamond:  "from-purple-400 via-pink-400 to-blue-400",
+  master:   "from-pink-500 via-rose-400 to-fuchsia-500",
 };
 const TIER_LABEL: Record<UserTier, string> = {
   bronze: "Bronze", silver: "Silver", gold: "Gold",
-  platinum: "Platinum", diamond: "Diamond",
+  platinum: "Platinum", diamond: "Diamond", master: "Master",
 };
 const TIER_ICON: Record<UserTier, string> = {
-  bronze: "🥉", silver: "🥈", gold: "🥇", platinum: "⚪", diamond: "💎",
+  bronze: "🥉", silver: "🥈", gold: "🥇", platinum: "⚪", diamond: "💎", master: "👑",
 };
 
 // ── Tab config ────────────────────────────────────────────────────────────────

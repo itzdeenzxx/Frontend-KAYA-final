@@ -27,6 +27,12 @@ import {
   ALL_COLLECTIONS,
   type StorageItem,
 } from '@/lib/adminFirestore';
+import {
+  ensureBadgeCatalogSeeded,
+  getBadgeCatalog,
+  upsertBadgeCatalogItem,
+  type FirestoreBadgeCatalogItem,
+} from '@/lib/firestore';
 import { toast } from 'sonner';
 
 // shadcn/ui
@@ -60,7 +66,7 @@ import {
   Loader2, ChevronRight, ArrowLeft, Download, Image,
   UserX, UserCheck, Edit3, Save, X, AlertTriangle, FileText, Folder,
   Activity, TrendingUp, Fish, MousePointer, Hammer,
-  LayoutDashboard, Crown, Zap,
+  LayoutDashboard, Crown, Zap, Award,
 } from 'lucide-react';
 
 // ==================== HELPERS ====================
@@ -136,6 +142,7 @@ export default function AdminKaya() {
   const tabs = [
     { id: 'dashboard', label: 'ภาพรวม', icon: LayoutDashboard },
     { id: 'users', label: 'ผู้ใช้', icon: Users },
+    { id: 'badges', label: 'แบดจ์', icon: Award },
     { id: 'challenges', label: 'ชาเลนจ์', icon: Trophy },
     { id: 'content', label: 'เนื้อหา', icon: Utensils },
     { id: 'games', label: 'เกม', icon: Gamepad2 },
@@ -199,6 +206,7 @@ export default function AdminKaya() {
 
           <TabsContent value="dashboard"><DashboardTab /></TabsContent>
           <TabsContent value="users"><UserManagementTab /></TabsContent>
+          <TabsContent value="badges"><BadgeManagementTab /></TabsContent>
           <TabsContent value="challenges"><ChallengeManagementTab /></TabsContent>
           <TabsContent value="content"><ContentManagementTab /></TabsContent>
           <TabsContent value="games"><GameManagementTab /></TabsContent>
@@ -359,6 +367,7 @@ function DashboardTab() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {[
             { label: 'จัดการผู้ใช้', icon: Users, tab: 'users' },
+            { label: 'จัดการแบดจ์', icon: Award, tab: 'badges' },
             { label: 'ดูเกม & คะแนน', icon: Gamepad2, tab: 'games' },
             { label: 'แก้ไขชาเลนจ์', icon: Trophy, tab: 'challenges' },
             { label: 'ตั้งค่าแอดมิน', icon: Shield, tab: 'settings' },
@@ -467,6 +476,7 @@ function UserManagementTab() {
     gold: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
     platinum: 'bg-cyan-500/10 text-cyan-300 border-cyan-500/20',
     diamond: 'bg-purple-500/10 text-purple-300 border-purple-500/20',
+    master: 'bg-pink-500/10 text-pink-300 border-pink-500/20',
   };
 
   return (
@@ -585,6 +595,33 @@ function UserManagementTab() {
           </DialogHeader>
           {userFullData && (
             <div className="space-y-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                  <p className="text-[10px] text-gray-500">Tier</p>
+                  <p className="text-sm font-semibold text-white uppercase">{String((userFullData.profile as Record<string, unknown> | null)?.tier || '-') }</p>
+                </div>
+                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                  <p className="text-[10px] text-gray-500">Points</p>
+                  <p className="text-sm font-semibold text-white">{Number((userFullData.profile as Record<string, unknown> | null)?.points || 0).toLocaleString()}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                  <p className="text-[10px] text-gray-500">Streak</p>
+                  <p className="text-sm font-semibold text-white">{Number((userFullData.profile as Record<string, unknown> | null)?.streakDays || 0)} วัน</p>
+                </div>
+                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                  <p className="text-[10px] text-gray-500">Workouts</p>
+                  <p className="text-sm font-semibold text-white">{Array.isArray(userFullData.workouts) ? userFullData.workouts.length : 0}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                  <p className="text-[10px] text-gray-500">Badges</p>
+                  <p className="text-sm font-semibold text-white">{Array.isArray(userFullData.badges) ? userFullData.badges.length : 0}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                  <p className="text-[10px] text-gray-500">Last Login</p>
+                  <p className="text-xs font-semibold text-white">{formatTimestamp((userFullData.profile as Record<string, unknown> | null)?.lastLoginAt)}</p>
+                </div>
+              </div>
+
               {Object.entries(userFullData).map(([section, data]) => {
                 if (!data || (Array.isArray(data) && data.length === 0)) return null;
                 const sectionLabels: Record<string, string> = {
@@ -596,7 +633,12 @@ function UserManagementTab() {
                 return (
                   <div key={section} className="rounded-xl bg-white/[0.03] border border-white/[0.06] overflow-hidden">
                     <div className="px-3 py-2 border-b border-white/[0.06]">
-                      <h4 className="font-semibold text-xs text-gray-300">{sectionLabels[section] || section}</h4>
+                      <div className="flex items-center justify-between gap-2">
+                        <h4 className="font-semibold text-xs text-gray-300">{sectionLabels[section] || section}</h4>
+                        <span className="text-[10px] text-gray-500">
+                          {Array.isArray(data) ? `${data.length} รายการ` : 'เอกสารเดี่ยว'}
+                        </span>
+                      </div>
                     </div>
                     <div className="p-3">
                       <DynamicViewer data={data} />
@@ -626,6 +668,178 @@ function UserManagementTab() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+function BadgeManagementTab() {
+  const [badges, setBadges] = useState<FirestoreBadgeCatalogItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<FirestoreBadgeCatalogItem | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const loadBadges = useCallback(async () => {
+    setLoading(true);
+    try {
+      await ensureBadgeCatalogSeeded();
+      const catalog = await getBadgeCatalog();
+      setBadges(catalog);
+    } catch (error) {
+      toast.error('โหลด badge catalog ไม่สำเร็จ');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadBadges();
+  }, [loadBadges]);
+
+  const filtered = badges.filter((badge) => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      badge.badgeId.toLowerCase().includes(q)
+      || badge.nameTh.toLowerCase().includes(q)
+      || badge.nameEn.toLowerCase().includes(q)
+    );
+  });
+
+  const handleSave = async () => {
+    if (!selected) return;
+    try {
+      setSaving(true);
+      await upsertBadgeCatalogItem(selected.badgeId, {
+        badgeId: selected.badgeId,
+        nameEn: selected.nameEn,
+        nameTh: selected.nameTh,
+        description: selected.description,
+        icon: selected.icon,
+        requirement: selected.requirement,
+        category: selected.category,
+        target: selected.target,
+      });
+      toast.success('บันทึก badge สำเร็จ');
+      setSelected(null);
+      await loadBadges();
+    } catch (error) {
+      toast.error('บันทึก badge ไม่สำเร็จ');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div>
+      <SectionHeader
+        title="จัดการแบดจ์"
+        subtitle={`ทั้งหมด ${badges.length} รายการ`}
+        action={
+          <Button variant="ghost" size="sm" onClick={loadBadges} disabled={loading} className="text-gray-400 hover:text-white hover:bg-white/[0.06] h-8">
+            <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+          </Button>
+        }
+      />
+
+      <div className="relative mb-4">
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+        <Input
+          placeholder="ค้นหา badgeId / ชื่อไทย / ชื่ออังกฤษ"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="pl-10 bg-white/[0.03] border-white/[0.08] text-gray-200 placeholder:text-gray-600 focus:border-orange-500/40 h-10 rounded-xl"
+        />
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <Loader2 className="w-6 h-6 animate-spin text-orange-400" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-12 text-gray-500 text-sm">ไม่พบแบดจ์</div>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map((badge) => (
+            <GlassCard key={badge.badgeId} className="p-3 hover:border-white/[0.12] transition-all">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-white/[0.04] border border-white/[0.08] flex items-center justify-center text-lg">
+                  {badge.icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <p className="font-semibold text-sm text-white truncate">{badge.nameTh}</p>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full border bg-white/[0.03] border-white/[0.08] text-gray-300">{badge.category}</span>
+                  </div>
+                  <p className="text-[11px] text-gray-500 truncate">{badge.badgeId} • target {badge.target}</p>
+                </div>
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg" onClick={() => setSelected(badge)}>
+                  <Edit3 className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </GlassCard>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={!!selected} onOpenChange={(open) => { if (!open) setSelected(null); }}>
+        <DialogContent className="max-w-xl bg-[#1a1d2e] border-white/[0.08] text-gray-200">
+          <DialogHeader>
+            <DialogTitle className="text-white">แก้ไขแบดจ์</DialogTitle>
+            <DialogDescription className="font-mono text-xs text-gray-500">{selected?.badgeId}</DialogDescription>
+          </DialogHeader>
+          {selected && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-400 mb-1 block">ชื่อ (TH)</label>
+                  <Input value={selected.nameTh} onChange={(e) => setSelected({ ...selected, nameTh: e.target.value })} className="bg-white/[0.03] border-white/[0.08] text-gray-200" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-400 mb-1 block">ชื่อ (EN)</label>
+                  <Input value={selected.nameEn} onChange={(e) => setSelected({ ...selected, nameEn: e.target.value })} className="bg-white/[0.03] border-white/[0.08] text-gray-200" />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-400 mb-1 block">Icon</label>
+                  <Input value={selected.icon} onChange={(e) => setSelected({ ...selected, icon: e.target.value })} className="bg-white/[0.03] border-white/[0.08] text-gray-200" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-400 mb-1 block">Category</label>
+                  <Select value={selected.category} onValueChange={(value: 'workout' | 'game' | 'nutrition') => setSelected({ ...selected, category: value })}>
+                    <SelectTrigger className="bg-white/[0.03] border-white/[0.08] text-gray-200"><SelectValue /></SelectTrigger>
+                    <SelectContent className="bg-[#1a1d2e] border-white/[0.08]">
+                      <SelectItem value="workout" className="text-gray-200">workout</SelectItem>
+                      <SelectItem value="game" className="text-gray-200">game</SelectItem>
+                      <SelectItem value="nutrition" className="text-gray-200">nutrition</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-400 mb-1 block">Target</label>
+                  <Input type="number" value={selected.target} onChange={(e) => setSelected({ ...selected, target: Number(e.target.value) || 1 })} className="bg-white/[0.03] border-white/[0.08] text-gray-200" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-400 mb-1 block">Description</label>
+                <Textarea value={selected.description} onChange={(e) => setSelected({ ...selected, description: e.target.value })} className="bg-white/[0.03] border-white/[0.08] text-gray-200 min-h-[72px]" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-400 mb-1 block">Requirement</label>
+                <Textarea value={selected.requirement} onChange={(e) => setSelected({ ...selected, requirement: e.target.value })} className="bg-white/[0.03] border-white/[0.08] text-gray-200 min-h-[72px]" />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setSelected(null)} className="text-gray-400 hover:text-white">ยกเลิก</Button>
+            <Button onClick={handleSave} disabled={saving} className="bg-orange-500 hover:bg-orange-600 text-white">
+              {saving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
+              บันทึก
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

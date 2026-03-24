@@ -1572,6 +1572,7 @@ export const getStreakLeaderboard = async (limitCount: number = 50): Promise<Ful
 };
 
 const TIER_ORDER: Record<string, number> = {
+  master: 5,
   diamond: 4,
   platinum: 3,
   gold: 2,
