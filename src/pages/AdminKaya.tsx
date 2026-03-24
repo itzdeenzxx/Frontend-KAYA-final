@@ -483,7 +483,7 @@ function DashboardTab() {
   }, [useCustomRange, growthDays, customStart, customEnd]);
 
   const userGrowth = useMemo(() => {
-    if (!growthRange.valid) return [] as Array<{ label: string; count: number; showTick: boolean }>;
+    if (!growthRange.valid) return [] as Array<{ label: string; count: number; showTick: boolean; added: number }>;
 
     const totalDays = Math.floor((growthRange.end.getTime() - growthRange.start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
     const dayBuckets = Array.from({ length: totalDays }, (_, index) => {
@@ -498,6 +498,8 @@ function DashboardTab() {
     });
 
     const bucketMap = new Map(dayBuckets.map((bucket) => [bucket.key, bucket]));
+    let baselineUsers = 0;
+
     allUsers.forEach((user) => {
       const sourceDate = toDateFromUnknown(user.data.createdAt)
         || toDateFromUnknown(user.data.firstLoginAt)
@@ -506,6 +508,12 @@ function DashboardTab() {
 
       const normalized = new Date(sourceDate);
       normalized.setHours(0, 0, 0, 0);
+
+      if (normalized < growthRange.start) {
+        baselineUsers += 1;
+        return;
+      }
+
       const key = normalized.toISOString().slice(0, 10);
       const bucket = bucketMap.get(key);
       if (bucket) {
@@ -513,18 +521,30 @@ function DashboardTab() {
       }
     });
 
+    let runningTotal = baselineUsers;
     return dayBuckets.map((bucket, index) => {
       const label = totalDays <= 14
         ? bucket.date.toLocaleDateString('th-TH', { weekday: 'short' })
         : bucket.date.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' });
       const showTick = totalDays <= 10 || index === 0 || index === dayBuckets.length - 1 || index % Math.ceil(totalDays / 6) === 0;
+      runningTotal += bucket.count;
       return {
         label,
-        count: bucket.count,
+        count: runningTotal,
         showTick,
+        added: bucket.count,
       };
     });
   }, [allUsers, growthRange]);
+
+  const latestTotalUsers = useMemo(() => {
+    if (!userGrowth.length) return 0;
+    return userGrowth[userGrowth.length - 1].count;
+  }, [userGrowth]);
+
+  const periodAddedUsers = useMemo(() => {
+    return userGrowth.reduce((sum, point) => sum + point.added, 0);
+  }, [userGrowth]);
 
   const maxGrowth = useMemo(() => {
     if (!userGrowth.length) return 1;
@@ -588,8 +608,8 @@ function DashboardTab() {
       <GlassCard className="mt-5 p-4 md:p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-base md:text-lg font-semibold text-white">แนวโน้มผู้ใช้เพิ่มขึ้น (กราฟเส้น)</h3>
-            <p className="text-sm text-gray-400">อ้างอิงจาก createdAt / firstLoginAt / lastLoginAt</p>
+            <h3 className="text-base md:text-lg font-semibold text-white">แนวโน้มผู้ใช้สะสมทั้งหมด (กราฟเส้น)</h3>
+            <p className="text-sm text-gray-400">แสดงยอดผู้ใช้สะสมทั้งหมดจาก createdAt / firstLoginAt / lastLoginAt</p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-3">
             <div className="inline-flex rounded-lg border border-white/[0.08] bg-white/[0.03] p-0.5">
@@ -622,7 +642,7 @@ function DashboardTab() {
                 <CalendarDays className="w-3 h-3" />กำหนดเอง
               </button>
             </div>
-            <div className="text-sm text-gray-400">รวม {userGrowth.reduce((sum, point) => sum + point.count, 0)} คน</div>
+            <div className="text-sm text-gray-400">รวมทั้งหมด {latestTotalUsers.toLocaleString()} คน (+{periodAddedUsers.toLocaleString()} ในช่วงที่เลือก)</div>
           </div>
         </div>
 
