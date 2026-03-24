@@ -3,6 +3,7 @@ import { ArrowLeft, Bell, Sun, Moon, ChevronRight, LogOut, Check, Palette, Shiel
 import { Link, useNavigate } from "react-router-dom";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import { isLineUserAdmin } from "@/lib/adminAccess";
 import { useTheme, ThemeMode } from "@/contexts/ThemeContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { CoachSettings } from "@/components/settings/CoachSettings";
@@ -13,7 +14,7 @@ export default function Settings() {
   const { logout, lineProfile } = useAuth();
   const isDark = theme === 'dark';
   const rawAdminIds = (import.meta.env.VITE_ADMIN_USER_IDS as string | undefined) ?? '';
-  const isAdmin = !!lineProfile?.userId && rawAdminIds.split(',').map((id) => id.trim()).includes(lineProfile.userId);
+  const isAdmin = isLineUserAdmin(lineProfile?.userId, rawAdminIds);
   
   const [notifications, setNotifications] = useState({
     workoutReminders: true,

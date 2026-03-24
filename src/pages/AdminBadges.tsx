@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, RotateCcw, Save, ShieldAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { parseAdminIds } from '@/lib/adminAccess';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -43,11 +44,9 @@ export default function AdminBadges() {
   const isDark = theme === 'dark';
 
   const rawAdminIds = (import.meta.env.VITE_ADMIN_USER_IDS as string | undefined) ?? '';
-  const adminIds = useMemo(
-    () => new Set(rawAdminIds.split(',').map((id) => id.trim()).filter(Boolean)),
-    [rawAdminIds]
-  );
+  const adminIds = useMemo(() => parseAdminIds(rawAdminIds), [rawAdminIds]);
   const isAdmin = !!lineProfile?.userId && adminIds.has(lineProfile.userId);
+  const hasConfiguredAdmins = adminIds.size > 0;
 
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState<string | null>(null);
@@ -81,6 +80,11 @@ export default function AdminBadges() {
   };
 
   const saveBadge = async (badge: EditableBadge) => {
+    if (!badge.nameEn.trim() || !badge.nameTh.trim()) {
+      toast.error('ชื่อ EN/TH ห้ามว่าง');
+      return;
+    }
+
     setIsSaving(badge.badgeId);
     try {
       await upsertBadgeCatalogItem(badge.badgeId, badge);
@@ -107,6 +111,21 @@ export default function AdminBadges() {
     }
   };
 
+  const copyCurrentUserId = async () => {
+    const userId = lineProfile?.userId;
+    if (!userId) {
+      toast.error('ไม่พบ LINE userId ปัจจุบัน');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(userId);
+      toast.success('คัดลอก LINE userId แล้ว');
+    } catch {
+      toast.error('คัดลอกไม่สำเร็จ กรุณาคัดลอกด้วยตนเอง');
+    }
+  };
+
   if (!isAdmin) {
     return (
       <div className={cn('min-h-screen p-6', isDark ? 'bg-black text-white' : 'bg-gray-50 text-gray-900')}>
@@ -116,6 +135,22 @@ export default function AdminBadges() {
           <p className={cn(isDark ? 'text-gray-300' : 'text-gray-700')}>
             หน้านี้สำหรับแอดมินเท่านั้น กรุณาตั้งค่า VITE_ADMIN_USER_IDS ให้มี LINE userId ของคุณก่อนใช้งาน
           </p>
+          <div className={cn('text-xs break-all rounded-xl p-3', isDark ? 'bg-white/5 text-gray-300' : 'bg-white text-gray-700')}>
+            <p>LINE userId ปัจจุบัน: {lineProfile?.userId || '-'}</p>
+            <p>VITE_ADMIN_USER_IDS: {hasConfiguredAdmins ? 'ตั้งค่าแล้ว' : 'ยังไม่ได้ตั้งค่า'}</p>
+          </div>
+          <div>
+            <button
+              type="button"
+              onClick={copyCurrentUserId}
+              className={cn(
+                'inline-flex items-center gap-2 px-4 py-2 rounded-xl border text-sm',
+                isDark ? 'bg-white/5 border-white/15 hover:bg-white/10' : 'bg-white border-gray-300 hover:bg-gray-100'
+              )}
+            >
+              คัดลอก LINE userId
+            </button>
+          </div>
           <div>
             <Link
               to="/settings"
