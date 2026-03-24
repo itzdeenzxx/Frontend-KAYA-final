@@ -526,7 +526,7 @@ function DashboardTab() {
     return dayBuckets.map((bucket, index) => {
       const label = totalDays <= 14
         ? bucket.date.toLocaleDateString('th-TH', { weekday: 'short' })
-        : bucket.date.toLocaleDateString('th-TH', { day: '2-digit', month: 'short' });
+        : `${String(bucket.date.getDate()).padStart(2, '0')}/${String(bucket.date.getMonth() + 1).padStart(2, '0')}`;
       const showTick = totalDays <= 10 || index === 0 || index === dayBuckets.length - 1 || index % Math.ceil(totalDays / 6) === 0;
       runningTotal += bucket.count;
       return {
@@ -753,7 +753,7 @@ function DashboardTab() {
               {userGrowth.map((point, index) => (
                 <span
                   key={`tick-${point.label}-${index}`}
-                  className={cn('text-center text-xs md:text-sm text-gray-500 truncate', !point.showTick && 'opacity-0')}
+                  className={cn('text-center text-xs md:text-sm text-gray-400 whitespace-nowrap', !point.showTick && 'opacity-0')}
                 >
                   {point.label}
                 </span>
