@@ -115,6 +115,8 @@ const AppRoutes = () => {
       <Routes>
         {/* Redirect root to dashboard */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/admin" element={<Navigate to="/admin/badges" replace />} />
+        <Route path="/admin/*" element={<Navigate to="/admin/badges" replace />} />
         <Route path="/admin-kaya" element={<Navigate to="/admin/badges" replace />} />
         <Route path="/admin-kaya/*" element={<Navigate to="/admin/badges" replace />} />
         

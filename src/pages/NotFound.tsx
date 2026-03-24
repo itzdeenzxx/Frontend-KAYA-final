@@ -1,5 +1,6 @@
 import { useLocation } from "react-router-dom";
 import { useEffect } from "react";
+import { Link } from "react-router-dom";
 import { useTheme } from "@/contexts/ThemeContext";
 import { cn } from "@/lib/utils";
 
@@ -10,6 +11,11 @@ const NotFound = () => {
 
   useEffect(() => {
     console.error("404 Error: User attempted to access non-existent route:", location.pathname);
+
+    // Redirect old or alias admin URLs that may slip to NotFound in stale deployments.
+    if (location.pathname.startsWith('/admin-kaya') || location.pathname === '/admin' || location.pathname.startsWith('/admin/')) {
+      window.location.replace('/admin/badges');
+    }
   }, [location.pathname]);
 
   return (
@@ -23,9 +29,9 @@ const NotFound = () => {
           "mb-4 text-xl",
           isDark ? "text-gray-400" : "text-gray-500"
         )}>Oops! Page not found</p>
-        <a href="/" className="text-primary underline hover:text-primary/90">
+        <Link to="/" className="text-primary underline hover:text-primary/90">
           Return to Home
-        </a>
+        </Link>
       </div>
     </div>
   );
