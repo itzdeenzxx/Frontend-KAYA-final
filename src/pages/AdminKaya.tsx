@@ -523,7 +523,7 @@ function DashboardTab() {
     });
 
     let runningTotal = baselineUsers;
-    return dayBuckets.map((bucket, index) => {
+    const dailySeries = dayBuckets.map((bucket, index) => {
       const label = totalDays <= 14
         ? bucket.date.toLocaleDateString('th-TH', { weekday: 'short' })
         : `${String(bucket.date.getDate()).padStart(2, '0')}/${String(bucket.date.getMonth() + 1).padStart(2, '0')}`;
@@ -536,6 +536,30 @@ function DashboardTab() {
         added: bucket.count,
       };
     });
+
+    if (totalDays <= 60) {
+      return dailySeries;
+    }
+
+    // Long ranges are easier to read when bucketed weekly.
+    const weeklySeries: Array<{ label: string; count: number; showTick: boolean; added: number }> = [];
+    for (let i = 0; i < dailySeries.length; i += 7) {
+      const chunk = dailySeries.slice(i, i + 7);
+      if (!chunk.length) continue;
+      const lastPoint = chunk[chunk.length - 1];
+      const added = chunk.reduce((sum, item) => sum + item.added, 0);
+      weeklySeries.push({
+        label: chunk[0].label,
+        count: lastPoint.count,
+        added,
+        showTick: true,
+      });
+    }
+
+    return weeklySeries.map((item, index) => ({
+      ...item,
+      showTick: index === 0 || index === weeklySeries.length - 1 || index % Math.ceil(weeklySeries.length / 6) === 0,
+    }));
   }, [allUsers, growthRange]);
 
   const latestTotalUsers = useMemo(() => {
@@ -620,6 +644,10 @@ function DashboardTab() {
               {growthMode === 'cumulative'
                 ? 'แสดงยอดผู้ใช้สะสมทั้งหมดจาก createdAt / firstLoginAt / lastLoginAt'
                 : 'แสดงจำนวนผู้ใช้ใหม่รายวันจาก createdAt / firstLoginAt / lastLoginAt'}
+              {userGrowth.length > 0 && (() => {
+                const totalDays = Math.floor((growthRange.end.getTime() - growthRange.start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+                return totalDays > 60 ? ' (ช่วงยาวจะแสดงแบบรายสัปดาห์เพื่อให้อ่านง่ายขึ้น)' : '';
+              })()}
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-3">
