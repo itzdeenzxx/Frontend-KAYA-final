@@ -420,7 +420,7 @@ function DashboardTab() {
     try {
       const [s, users] = await Promise.all([
         getAdminDashboardStats(),
-        getAllUsers(2000),
+        getAllUsers(),
       ]);
       setStats(s);
       setAllUsers(users);
@@ -503,8 +503,7 @@ function DashboardTab() {
 
     allUsers.forEach((user) => {
       const sourceDate = toDateFromUnknown(user.data.createdAt)
-        || toDateFromUnknown(user.data.firstLoginAt)
-        || toDateFromUnknown(user.data.lastLoginAt);
+        || toDateFromUnknown(user.data.firstLoginAt);
       if (!sourceDate) return;
 
       const normalized = new Date(sourceDate);
@@ -642,8 +641,8 @@ function DashboardTab() {
             </h3>
             <p className="text-sm md:text-base text-gray-400">
               {growthMode === 'cumulative'
-                ? 'แสดงยอดผู้ใช้สะสมทั้งหมดจาก createdAt / firstLoginAt / lastLoginAt'
-                : 'แสดงจำนวนผู้ใช้ใหม่รายวันจาก createdAt / firstLoginAt / lastLoginAt'}
+                ? 'แสดงยอดผู้ใช้สะสมทั้งหมดจาก createdAt / firstLoginAt'
+                : 'แสดงจำนวนผู้ใช้ใหม่รายวันจาก createdAt / firstLoginAt'}
               {userGrowth.length > 0 && (() => {
                 const totalDays = Math.floor((growthRange.end.getTime() - growthRange.start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
                 return totalDays > 60 ? ' (ช่วงยาวจะแสดงแบบรายสัปดาห์เพื่อให้อ่านง่ายขึ้น)' : '';
