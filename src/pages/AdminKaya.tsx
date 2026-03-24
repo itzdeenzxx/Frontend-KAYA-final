@@ -93,10 +93,20 @@ export default function AdminKaya() {
         setIsCheckingAdmin(false);
         return;
       }
-      const result = await isAdmin(lineProfile.userId);
-      setIsAdminUser(result);
-      if (result) await initializeAdminConfig();
-      setIsCheckingAdmin(false);
+
+      try {
+        const result = await isAdmin(lineProfile.userId);
+        setIsAdminUser(result);
+
+        if (result) {
+          await initializeAdminConfig();
+        }
+      } catch (error) {
+        console.warn('Admin access check failed:', error);
+        setIsAdminUser(false);
+      } finally {
+        setIsCheckingAdmin(false);
+      }
     };
     if (isAuthenticated && lineProfile) checkAccess();
     else if (!authLoading) setIsCheckingAdmin(false);

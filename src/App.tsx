@@ -1,10 +1,9 @@
-import { useEffect, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner, toast as sonnerToast } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { useState, useEffect } from 'react';
 
 import Dashboard from "./pages/Dashboard";
 import WorkoutSelection from "./pages/WorkoutSelection";
@@ -40,7 +39,6 @@ import { RunningLoader } from "./components/shared/RunningLoader";
 import { BadgeUnlockModal } from "./components/gamification/BadgeUnlockModal";
 import { shareBadgeAchievement } from "./lib/liff";
 import { BADGES_EARNED_EVENT, type BadgesEarnedEventDetail } from "./lib/badgeEvents";
-import React, { Suspense } from 'react';
 
 const AdminKaya = React.lazy(() => import("./pages/AdminKaya"));
 
@@ -105,6 +103,12 @@ const AppRoutes = () => {
     return <RunningLoader message="กำลังเข้าสู่ระบบ LINE..." />;
   }
 
+  const adminKayaElement = (
+    <Suspense fallback={<RunningLoader message="Loading..." />}>
+      <AdminKaya />
+    </Suspense>
+  );
+
   return (
     <>
       {/* Theme Selector Modal for first-time users */}
@@ -167,11 +171,8 @@ const AppRoutes = () => {
         <Route path="/fishing-game" element={<FishingGame />} />
         
         {/* Admin Panel - URL-only access, no nav link */}
-        <Route path="/admin-kaya" element={
-          <Suspense fallback={<RunningLoader message="Loading..." />}>
-            <AdminKaya />
-          </Suspense>
-        } />
+        <Route path="/admin-kaya" element={adminKayaElement} />
+        <Route path="/admin-kaya/*" element={<Navigate to="/admin-kaya" replace />} />
         
         {/* Catch-all */}
         <Route path="*" element={<NotFound />} />

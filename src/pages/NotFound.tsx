@@ -12,9 +12,14 @@ const NotFound = () => {
   useEffect(() => {
     console.error("404 Error: User attempted to access non-existent route:", location.pathname);
 
-    // Redirect old or alias admin URLs that may slip to NotFound in stale deployments.
-    if (location.pathname.startsWith('/admin-kaya') || location.pathname === '/admin' || location.pathname.startsWith('/admin/')) {
+    // Normalize admin aliases that may slip to NotFound in stale deployments.
+    if (location.pathname === '/admin' || location.pathname.startsWith('/admin/')) {
       window.location.replace('/admin/badges');
+      return;
+    }
+
+    if (location.pathname.startsWith('/admin-kaya')) {
+      window.location.replace('/admin-kaya');
     }
   }, [location.pathname]);
 
