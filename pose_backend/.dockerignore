@@ -1,0 +1,20 @@
+# ละเว้นโฟลเดอร์ที่ไม่เกี่ยวกับ Backend และ Models ตอนที่เอาขึ้น Railway
+.venv/
+__pycache__/
+.idea/
+.vscode/
+
+# ละเว้นไฟล์ Debug และโค้ดเทรน
+data/
+*.ipynb
+debug_*.py
+collect_*.py
+pose_scoring*.py
+update_config.py
+eval_all.py
+test_*.py
+
+# ละเว้นไฟล์อื่นๆ ที่ไม่จำเป็น
+*.csv
+*.log
+Procfile
