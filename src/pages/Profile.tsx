@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { 
   ArrowLeft, 
   Camera, 
@@ -40,12 +40,14 @@ import {
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useHealthData, useUserProfile, useWorkoutHistory, useDailyStats } from "@/hooks/useFirestore";
 import { getCalculatedStreak } from "@/lib/firestore";
 import { useTheme } from "@/contexts/ThemeContext";
 import liff from "@line/liff";
+import { Line, LineChart, XAxis, YAxis, CartesianGrid } from "recharts";
 
 const goals = [
   { label: "Lose Weight", labelTh: "ลดน้ำหนัก", icon: TrendingDown, color: 'from-green-500 to-emerald-500' },
@@ -53,6 +55,57 @@ const goals = [
   { label: "Stay Fit", labelTh: "ฟิตแอนด์เฟิร์ม", icon: Target, color: 'from-blue-500 to-cyan-500' },
   { label: "Improve Endurance", labelTh: "เพิ่มความทนทาน", icon: Activity, color: 'from-orange-500 to-red-500' },
 ];
+
+const workoutTrendChartConfig = {
+  calories: {
+    label: 'แคลอรี่',
+    color: '#f97316',
+  },
+  minutes: {
+    label: 'เวลา (นาที)',
+    color: '#f97316',
+  },
+  reps: {
+    label: 'จำนวนครั้ง',
+    color: '#f97316',
+  },
+};
+
+type WorkoutMetric = 'calories' | 'minutes' | 'reps';
+
+const metricOptions: { key: WorkoutMetric; label: string }[] = [
+  { key: 'calories', label: 'แคลอรี่' },
+  { key: 'minutes', label: 'เวลา' },
+  { key: 'reps', label: 'จำนวนครั้ง' },
+];
+
+const rangeOptions = [7, 14, 30] as const;
+
+const getWorkoutDate = (value: unknown): Date | null => {
+  if (!value) return null;
+
+  if (typeof value === 'object' && value !== null && 'toDate' in value && typeof (value as { toDate: () => Date }).toDate === 'function') {
+    return (value as { toDate: () => Date }).toDate();
+  }
+
+  if (typeof value === 'object' && value !== null && 'seconds' in value) {
+    const seconds = (value as { seconds?: number }).seconds;
+    if (typeof seconds === 'number') {
+      return new Date(seconds * 1000);
+    }
+  }
+
+  const parsedDate = new Date(value as string | number | Date);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return null;
+  }
+
+  return parsedDate;
+};
+
+const toDateKey = (date: Date): string => {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
 
 // Epic Tier Configurations
 // Bronze: 0-999, Silver: 1000-1999, Gold: 2000-2999, Platinum: 3000-3999, Diamond: 4000+
@@ -150,6 +203,8 @@ export default function Profile() {
   const [isEditing, setIsEditing] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const [activeSection, setActiveSection] = useState<'profile' | 'stats' | 'goals' | 'settings'>('profile');
+  const [selectedMetric, setSelectedMetric] = useState<WorkoutMetric>('calories');
+  const [selectedRangeDays, setSelectedRangeDays] = useState<(typeof rangeOptions)[number]>(14);
   const [userData, setUserData] = useState({
     nickname: "",
     weight: 70,
@@ -473,6 +528,70 @@ export default function Profile() {
   const SecondaryIcon = tier.secondaryIcon;
   const userPoints = userProfile?.points || 0;
   const streakDays = getCalculatedStreak(userProfile?.streakDays || 0, userProfile?.lastActivityDate);
+
+  const workoutTrendData = useMemo(() => {
+    if (!workouts) return [];
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const startDate = new Date(today);
+    startDate.setDate(today.getDate() - (selectedRangeDays - 1));
+
+    const days = Array.from({ length: selectedRangeDays }, (_, index) => {
+      const date = new Date(startDate);
+      date.setDate(startDate.getDate() + index);
+
+      return {
+        dateKey: toDateKey(date),
+        label: `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}`,
+        fullDate: date.toLocaleDateString('th-TH', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        }),
+        calories: 0,
+        minutes: 0,
+        reps: 0,
+        workouts: 0,
+      };
+    });
+
+    const groupedByDay = new Map<string, {
+      dateKey: string;
+      label: string;
+      fullDate: string;
+      calories: number;
+      minutes: number;
+      reps: number;
+      workouts: number;
+    }>();
+
+    days.forEach((day) => groupedByDay.set(day.dateKey, day));
+
+    workouts.forEach((workout) => {
+      const workoutDate = getWorkoutDate(workout.completedAt);
+      if (!workoutDate) return;
+
+      workoutDate.setHours(0, 0, 0, 0);
+      if (workoutDate < startDate || workoutDate > today) return;
+
+      const dateKey = toDateKey(workoutDate);
+
+      const existing = groupedByDay.get(dateKey);
+      if (existing) {
+        existing.calories += workout.caloriesBurned || 0;
+        existing.minutes += Math.round((workout.totalTime || 0) / 60);
+        existing.reps += workout.totalReps || 0;
+        existing.workouts += 1;
+      }
+    });
+
+    return Array.from(groupedByDay.values())
+      .sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+  }, [workouts, selectedRangeDays]);
+
+  const selectedMetricLabel = metricOptions.find((metric) => metric.key === selectedMetric)?.label || 'แคลอรี่';
   
   // Theme
   const { theme } = useTheme();
@@ -913,6 +1032,113 @@ export default function Profile() {
                     <p className="text-3xl font-bold text-purple-400">{Math.round(stats?.averageAccuracy || 0)}%</p>
                     <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>ความแม่นยำ</p>
                   </div>
+                </div>
+
+                {/* Workout Overview Line Chart */}
+                <div className={cn(
+                  "p-6 rounded-2xl border",
+                  isDark ? "bg-white/5 border-white/10" : "bg-white border-gray-200"
+                )}>
+                  <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
+                    <div>
+                      <h3 className="font-bold text-lg mb-1">แนวโน้มการออกกำลังกาย</h3>
+                      <p className={cn("text-sm", isDark ? "text-gray-400" : "text-gray-500")}>
+                        รูปแบบกราฟตามช่วงเวลา {selectedRangeDays} วันล่าสุด
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {rangeOptions.map((day) => (
+                        <button
+                          key={day}
+                          onClick={() => setSelectedRangeDays(day)}
+                          className={cn(
+                            "text-xs px-3 py-1.5 rounded-full border transition-colors",
+                            selectedRangeDays === day
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : isDark
+                                ? "bg-white/5 border-white/10 text-gray-300 hover:bg-white/10"
+                                : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100"
+                          )}
+                        >
+                          {day} วัน
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 mb-5">
+                    {metricOptions.map((metric) => (
+                      <button
+                        key={metric.key}
+                        onClick={() => setSelectedMetric(metric.key)}
+                        className={cn(
+                          "text-sm px-3 py-2 rounded-lg border transition-colors",
+                          selectedMetric === metric.key
+                            ? "bg-blue-600 text-white border-blue-500"
+                            : isDark
+                              ? "bg-white/5 border-white/10 text-gray-300 hover:bg-white/10"
+                              : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100"
+                        )}
+                      >
+                        {metric.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {workoutTrendData.length > 0 ? (
+                    <ChartContainer config={workoutTrendChartConfig} className="h-[320px] w-full aspect-auto rounded-xl border border-slate-700/60 bg-[#02060f] p-2">
+                      <LineChart data={workoutTrendData} margin={{ top: 10, right: 12, left: 8, bottom: 8 }}>
+                        <CartesianGrid strokeDasharray="0" stroke="#475569" opacity={0.65} />
+                        <XAxis
+                          dataKey="label"
+                          tickLine={false}
+                          axisLine={{ stroke: '#64748b' }}
+                          tick={{ fill: '#cbd5e1', fontSize: 12 }}
+                          minTickGap={24}
+                        />
+                        <YAxis
+                          tickLine={false}
+                          axisLine={{ stroke: '#64748b' }}
+                          tick={{ fill: '#cbd5e1', fontSize: 12 }}
+                          width={52}
+                        />
+                        <ChartTooltip
+                          cursor={{ stroke: '#93c5fd', strokeWidth: 1, strokeDasharray: '4 4' }}
+                          content={
+                            <ChartTooltipContent
+                              indicator="line"
+                              formatter={(value) => (
+                                <span className="font-medium text-foreground">
+                                  {Number(value).toLocaleString()} {selectedMetric === 'minutes' ? 'นาที' : selectedMetric === 'calories' ? 'kcal' : 'ครั้ง'}
+                                </span>
+                              )}
+                              labelFormatter={(_, payload) => payload?.[0]?.payload?.fullDate || ''}
+                            />
+                          }
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey={selectedMetric}
+                          name={selectedMetricLabel}
+                          stroke="var(--color-calories)"
+                          strokeWidth={4}
+                          dot={{ r: 4, fill: '#f97316', stroke: '#f97316' }}
+                          activeDot={{ r: 6, fill: '#fb923c', stroke: '#ffffff', strokeWidth: 2 }}
+                        />
+                      </LineChart>
+                    </ChartContainer>
+                  ) : (
+                    <div className={cn(
+                      "h-[220px] rounded-xl border flex items-center justify-center text-center px-6",
+                      isDark ? "bg-white/5 border-white/10 text-gray-400" : "bg-gray-50 border-gray-200 text-gray-500"
+                    )}>
+                      <div>
+                        <Activity className="w-10 h-10 mx-auto mb-3 opacity-60" />
+                        <p className="text-sm">ยังไม่มีข้อมูลเพียงพอสำหรับกราฟ</p>
+                        <p className="text-xs mt-1">เริ่มออกกำลังกายเพื่อดูแนวโน้มในหน้านี้</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               
                 {/* Streak Card */}
