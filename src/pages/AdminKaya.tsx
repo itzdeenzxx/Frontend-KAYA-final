@@ -8,6 +8,7 @@ import {
   initializeAdminConfig,
   logAdminAction,
   listAdminAuditLogs,
+  subscribeAdminAuditLogs,
   getAdminDashboardStats,
   getAllUsers,
   searchUsers,
@@ -26,6 +27,7 @@ import {
   getAdminIds,
   addAdminId,
   removeAdminId,
+  getAdminActorContext,
   setAdminActorContext,
   ALL_COLLECTIONS,
   type AdminAuditLogEntry,
@@ -185,6 +187,45 @@ const getBadgeProgressValue = (badgeId: string, snapshot: BadgeProgressSnapshot)
   return 0;
 };
 
+type SmartAlertSettings = {
+  enabled: boolean;
+  minActiveRatePercent: number;
+  minUsersForActiveRate: number;
+  highActivityEvents24h: number;
+  banSpikeEvents24h: number;
+};
+
+const DEFAULT_SMART_ALERT_SETTINGS: SmartAlertSettings = {
+  enabled: true,
+  minActiveRatePercent: 8,
+  minUsersForActiveRate: 20,
+  highActivityEvents24h: 50,
+  banSpikeEvents24h: 5,
+};
+
+const ADMIN_TAB_IDS = ['dashboard', 'users', 'badges', 'challenges', 'content', 'games', 'storage', 'firestore', 'audit', 'settings'] as const;
+
+const isAdminTabId = (tab: string): boolean =>
+  (ADMIN_TAB_IDS as readonly string[]).includes(tab);
+
+const normalizeSmartAlertSettings = (raw: unknown): SmartAlertSettings => {
+  const source = (raw && typeof raw === 'object') ? raw as Record<string, unknown> : {};
+
+  const num = (value: unknown, fallback: number, min: number, max: number): number => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.min(max, Math.max(min, parsed));
+  };
+
+  return {
+    enabled: source.enabled === undefined ? DEFAULT_SMART_ALERT_SETTINGS.enabled : source.enabled !== false,
+    minActiveRatePercent: num(source.minActiveRatePercent, DEFAULT_SMART_ALERT_SETTINGS.minActiveRatePercent, 1, 100),
+    minUsersForActiveRate: num(source.minUsersForActiveRate, DEFAULT_SMART_ALERT_SETTINGS.minUsersForActiveRate, 1, 100000),
+    highActivityEvents24h: num(source.highActivityEvents24h, DEFAULT_SMART_ALERT_SETTINGS.highActivityEvents24h, 1, 100000),
+    banSpikeEvents24h: num(source.banSpikeEvents24h, DEFAULT_SMART_ALERT_SETTINGS.banSpikeEvents24h, 1, 100000),
+  };
+};
+
 // ==================== MAIN COMPONENT ====================
 export default function AdminKaya() {
   const { lineProfile, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -192,13 +233,70 @@ export default function AdminKaya() {
   const [isAdminUser, setIsAdminUser] = useState(false);
   const [isCheckingAdmin, setIsCheckingAdmin] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [userSearchSeed, setUserSearchSeed] = useState('');
+  const [adminDisplayName, setAdminDisplayName] = useState('');
+  const [quickSearchQuery, setQuickSearchQuery] = useState('');
+  const [smartAlertSettings, setSmartAlertSettings] = useState<SmartAlertSettings>(DEFAULT_SMART_ALERT_SETTINGS);
+  const [urlHydrated, setUrlHydrated] = useState(false);
+
+  const loadSmartAlertSettings = useCallback(async () => {
+    try {
+      const data = await getDocument('adminConfig', 'smartAlerts');
+      if (data) {
+        setSmartAlertSettings(normalizeSmartAlertSettings(data));
+      } else {
+        setSmartAlertSettings(DEFAULT_SMART_ALERT_SETTINGS);
+      }
+    } catch {
+      setSmartAlertSettings(DEFAULT_SMART_ALERT_SETTINGS);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab')?.trim() || '';
+    const q = params.get('q')?.trim() || '';
+
+    if (tab && isAdminTabId(tab)) {
+      setActiveTab(tab);
+    }
+    if (q) {
+      setQuickSearchQuery(q);
+      setUserSearchSeed(q);
+    }
+
+    setUrlHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!urlHydrated || typeof window === 'undefined') return;
+
+    const params = new URLSearchParams(window.location.search);
+    params.set('tab', activeTab);
+
+    const trimmed = quickSearchQuery.trim();
+    if (trimmed) params.set('q', trimmed);
+    else params.delete('q');
+
+    const queryString = params.toString();
+    const nextUrl = `${window.location.pathname}${queryString ? `?${queryString}` : ''}${window.location.hash}`;
+    window.history.replaceState(null, '', nextUrl);
+  }, [activeTab, quickSearchQuery, urlHydrated]);
 
   useEffect(() => {
     if (lineProfile?.userId) {
+      const storedActor = getAdminActorContext();
+      const resolvedDisplayName = (storedActor?.userId === lineProfile.userId ? storedActor.displayName : null)
+        || lineProfile.displayName
+        || 'Admin';
+
       setAdminActorContext({
         userId: lineProfile.userId,
-        displayName: lineProfile.displayName || 'Admin',
+        displayName: resolvedDisplayName,
       });
+      setAdminDisplayName(resolvedDisplayName);
     }
 
     const checkAccess = async () => {
@@ -213,6 +311,7 @@ export default function AdminKaya() {
 
         if (result) {
           await initializeAdminConfig();
+          await loadSmartAlertSettings();
         }
       } catch (error) {
         console.warn('Admin access check failed:', error);
@@ -223,7 +322,7 @@ export default function AdminKaya() {
     };
     if (isAuthenticated && lineProfile) checkAccess();
     else if (!authLoading) setIsCheckingAdmin(false);
-  }, [lineProfile, isAuthenticated, authLoading]);
+  }, [lineProfile, isAuthenticated, authLoading, loadSmartAlertSettings]);
 
   if (isCheckingAdmin || authLoading) {
     return (
@@ -276,7 +375,7 @@ export default function AdminKaya() {
           <div className="flex items-center gap-2">
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.06]">
               <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-xs text-gray-400">{lineProfile?.displayName || 'Admin'}</span>
+              <span className="text-xs text-gray-400">{adminDisplayName || lineProfile?.displayName || 'Admin'}</span>
             </div>
             <a href="/dashboard">
               <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white hover:bg-white/[0.06] h-8 px-3 text-xs">
@@ -312,8 +411,8 @@ export default function AdminKaya() {
             </TabsList>
           </ScrollArea>
 
-          <TabsContent value="dashboard"><DashboardTab /></TabsContent>
-          <TabsContent value="users"><UserManagementTab /></TabsContent>
+          <TabsContent value="dashboard"><DashboardTab activeTab={activeTab} onNavigate={setActiveTab} onQuickUserSearch={setUserSearchSeed} quickSearchQuery={quickSearchQuery} onQuickSearchQueryChange={setQuickSearchQuery} smartAlertSettings={smartAlertSettings} /></TabsContent>
+          <TabsContent value="users"><UserManagementTab quickSearchSeed={userSearchSeed} onQuickSearchConsumed={() => setUserSearchSeed('')} /></TabsContent>
           <TabsContent value="badges"><BadgeManagementTab /></TabsContent>
           <TabsContent value="challenges"><ChallengeManagementTab /></TabsContent>
           <TabsContent value="content"><ContentManagementTab /></TabsContent>
@@ -321,7 +420,7 @@ export default function AdminKaya() {
           <TabsContent value="storage"><StorageBrowserTab /></TabsContent>
           <TabsContent value="firestore"><FirestoreExplorerTab /></TabsContent>
           <TabsContent value="audit"><AuditLogsTab /></TabsContent>
-          <TabsContent value="settings"><AdminSettingsTab /></TabsContent>
+          <TabsContent value="settings"><AdminSettingsTab currentAdminUserId={lineProfile?.userId || ''} defaultDisplayName={lineProfile?.displayName || 'Admin'} onNicknameUpdated={setAdminDisplayName} smartAlertSettings={smartAlertSettings} onSmartAlertSettingsUpdated={setSmartAlertSettings} /></TabsContent>
         </Tabs>
       </div>
     </div>
@@ -401,7 +500,21 @@ const RecursiveEditor = ({ data, onChange }: { data: Record<string, unknown>; on
 };
 
 // ==================== TAB 1: DASHBOARD ====================
-function DashboardTab() {
+function DashboardTab({
+  activeTab,
+  onNavigate,
+  onQuickUserSearch,
+  quickSearchQuery,
+  onQuickSearchQueryChange,
+  smartAlertSettings,
+}: {
+  activeTab: string;
+  onNavigate: (tab: string) => void;
+  onQuickUserSearch: (search: string) => void;
+  quickSearchQuery: string;
+  onQuickSearchQueryChange: (search: string) => void;
+  smartAlertSettings: SmartAlertSettings;
+}) {
   const [stats, setStats] = useState<Record<string, number> | null>(null);
   const [allUsers, setAllUsers] = useState<Array<{ id: string; data: Record<string, unknown> }>>([]);
   const [growthMode, setGrowthMode] = useState<'cumulative' | 'daily'>('cumulative');
@@ -414,6 +527,39 @@ function DashboardTab() {
   });
   const [customEnd, setCustomEnd] = useState(() => new Date().toISOString().slice(0, 10));
   const [loading, setLoading] = useState(true);
+  const [recentAuditLogs, setRecentAuditLogs] = useState<AdminAuditLogEntry[]>([]);
+  const [activityFeedError, setActivityFeedError] = useState<string | null>(null);
+  const [quickActiveIndex, setQuickActiveIndex] = useState(0);
+
+  const navigateToTab = useCallback((tab: string, options?: { search?: string }) => {
+    const nextTab = isAdminTabId(tab) ? tab : 'dashboard';
+    const nextSearch = options?.search?.trim() || '';
+
+    onNavigate(nextTab);
+    if (nextSearch) {
+      onQuickUserSearch(nextSearch);
+      onQuickSearchQueryChange(nextSearch);
+    }
+
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      params.set('tab', nextTab);
+      const q = (nextSearch || quickSearchQuery).trim();
+      if (q) params.set('q', q);
+      else params.delete('q');
+      const queryString = params.toString();
+      const nextUrl = `${window.location.pathname}${queryString ? `?${queryString}` : ''}${window.location.hash}`;
+      window.history.replaceState(null, '', nextUrl);
+    }
+  }, [onNavigate, onQuickSearchQueryChange, onQuickUserSearch, quickSearchQuery]);
+
+  const quickActions = useMemo(() => ([
+    { label: 'จัดการผู้ใช้', icon: Users, tab: 'users', hint: 'ค้นหาและจัดการสถานะผู้ใช้' },
+    { label: 'จัดการแบดจ์', icon: Award, tab: 'badges', hint: 'ปรับเงื่อนไขและสถานะแบดจ์' },
+    { label: 'ดูเกม & คะแนน', icon: Gamepad2, tab: 'games', hint: 'ตรวจคะแนนและสถิติเกม' },
+    { label: 'แก้ไขชาเลนจ์', icon: Trophy, tab: 'challenges', hint: 'สร้างหรือปรับชาเลนจ์' },
+    { label: 'ตั้งค่าแอดมิน', icon: Shield, tab: 'settings', hint: 'จัดการสิทธิ์และชื่อเล่นแอดมิน' },
+  ]), []);
 
   const loadStats = useCallback(async () => {
     setLoading(true);
@@ -432,6 +578,21 @@ function DashboardTab() {
   }, []);
 
   useEffect(() => { loadStats(); }, [loadStats]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeAdminAuditLogs(
+      40,
+      (logs) => {
+        setRecentAuditLogs(logs);
+        setActivityFeedError(null);
+      },
+      () => {
+        setActivityFeedError('เชื่อมต่อ activity feed แบบ realtime ไม่สำเร็จ');
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   const statCards = [
     { label: 'ผู้ใช้ทั้งหมด', key: 'totalUsers', icon: Users, gradient: 'from-blue-500 to-cyan-400', bg: 'bg-blue-500/10' },
@@ -536,29 +697,7 @@ function DashboardTab() {
       };
     });
 
-    if (totalDays <= 60) {
-      return dailySeries;
-    }
-
-    // Long ranges are easier to read when bucketed weekly.
-    const weeklySeries: Array<{ label: string; count: number; showTick: boolean; added: number }> = [];
-    for (let i = 0; i < dailySeries.length; i += 7) {
-      const chunk = dailySeries.slice(i, i + 7);
-      if (!chunk.length) continue;
-      const lastPoint = chunk[chunk.length - 1];
-      const added = chunk.reduce((sum, item) => sum + item.added, 0);
-      weeklySeries.push({
-        label: chunk[0].label,
-        count: lastPoint.count,
-        added,
-        showTick: true,
-      });
-    }
-
-    return weeklySeries.map((item, index) => ({
-      ...item,
-      showTick: index === 0 || index === weeklySeries.length - 1 || index % Math.ceil(weeklySeries.length / 6) === 0,
-    }));
+    return dailySeries;
   }, [allUsers, growthRange]);
 
   const latestTotalUsers = useMemo(() => {
@@ -582,6 +721,10 @@ function DashboardTab() {
   const pointValues = useMemo(() => {
     return userGrowth.map((point) => getGrowthValue(point));
   }, [userGrowth, getGrowthValue]);
+
+  const hasGrowthData = useMemo(() => {
+    return pointValues.some((value) => value > 0);
+  }, [pointValues]);
 
   const summaryCards = useMemo(() => {
     const startValue = pointValues[0] || 0;
@@ -629,22 +772,218 @@ function DashboardTab() {
     return Math.max(...userGrowth.map((point) => getGrowthValue(point)), 1);
   }, [userGrowth, getGrowthValue]);
 
-  const chartBaselineY = 40;
-  const chartTopPadding = 34;
+  const chartViewWidth = 100;
+  const chartViewHeight = 17;
+  const chartBaselineY = 11.6;
+  const chartTopPadding = 8.6;
+  const chartLeftPadding = 8;
+  const chartRightPadding = 4;
 
-  const linePoints = useMemo(() => {
-    if (userGrowth.length === 0) return '';
+  const valueToY = useCallback((value: number): number => {
+    return Math.max(0.8, chartBaselineY - (value / maxGrowth) * chartTopPadding);
+  }, [chartBaselineY, maxGrowth, chartTopPadding]);
+
+  const yAxisTicks = useMemo(() => {
+    const maxVal = Math.max(maxGrowth, 1);
+    const midVal = maxVal / 2;
+
+    const normalize = (value: number): number => {
+      if (maxVal <= 10) return Math.round(value);
+      return Math.round(value);
+    };
+
+    return [
+      { label: normalize(maxVal).toLocaleString(), value: maxVal },
+      { label: normalize(midVal).toLocaleString(), value: midVal },
+      { label: '0', value: 0 },
+    ];
+  }, [maxGrowth]);
+
+  const chartPoints = useMemo(() => {
+    if (userGrowth.length === 0) return [] as Array<{ x: number; y: number }>;
+    const chartWidth = chartViewWidth - chartLeftPadding - chartRightPadding;
+
     if (userGrowth.length === 1) {
-      const y = chartBaselineY - (getGrowthValue(userGrowth[0]) / maxGrowth) * chartTopPadding;
-      return `0,${Math.max(2, y)}`;
+      const y = valueToY(getGrowthValue(userGrowth[0]));
+      return [{ x: chartLeftPadding + chartWidth / 2, y }];
     }
 
     return userGrowth.map((point, index) => {
-      const x = (index / (userGrowth.length - 1)) * 100;
-      const y = chartBaselineY - (getGrowthValue(point) / maxGrowth) * chartTopPadding;
-      return `${x},${Math.max(2, y)}`;
-    }).join(' ');
-  }, [userGrowth, maxGrowth, getGrowthValue, chartBaselineY, chartTopPadding]);
+      const x = chartLeftPadding + (index / (userGrowth.length - 1)) * chartWidth;
+      const y = valueToY(getGrowthValue(point));
+      return { x, y };
+    });
+  }, [userGrowth, getGrowthValue, chartLeftPadding, chartRightPadding, chartViewWidth, valueToY]);
+
+  const linePoints = useMemo(() => {
+    return chartPoints.map((point) => `${point.x},${point.y}`).join(' ');
+  }, [chartPoints]);
+
+  const areaPath = useMemo(() => {
+    if (chartPoints.length === 0) return '';
+    if (chartPoints.length === 1) {
+      const point = chartPoints[0];
+      return `M ${point.x},${chartBaselineY} L ${point.x},${point.y} L ${point.x},${chartBaselineY} Z`;
+    }
+
+    const first = chartPoints[0];
+    const last = chartPoints[chartPoints.length - 1];
+    const line = chartPoints.map((point) => `L ${point.x},${point.y}`).join(' ');
+    return `M ${first.x},${chartBaselineY} ${line} L ${last.x},${chartBaselineY} Z`;
+  }, [chartPoints, chartBaselineY]);
+
+  const quickSearchResults = useMemo(() => {
+    const q = quickSearchQuery.trim().toLowerCase();
+    const scoreText = (text: string): number => {
+      const t = text.toLowerCase();
+      if (!q) return 1;
+      if (t.startsWith(q)) return 3;
+      if (t.includes(q)) return 2;
+      return 0;
+    };
+
+    const actionResults = quickActions
+      .map((item) => ({
+        id: `action-${item.tab}`,
+        type: 'action' as const,
+        label: item.label,
+        subtitle: item.hint,
+        tab: item.tab,
+        score: Math.max(scoreText(item.label), scoreText(item.hint)),
+      }))
+      .filter((item) => item.score > 0);
+
+    const userResults = allUsers
+      .map((user) => {
+        const displayName = String(user.data.displayName || user.data.name || user.data.lineName || '').trim();
+        const userId = String(user.id || '').trim();
+        const score = Math.max(scoreText(displayName), scoreText(userId));
+        return {
+          id: `user-${userId}`,
+          type: 'user' as const,
+          label: displayName || userId,
+          subtitle: userId,
+          tab: 'users',
+          search: displayName || userId,
+          score,
+        };
+      })
+      .filter((item) => item.subtitle)
+      .filter((item) => q && item.score > 0)
+      .slice(0, 5);
+
+    return [...actionResults, ...userResults]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8);
+  }, [quickSearchQuery, quickActions, allUsers]);
+
+  useEffect(() => {
+    setQuickActiveIndex(0);
+  }, [quickSearchQuery]);
+
+  useEffect(() => {
+    if (quickSearchResults.length === 0) {
+      setQuickActiveIndex(0);
+      return;
+    }
+    setQuickActiveIndex((prev) => Math.min(prev, quickSearchResults.length - 1));
+  }, [quickSearchResults]);
+
+  const runQuickSearchResult = useCallback((result: {
+    tab: string;
+    type: 'action' | 'user';
+    search?: string;
+  }) => {
+    navigateToTab(result.tab, result.type === 'user' ? { search: result.search } : undefined);
+  }, [navigateToTab]);
+
+  const smartAlerts = useMemo(() => {
+    const alerts: Array<{
+      id: string;
+      level: 'high' | 'medium' | 'info';
+      title: string;
+      message: string;
+      tab: string;
+    }> = [];
+
+    if (!smartAlertSettings.enabled) {
+      return [{
+        id: 'smart-alert-disabled',
+        level: 'info' as const,
+        title: 'ปิด Smart Alerts อยู่',
+        message: 'สามารถเปิดใช้งานได้ในแท็บตั้งค่าแอดมิน',
+        tab: 'settings',
+      }];
+    }
+
+    if (stats) {
+      const activityRatio = stats.totalUsers > 0 ? stats.activeToday / stats.totalUsers : 0;
+      const activeRateThreshold = smartAlertSettings.minActiveRatePercent / 100;
+      if (stats.totalUsers >= smartAlertSettings.minUsersForActiveRate && activityRatio < activeRateThreshold) {
+        alerts.push({
+          id: 'low-active-rate',
+          level: 'medium',
+          title: 'อัตราผู้ใช้ Active วันนี้ต่ำ',
+          message: `Active วันนี้ ${stats.activeToday.toLocaleString()} จากทั้งหมด ${stats.totalUsers.toLocaleString()} (${(activityRatio * 100).toFixed(1)}%) ต่ำกว่าเกณฑ์ ${smartAlertSettings.minActiveRatePercent}%`,
+          tab: 'users',
+        });
+      }
+
+      if (stats.totalChallengeTemplates === 0) {
+        alerts.push({
+          id: 'empty-challenges',
+          level: 'info',
+          title: 'ยังไม่มีชาเลนจ์ในระบบ',
+          message: 'ควรมีอย่างน้อย 1 ชาเลนจ์ที่พร้อมใช้งานเพื่อคง engagement',
+          tab: 'challenges',
+        });
+      }
+    }
+
+    const now = Date.now();
+    const logs24h = recentAuditLogs.filter((item) => {
+      const d = toDateFromUnknown(item.createdAt);
+      return !!d && now - d.getTime() <= 24 * 60 * 60 * 1000;
+    });
+
+    if (logs24h.length >= smartAlertSettings.highActivityEvents24h) {
+      alerts.push({
+        id: 'high-admin-activity',
+        level: 'high',
+        title: 'กิจกรรมแอดมินสูงผิดปกติใน 24 ชั่วโมง',
+        message: `พบ ${logs24h.length.toLocaleString()} กิจกรรม (เกณฑ์ ${smartAlertSettings.highActivityEvents24h.toLocaleString()}) ควรตรวจสอบว่ามีงานแก้ไขจำนวนมากผิดปกติหรือไม่`,
+        tab: 'audit',
+      });
+    }
+
+    const banEvents24h = logs24h.filter((item) => {
+      const action = String(item.action || '').toLowerCase();
+      const summary = String(item.summary || '').toLowerCase();
+      return action.includes('ban') || summary.includes('แบน');
+    }).length;
+
+    if (banEvents24h >= smartAlertSettings.banSpikeEvents24h) {
+      alerts.push({
+        id: 'ban-spike',
+        level: 'high',
+        title: 'จำนวนการแบนผู้ใช้เพิ่มสูงใน 24 ชั่วโมง',
+        message: `พบการแบน ${banEvents24h.toLocaleString()} ครั้ง (เกณฑ์ ${smartAlertSettings.banSpikeEvents24h.toLocaleString()}) แนะนำให้ตรวจสอบสาเหตุร่วมกับ audit log`,
+        tab: 'audit',
+      });
+    }
+
+    if (!alerts.length) {
+      alerts.push({
+        id: 'system-normal',
+        level: 'info',
+        title: 'ระบบปกติ',
+        message: 'ไม่พบสัญญาณผิดปกติที่สำคัญในตอนนี้',
+        tab: 'dashboard',
+      });
+    }
+
+    return alerts.slice(0, 4);
+  }, [stats, recentAuditLogs, smartAlertSettings]);
 
   return (
     <div>
@@ -687,6 +1026,130 @@ function DashboardTab() {
       </div>
 
       <GlassCard className="mt-5 p-4 md:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <div>
+            <h3 className="text-sm md:text-base font-semibold text-white">Quick Search</h3>
+            <p className="text-xs text-gray-500">ค้นหาเมนูหรือชื่อผู้ใช้ แล้วกระโดดไปจุดที่ต้องการทันที</p>
+          </div>
+          <p className="text-[11px] text-gray-500">ใช้ Enter เพื่อเข้าเมนูทันที, ใช้ลูกศรขึ้น/ลงเพื่อเลือกผลลัพธ์</p>
+        </div>
+        <div className="relative">
+          <Search className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Input
+            value={quickSearchQuery}
+            onChange={(e) => onQuickSearchQueryChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (quickSearchResults.length === 0) return;
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setQuickActiveIndex((prev) => (prev + 1) % quickSearchResults.length);
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setQuickActiveIndex((prev) => (prev - 1 + quickSearchResults.length) % quickSearchResults.length);
+              } else if (e.key === 'Enter') {
+                e.preventDefault();
+                runQuickSearchResult(quickSearchResults[quickActiveIndex] || quickSearchResults[0]);
+              }
+            }}
+            placeholder="ค้นหาเมนู เช่น แบดจ์, ชาเลนจ์ หรือพิมพ์ชื่อผู้ใช้"
+            className="pl-9 bg-white/[0.03] border-white/[0.08] text-gray-200 placeholder:text-gray-600"
+          />
+        </div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {quickSearchResults.map((result, index) => (
+            <button
+              key={result.id}
+              type="button"
+              onClick={() => runQuickSearchResult(result)}
+              onMouseEnter={() => setQuickActiveIndex(index)}
+              className={cn(
+                'text-left p-3 rounded-xl border transition-colors',
+                quickActiveIndex === index
+                  ? 'border-orange-400/30 bg-orange-500/10'
+                  : 'border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/[0.12]'
+              )}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm text-white truncate">{result.label}</p>
+                <span className={cn(
+                  'text-[10px] px-2 py-0.5 rounded-full border',
+                  result.type === 'user'
+                    ? 'text-cyan-300 border-cyan-400/30 bg-cyan-500/10'
+                    : 'text-orange-300 border-orange-400/30 bg-orange-500/10'
+                )}>
+                  {result.type === 'user' ? 'ผู้ใช้' : 'เมนู'}
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 mt-0.5 truncate">{result.subtitle}</p>
+            </button>
+          ))}
+          {quickSearchResults.length === 0 && (
+            <div className="p-3 rounded-xl border border-white/[0.06] bg-white/[0.02] text-xs text-gray-500">
+              ไม่พบผลลัพธ์ที่ตรงกับคำค้นหา
+            </div>
+          )}
+        </div>
+      </GlassCard>
+
+      <div className="mt-5 grid lg:grid-cols-2 gap-3">
+        <GlassCard className="p-4 md:p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm md:text-base font-semibold text-white">Smart Alerts</h3>
+            <span className="text-[11px] text-gray-500">อัปเดตอัตโนมัติ</span>
+          </div>
+          <div className="space-y-2">
+            {smartAlerts.map((alert) => (
+              <button
+                key={alert.id}
+                type="button"
+                onClick={() => navigateToTab(alert.tab)}
+                className={cn(
+                  'w-full text-left p-3 rounded-xl border transition-colors',
+                  alert.level === 'high' && 'bg-red-500/10 border-red-400/30 hover:bg-red-500/15',
+                  alert.level === 'medium' && 'bg-yellow-500/10 border-yellow-400/30 hover:bg-yellow-500/15',
+                  alert.level === 'info' && 'bg-blue-500/10 border-blue-400/30 hover:bg-blue-500/15',
+                )}
+              >
+                <p className="text-sm text-white">{alert.title}</p>
+                <p className="text-xs text-gray-300 mt-1">{alert.message}</p>
+              </button>
+            ))}
+          </div>
+        </GlassCard>
+
+        <GlassCard className="p-4 md:p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm md:text-base font-semibold text-white">Activity Feed (Realtime)</h3>
+            <button
+              type="button"
+              onClick={() => navigateToTab('audit')}
+              className="text-[11px] text-orange-300 hover:text-orange-200"
+            >
+              เปิด Audit ทั้งหมด
+            </button>
+          </div>
+          {activityFeedError && <p className="text-xs text-red-300 mb-2">{activityFeedError}</p>}
+          <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
+            {recentAuditLogs.slice(0, 8).map((item) => (
+              <div key={item.id} className="p-2.5 rounded-lg border border-white/[0.06] bg-white/[0.02]">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-orange-300 truncate">{item.action}</p>
+                  <p className="text-[10px] text-gray-500 shrink-0">{formatTimestamp(item.createdAt)}</p>
+                </div>
+                <p className="text-sm text-gray-200 mt-1 truncate">{item.summary}</p>
+                <p className="text-[11px] text-gray-500 mt-0.5">โดย {item.actorName || item.actorUserId || '-'}</p>
+              </div>
+            ))}
+            {recentAuditLogs.length === 0 && (
+              <div className="p-3 rounded-xl border border-white/[0.06] bg-white/[0.02] text-xs text-gray-500">
+                ยังไม่มีกิจกรรมล่าสุด
+              </div>
+            )}
+          </div>
+        </GlassCard>
+      </div>
+
+      <GlassCard className="mt-5 p-4 md:p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-lg md:text-xl font-semibold text-white">
@@ -696,7 +1159,6 @@ function DashboardTab() {
               {growthMode === 'cumulative'
                 ? 'แสดงยอดผู้ใช้สะสมทั้งหมดจาก createdAt / firstLoginAt'
                 : 'แสดงจำนวนผู้ใช้ใหม่รายวันจาก createdAt / firstLoginAt'}
-              {userGrowth.length > 0 && (totalRangeDays > 60 ? ' (ช่วงยาวจะแสดงแบบรายสัปดาห์เพื่อให้อ่านง่ายขึ้น)' : '')}
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-3">
@@ -704,9 +1166,9 @@ function DashboardTab() {
               <button
                 onClick={() => setGrowthMode('cumulative')}
                 className={cn(
-                  'px-2.5 py-1.5 rounded-md text-xs transition-colors',
+                  'w-[106px] px-2.5 py-1.5 rounded-md text-xs transition-colors',
                   growthMode === 'cumulative'
-                    ? 'bg-orange-500/20 text-orange-300 border border-orange-500/20'
+                    ? 'bg-orange-500/20 text-orange-300 ring-1 ring-inset ring-orange-400/30'
                     : 'text-gray-400 hover:text-gray-200 hover:bg-white/[0.05]'
                 )}
               >
@@ -715,9 +1177,9 @@ function DashboardTab() {
               <button
                 onClick={() => setGrowthMode('daily')}
                 className={cn(
-                  'px-2.5 py-1.5 rounded-md text-xs transition-colors',
+                  'w-[106px] px-2.5 py-1.5 rounded-md text-xs transition-colors',
                   growthMode === 'daily'
-                    ? 'bg-orange-500/20 text-orange-300 border border-orange-500/20'
+                    ? 'bg-orange-500/20 text-orange-300 ring-1 ring-inset ring-orange-400/30'
                     : 'text-gray-400 hover:text-gray-200 hover:bg-white/[0.05]'
                 )}
               >
@@ -733,9 +1195,9 @@ function DashboardTab() {
                     setGrowthDays(days as 7 | 30 | 90);
                   }}
                   className={cn(
-                    'px-2.5 py-1.5 rounded-md text-xs transition-colors',
+                    'w-12 px-2 py-1.5 rounded-md text-xs transition-colors',
                     !useCustomRange && growthDays === days
-                      ? 'bg-orange-500/20 text-orange-300 border border-orange-500/20'
+                      ? 'bg-orange-500/20 text-orange-300 ring-1 ring-inset ring-orange-400/30'
                       : 'text-gray-400 hover:text-gray-200 hover:bg-white/[0.05]'
                   )}
                 >
@@ -745,9 +1207,9 @@ function DashboardTab() {
               <button
                 onClick={() => setUseCustomRange(true)}
                 className={cn(
-                  'px-2.5 py-1.5 rounded-md text-xs transition-colors flex items-center gap-1',
+                  'w-[92px] px-2 py-1.5 rounded-md text-xs transition-colors flex items-center justify-center gap-1',
                   useCustomRange
-                    ? 'bg-orange-500/20 text-orange-300 border border-orange-500/20'
+                    ? 'bg-orange-500/20 text-orange-300 ring-1 ring-inset ring-orange-400/30'
                     : 'text-gray-400 hover:text-gray-200 hover:bg-white/[0.05]'
                 )}
               >
@@ -788,42 +1250,96 @@ function DashboardTab() {
 
         {loading ? (
           <div className="h-36 rounded-xl bg-white/[0.03] animate-pulse" />
+        ) : !hasGrowthData ? (
+          <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-5">
+            <div className="h-48 md:h-52 rounded-xl border border-dashed border-white/[0.12] bg-black/10 flex flex-col items-center justify-center text-center px-4">
+              <Users className="w-7 h-7 text-gray-500 mb-2" />
+              <p className="text-sm text-gray-300">ยังไม่มีข้อมูลผู้ใช้ในช่วงเวลาที่เลือก</p>
+              <p className="text-xs text-gray-500 mt-1">กราฟจะเริ่มแสดงอัตโนมัติเมื่อมีข้อมูลผู้ใช้</p>
+            </div>
+            <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2">
+              {summaryCards.map((card) => (
+                <div key={card.label} className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2.5">
+                  <p className="text-[11px] text-gray-500">{card.label}</p>
+                  <p className="text-base md:text-lg font-semibold text-gray-100 mt-0.5">{card.value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
         ) : (
           <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 md:p-4">
-            <svg viewBox="0 0 100 52" className="w-full h-48 md:h-56">
+            <svg viewBox={`0 0 ${chartViewWidth} ${chartViewHeight}`} className="w-full h-48 md:h-52">
               <defs>
                 <linearGradient id="growthLine" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#fb923c" />
                   <stop offset="100%" stopColor="#f97316" />
                 </linearGradient>
+                <linearGradient id="growthArea" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#fb923c" stopOpacity="0.34" />
+                  <stop offset="45%" stopColor="#fb923c" stopOpacity="0.14" />
+                  <stop offset="100%" stopColor="#fb923c" stopOpacity="0" />
+                </linearGradient>
               </defs>
-              <line x1="0" y1={chartBaselineY} x2="100" y2={chartBaselineY} stroke="rgba(255,255,255,0.14)" strokeWidth="0.5" />
+              {yAxisTicks.map((tick) => {
+                const y = valueToY(tick.value);
+                return (
+                  <g key={`y-tick-${tick.label}-${tick.value}`}>
+                    <line
+                      x1={chartLeftPadding}
+                      y1={y}
+                      x2={chartViewWidth - chartRightPadding}
+                      y2={y}
+                      stroke={tick.value === 0 ? 'rgba(255,255,255,0.14)' : 'rgba(148,163,184,0.16)'}
+                      strokeWidth={tick.value === 0 ? 0.25 : 0.18}
+                    />
+                    <text
+                      x={chartLeftPadding - 1.2}
+                      y={y + 0.32}
+                      textAnchor="end"
+                      fill="#64748b"
+                      fontSize="0.95"
+                    >
+                      {tick.label}
+                    </text>
+                  </g>
+                );
+              })}
+              {areaPath && (
+                <path d={areaPath} fill="url(#growthArea)" />
+              )}
               <polyline
                 points={linePoints}
                 fill="none"
                 stroke="url(#growthLine)"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+                strokeWidth="0.42"
+                strokeLinecap="butt"
+                strokeLinejoin="bevel"
               />
-              {userGrowth.map((point, index) => {
-                const x = userGrowth.length <= 1 ? 0 : (index / (userGrowth.length - 1)) * 100;
-                const pointValue = getGrowthValue(point);
-                const y = Math.max(2, chartBaselineY - (pointValue / maxGrowth) * chartTopPadding);
+              {(() => {
+                if (!userGrowth.length) return null;
+                const chartWidth = chartViewWidth - chartLeftPadding - chartRightPadding;
+                const lastIndex = userGrowth.length - 1;
+                const lastValue = getGrowthValue(userGrowth[lastIndex]);
+                const x = userGrowth.length <= 1 ? chartLeftPadding + chartWidth / 2 : chartLeftPadding + (lastIndex / (userGrowth.length - 1)) * chartWidth;
+                const y = valueToY(lastValue);
+                const textAnchor = x > chartViewWidth - 12 ? 'end' : 'start';
+                const textX = textAnchor === 'end' ? x - 0.9 : x + 0.9;
+
                 return (
-                  <g key={`${point.label}-${index}`}>
-                    <circle cx={x} cy={y} r="1.1" fill="#fb923c" />
-                  </g>
+                  <text x={textX} y={Math.max(1, y - 0.6)} textAnchor={textAnchor} fill="#fdba74" fontSize="1.05" fontWeight="700">
+                    {lastValue.toLocaleString()}
+                  </text>
                 );
-              })}
+              })()}
               {userGrowth.map((point, index) => {
                 if (!point.showTick) return null;
-                const x = userGrowth.length <= 1 ? 0 : (index / (userGrowth.length - 1)) * 100;
+                const chartWidth = chartViewWidth - chartLeftPadding - chartRightPadding;
+                const x = userGrowth.length <= 1 ? chartLeftPadding + chartWidth / 2 : chartLeftPadding + (index / (userGrowth.length - 1)) * chartWidth;
                 const anchor = index === 0 ? 'start' : index === userGrowth.length - 1 ? 'end' : 'middle';
                 return (
                   <g key={`axis-${point.label}-${index}`}>
-                    <line x1={x} y1={chartBaselineY} x2={x} y2={chartBaselineY + 1.8} stroke="rgba(148,163,184,0.4)" strokeWidth="0.4" />
-                    <text x={x} y={48} textAnchor={anchor} fill="#94a3b8" fontSize="2.8">
+                    <line x1={x} y1={chartBaselineY} x2={x} y2={chartBaselineY + 0.45} stroke="rgba(148,163,184,0.45)" strokeWidth="0.2" />
+                    <text x={x} y={chartViewHeight - 0.55} textAnchor={anchor} fill="#94a3b8" fontSize="1.05">
                       {point.label}
                     </text>
                   </g>
@@ -841,41 +1357,18 @@ function DashboardTab() {
           </div>
         )}
       </GlassCard>
-
-      {/* Quick Actions */}
-      <div className="mt-6">
-        <h3 className="text-sm font-semibold text-gray-400 mb-3">เข้าถึงด่วน</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {[
-            { label: 'จัดการผู้ใช้', icon: Users, tab: 'users' },
-            { label: 'จัดการแบดจ์', icon: Award, tab: 'badges' },
-            { label: 'ดูเกม & คะแนน', icon: Gamepad2, tab: 'games' },
-            { label: 'แก้ไขชาเลนจ์', icon: Trophy, tab: 'challenges' },
-            { label: 'ตั้งค่าแอดมิน', icon: Shield, tab: 'settings' },
-          ].map(item => (
-            <button
-              key={item.tab}
-              onClick={() => {
-                const tabList = document.querySelector('[role="tablist"]');
-                const trigger = tabList?.querySelector(`[data-value="${item.tab}"]`) as HTMLElement | null;
-                trigger?.click();
-              }}
-              className="flex items-center gap-2.5 p-3 rounded-xl bg-white/[0.02] border border-white/[0.06] hover:bg-white/[0.06] hover:border-white/[0.1] transition-all text-left group"
-            >
-              <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center group-hover:bg-orange-500/20 transition-colors">
-                <item.icon className="w-4 h-4 text-orange-400" />
-              </div>
-              <span className="text-xs text-gray-300 group-hover:text-white transition-colors">{item.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
 
 // ==================== TAB 2: USER MANAGEMENT ====================
-function UserManagementTab() {
+function UserManagementTab({
+  quickSearchSeed,
+  onQuickSearchConsumed,
+}: {
+  quickSearchSeed?: string;
+  onQuickSearchConsumed?: () => void;
+}) {
   const [users, setUsers] = useState<Array<{ id: string; data: Record<string, unknown> }>>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -903,6 +1396,13 @@ function UserManagementTab() {
     const timer = setTimeout(() => loadUsers(), searchTerm ? 300 : 0);
     return () => clearTimeout(timer);
   }, [loadUsers, searchTerm]);
+
+  useEffect(() => {
+    const next = quickSearchSeed?.trim();
+    if (!next) return;
+    setSearchTerm(next);
+    onQuickSearchConsumed?.();
+  }, [quickSearchSeed, onQuickSearchConsumed]);
 
   const handleViewUser = async (userId: string) => {
     try {
@@ -2846,6 +3346,7 @@ function FirestoreExplorerTab() {
 function AuditLogsTab() {
   const [logs, setLogs] = useState<AdminAuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [realtimeError, setRealtimeError] = useState<string | null>(null);
   const [actionFilter, setActionFilter] = useState('all');
   const [actorFilter, setActorFilter] = useState('');
   const [timeFilter, setTimeFilter] = useState<'all' | 'today' | '7d' | '30d' | 'custom'>('all');
@@ -2861,16 +3362,32 @@ function AuditLogsTab() {
     try {
       const data = await listAdminAuditLogs(300);
       setLogs(data);
+      setRealtimeError(null);
     } catch {
       toast.error('โหลด audit log ไม่สำเร็จ');
+      setRealtimeError('เชื่อมต่อแบบ realtime ไม่สำเร็จ กำลังใช้การโหลดแบบปกติ');
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadLogs();
-  }, [loadLogs]);
+    setLoading(true);
+    const unsubscribe = subscribeAdminAuditLogs(
+      300,
+      (data) => {
+        setLogs(data);
+        setLoading(false);
+        setRealtimeError(null);
+      },
+      () => {
+        setRealtimeError('เชื่อมต่อแบบ realtime ไม่สำเร็จ กดรีเฟรชเพื่อโหลดข้อมูลล่าสุด');
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   const actions = useMemo(() => Array.from(new Set(logs.map((item) => item.action).filter(Boolean))), [logs]);
 
@@ -2935,6 +3452,16 @@ function AuditLogsTab() {
           </Button>
         }
       />
+
+      <div className="mb-3 flex items-center gap-2 text-xs">
+        <span className={cn(
+          'inline-flex h-2 w-2 rounded-full',
+          realtimeError ? 'bg-red-400' : 'bg-emerald-400 animate-pulse'
+        )} />
+        <span className={realtimeError ? 'text-red-300' : 'text-emerald-300'}>
+          {realtimeError || 'Realtime กำลังทำงาน'}
+        </span>
+      </div>
 
       <div className="grid md:grid-cols-3 gap-2 mb-3">
         <Select value={actionFilter} onValueChange={setActionFilter}>
@@ -3032,17 +3559,62 @@ function AuditLogsTab() {
 }
 
 // ==================== TAB 8: ADMIN SETTINGS ====================
-function AdminSettingsTab() {
+function AdminSettingsTab({
+  currentAdminUserId,
+  defaultDisplayName,
+  onNicknameUpdated,
+  smartAlertSettings,
+  onSmartAlertSettingsUpdated,
+}: {
+  currentAdminUserId: string;
+  defaultDisplayName: string;
+  onNicknameUpdated: (next: string) => void;
+  smartAlertSettings: SmartAlertSettings;
+  onSmartAlertSettingsUpdated: (next: SmartAlertSettings) => void;
+}) {
   const [adminIds, setAdminIds] = useState<string[]>([]);
   const [newId, setNewId] = useState('');
   const [loading, setLoading] = useState(true);
   const [removeTarget, setRemoveTarget] = useState<string | null>(null);
+  const [nickname, setNickname] = useState('');
+  const [savingNickname, setSavingNickname] = useState(false);
+  const [adminNicknames, setAdminNicknames] = useState<Record<string, string>>({});
+  const [adminProfileNames, setAdminProfileNames] = useState<Record<string, string>>({});
+  const [alertSettingsDraft, setAlertSettingsDraft] = useState<SmartAlertSettings>(smartAlertSettings);
+  const [savingAlertSettings, setSavingAlertSettings] = useState(false);
 
   const loadAdmins = useCallback(async () => {
     setLoading(true);
     try {
       const ids = await getAdminIds();
       setAdminIds(ids);
+
+      const profiles = await Promise.all(ids.map((id) => getDocument('users', id)));
+      const profileNames: Record<string, string> = {};
+      ids.forEach((id, idx) => {
+        const data = profiles[idx] || {};
+        const profileName = String(
+          (data.displayName as string | undefined)
+          || (data.lineName as string | undefined)
+          || (data.nickname as string | undefined)
+          || ''
+        ).trim();
+        if (profileName) {
+          profileNames[id] = profileName;
+        }
+      });
+      setAdminProfileNames(profileNames);
+
+      const adminsDoc = await getDocument('adminConfig', 'admins');
+      const fallbackMap = (adminsDoc?.nicknames as Record<string, unknown> | undefined) || {};
+      const normalizedFallback = Object.fromEntries(
+        Object.entries(fallbackMap)
+          .filter(([key, value]) => !!key && typeof value === 'string' && String(value).trim())
+          .map(([key, value]) => [key, String(value).trim()])
+      );
+      if (Object.keys(normalizedFallback).length > 0) {
+        setAdminNicknames((prev) => ({ ...normalizedFallback, ...prev }));
+      }
     } catch (e: unknown) {
       toast.error('โหลดแอดมินไม่สำเร็จ');
     } finally {
@@ -3051,6 +3623,91 @@ function AdminSettingsTab() {
   }, []);
 
   useEffect(() => { loadAdmins(); }, [loadAdmins]);
+
+  useEffect(() => {
+    const actor = getAdminActorContext();
+    const initialName = (actor?.userId === currentAdminUserId ? actor.displayName : null)
+      || defaultDisplayName
+      || 'Admin';
+    setNickname(initialName);
+  }, [currentAdminUserId, defaultDisplayName]);
+
+  useEffect(() => {
+    const loadNicknames = async () => {
+      try {
+        const [nickDoc, adminsDoc] = await Promise.all([
+          getDocument('adminConfig', 'adminNicknames'),
+          getDocument('adminConfig', 'admins'),
+        ]);
+
+        const mapA = ((nickDoc?.nicknames as Record<string, unknown> | undefined) || {});
+        const mapB = ((adminsDoc?.nicknames as Record<string, unknown> | undefined) || {});
+        const normalizedA = Object.fromEntries(
+          Object.entries(mapA)
+            .filter(([key, value]) => !!key && typeof value === 'string' && value.trim())
+            .map(([key, value]) => [key, String(value).trim()])
+        );
+        const normalizedB = Object.fromEntries(
+          Object.entries(mapB)
+            .filter(([key, value]) => !!key && typeof value === 'string' && value.trim())
+            .map(([key, value]) => [key, String(value).trim()])
+        );
+
+        setAdminNicknames({ ...normalizedB, ...normalizedA });
+      } catch {
+        setAdminNicknames({});
+      }
+    };
+
+    loadNicknames();
+  }, []);
+
+  useEffect(() => {
+    setAlertSettingsDraft(smartAlertSettings);
+  }, [smartAlertSettings]);
+
+  const handleSaveNickname = async () => {
+    if (!currentAdminUserId) {
+      toast.error('ไม่พบ user id ของแอดมินปัจจุบัน');
+      return;
+    }
+
+    const nextName = nickname.trim() || defaultDisplayName || 'Admin';
+    setSavingNickname(true);
+    try {
+      setAdminActorContext({
+        userId: currentAdminUserId,
+        displayName: nextName,
+      });
+
+      const nextNicknames = {
+        ...adminNicknames,
+        [currentAdminUserId]: nextName,
+      };
+
+      await updateDocument('adminConfig', 'adminNicknames', {
+        nicknames: nextNicknames,
+      });
+      await updateDocument('adminConfig', 'admins', {
+        nicknames: nextNicknames,
+      });
+      setAdminNicknames(nextNicknames);
+
+      onNicknameUpdated(nextName);
+      await logAdminAction('admin.nickname.update', 'อัปเดตชื่อเล่นแอดมิน', {
+        targetCollection: 'adminConfig',
+        targetId: 'nickname',
+        details: {
+          nickname: nextName,
+        },
+      });
+      toast.success('บันทึกชื่อเล่นแล้ว');
+    } catch {
+      toast.error('บันทึกชื่อเล่นไม่สำเร็จ');
+    } finally {
+      setSavingNickname(false);
+    }
+  };
 
   const handleAdd = async () => {
     if (!newId.trim()) return;
@@ -3061,6 +3718,20 @@ function AdminSettingsTab() {
       loadAdmins();
     } catch (e: unknown) {
       toast.error('เพิ่มไม่สำเร็จ');
+    }
+  };
+
+  const handleSaveSmartAlerts = async () => {
+    const normalized = normalizeSmartAlertSettings(alertSettingsDraft);
+    setSavingAlertSettings(true);
+    try {
+      await updateDocument('adminConfig', 'smartAlerts', normalized as unknown as Record<string, unknown>);
+      onSmartAlertSettingsUpdated(normalized);
+      toast.success('บันทึก Smart Alerts แล้ว');
+    } catch {
+      toast.error('บันทึก Smart Alerts ไม่สำเร็จ');
+    } finally {
+      setSavingAlertSettings(false);
     }
   };
 
@@ -3082,6 +3753,110 @@ function AdminSettingsTab() {
         title="ตั้งค่าแอดมิน"
         subtitle="จัดการสิทธิ์ผู้ดูแลระบบ"
       />
+
+      <GlassCard className="overflow-hidden">
+        <div className="px-4 py-3 border-b border-white/[0.06] flex items-center gap-2">
+          <UserCheck className="w-4 h-4 text-orange-400" />
+          <h3 className="font-semibold text-sm text-white">ชื่อเล่นสำหรับ Audit</h3>
+        </div>
+        <div className="p-4 space-y-3">
+          <p className="text-xs text-gray-400">ชื่อนี้จะถูกใช้เป็นผู้กระทำรายการใน audit log เพื่อให้ตรวจสอบย้อนหลังได้ง่ายขึ้น</p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Input
+              value={nickname}
+              onChange={(e) => setNickname(e.target.value)}
+              placeholder="เช่น Admin Bread, Coach Ops"
+              className="bg-white/[0.03] border-white/[0.08] text-gray-200 placeholder:text-gray-600"
+              onKeyDown={(e) => e.key === 'Enter' && handleSaveNickname()}
+            />
+            <Button
+              size="sm"
+              disabled={savingNickname || !nickname.trim()}
+              onClick={handleSaveNickname}
+              className="bg-orange-500 hover:bg-orange-600 text-white h-9 px-4 rounded-lg"
+            >
+              {savingNickname ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Save className="w-3.5 h-3.5 mr-1" />}
+              บันทึกชื่อเล่น
+            </Button>
+          </div>
+          <p className="text-[11px] text-gray-500">user id ปัจจุบัน: {currentAdminUserId ? `${currentAdminUserId.slice(0, 16)}...` : '-'}</p>
+        </div>
+      </GlassCard>
+
+      <GlassCard className="overflow-hidden">
+        <div className="px-4 py-3 border-b border-white/[0.06] flex items-center gap-2">
+          <Activity className="w-4 h-4 text-orange-400" />
+          <h3 className="font-semibold text-sm text-white">Smart Alerts</h3>
+        </div>
+        <div className="p-4 space-y-4">
+          <div className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/[0.06]">
+            <div>
+              <p className="text-sm text-white">เปิดใช้งาน Smart Alerts</p>
+              <p className="text-xs text-gray-500 mt-0.5">แจ้งเตือนความผิดปกติบน Dashboard อัตโนมัติ</p>
+            </div>
+            <Switch
+              checked={alertSettingsDraft.enabled}
+              onCheckedChange={(checked) => setAlertSettingsDraft((prev) => ({ ...prev, enabled: checked }))}
+            />
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div>
+              <p className="text-xs text-gray-500 mb-1">เกณฑ์ Active Rate ขั้นต่ำ (%)</p>
+              <Input
+                type="number"
+                min={1}
+                max={100}
+                value={alertSettingsDraft.minActiveRatePercent}
+                onChange={(e) => setAlertSettingsDraft((prev) => ({ ...prev, minActiveRatePercent: Number(e.target.value) || 0 }))}
+                className="bg-white/[0.03] border-white/[0.08] text-gray-200"
+              />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 mb-1">จำนวนผู้ใช้ขั้นต่ำก่อนตรวจ Active Rate</p>
+              <Input
+                type="number"
+                min={1}
+                value={alertSettingsDraft.minUsersForActiveRate}
+                onChange={(e) => setAlertSettingsDraft((prev) => ({ ...prev, minUsersForActiveRate: Number(e.target.value) || 0 }))}
+                className="bg-white/[0.03] border-white/[0.08] text-gray-200"
+              />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 mb-1">เกณฑ์กิจกรรมแอดมินสูง (ครั้ง/24ชม.)</p>
+              <Input
+                type="number"
+                min={1}
+                value={alertSettingsDraft.highActivityEvents24h}
+                onChange={(e) => setAlertSettingsDraft((prev) => ({ ...prev, highActivityEvents24h: Number(e.target.value) || 0 }))}
+                className="bg-white/[0.03] border-white/[0.08] text-gray-200"
+              />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 mb-1">เกณฑ์การแบนพุ่ง (ครั้ง/24ชม.)</p>
+              <Input
+                type="number"
+                min={1}
+                value={alertSettingsDraft.banSpikeEvents24h}
+                onChange={(e) => setAlertSettingsDraft((prev) => ({ ...prev, banSpikeEvents24h: Number(e.target.value) || 0 }))}
+                className="bg-white/[0.03] border-white/[0.08] text-gray-200"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              onClick={handleSaveSmartAlerts}
+              disabled={savingAlertSettings}
+              className="bg-orange-500 hover:bg-orange-600 text-white h-9 px-4 rounded-lg"
+            >
+              {savingAlertSettings ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Save className="w-3.5 h-3.5 mr-1" />}
+              บันทึก Smart Alerts
+            </Button>
+          </div>
+        </div>
+      </GlassCard>
 
       <GlassCard className="overflow-hidden">
         <div className="px-4 py-3 border-b border-white/[0.06] flex items-center gap-2">
@@ -3108,6 +3883,9 @@ function AdminSettingsTab() {
                     </div>
                     <div>
                       <code className="text-xs text-gray-300">{id.slice(0, 20)}...</code>
+                      {(adminNicknames[id] || adminProfileNames[id]) && (
+                        <p className="text-[11px] text-cyan-300 mt-0.5">ชื่อเล่น: {adminNicknames[id] || adminProfileNames[id]}</p>
+                      )}
                       {i === 0 && <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/20">หลัก</span>}
                     </div>
                   </div>

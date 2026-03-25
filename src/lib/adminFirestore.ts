@@ -12,6 +12,7 @@ import {
   orderBy,
   limit,
   getDocs,
+  onSnapshot,
   serverTimestamp,
 } from 'firebase/firestore';
 import {
@@ -59,6 +60,8 @@ const getStoredAdminActor = (): AdminAuditActor | null => {
     return null;
   }
 };
+
+export const getAdminActorContext = (): AdminAuditActor | null => getStoredAdminActor();
 
 export const setAdminActorContext = (actor: AdminAuditActor): void => {
   if (typeof window === 'undefined') return;
@@ -113,6 +116,33 @@ export const listAdminAuditLogs = async (
         return bTime - aTime;
       });
   }
+};
+
+export const subscribeAdminAuditLogs = (
+  limitCount: number,
+  onData: (logs: AdminAuditLogEntry[]) => void,
+  onError?: (error: unknown) => void,
+): (() => void) => {
+  const q = query(
+    collection(db, ADMIN_AUDIT_COLLECTION),
+    orderBy('createdAt', 'desc'),
+    limit(limitCount)
+  );
+
+  return onSnapshot(
+    q,
+    (snap) => {
+      const logs = snap.docs.map((item) => ({
+        id: item.id,
+        ...(item.data() as Omit<AdminAuditLogEntry, 'id'>),
+      }));
+      onData(logs);
+    },
+    (error) => {
+      console.warn('Failed to subscribe admin audit logs', error);
+      onError?.(error);
+    }
+  );
 };
 
 // ==================== ADMIN ACCESS CONTROL ====================

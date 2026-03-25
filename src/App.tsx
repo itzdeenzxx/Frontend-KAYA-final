@@ -30,7 +30,6 @@ import WorkoutHistory from "./pages/WorkoutHistory";
 import Leaderboard from "./pages/Leaderboard";
 import UserPublicProfile from "./pages/UserPublicProfile";
 import BadgesPage from "./pages/Badges";
-import AdminBadges from "./pages/AdminBadges";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
@@ -142,8 +141,9 @@ const AppRoutes = () => {
       <Routes>
         {/* Redirect root to dashboard */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/admin" element={<Navigate to="/admin/badges" replace />} />
-        <Route path="/admin/*" element={<Navigate to="/admin/badges" replace />} />
+        <Route path="/admin" element={<Navigate to="/admin-kaya?tab=badges" replace />} />
+        <Route path="/admin/*" element={<Navigate to="/admin-kaya?tab=badges" replace />} />
+        <Route path="/admin/badges" element={<Navigate to="/admin-kaya?tab=badges" replace />} />
         
         {/* App Routes with Bottom Nav */}
         <Route element={<AppLayout />}>
@@ -161,7 +161,6 @@ const AppRoutes = () => {
             <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/user-profile/:userId" element={<UserPublicProfile />} />
           <Route path="/badges" element={<BadgesPage />} />
-          <Route path="/admin/badges" element={<AdminBadges />} />
         </Route>
         
         {/* Full Screen Routes */}

@@ -254,7 +254,7 @@ export default function Settings() {
           {/* Admin Tools */}
           {isAdmin && (
             <Link
-              to="/admin/badges"
+              to="/admin-kaya?tab=badges"
               className={cn(
                 "rounded-2xl p-4 w-full flex items-center gap-3 border transition-colors",
                 isDark

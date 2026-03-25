@@ -16,7 +16,7 @@ const NotFound = () => {
 
     // Normalize admin aliases that may slip to NotFound in stale deployments.
     if (location.pathname === '/admin' || location.pathname.startsWith('/admin/')) {
-      window.location.replace('/admin/badges');
+      window.location.replace('/admin-kaya?tab=badges');
       return;
     }
 
