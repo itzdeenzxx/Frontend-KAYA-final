@@ -108,7 +108,7 @@ const toDateKey = (date: Date): string => {
 };
 
 // Epic Tier Configurations
-// Bronze: 0-999, Silver: 1000-1999, Gold: 2000-2999, Platinum: 3000-3999, Diamond: 4000+
+// Bronze: 0-999, Silver: 1000-1999, Gold: 2000-2999, Platinum: 3000-3999, Diamond: 4000-4999, Master: 5000+
 const tierConfig = {
   bronze: {
     name: 'BRONZE',
@@ -186,8 +186,24 @@ const tierConfig = {
     glow: 'shadow-purple-500/50',
     particles: 'bg-purple-400',
     nextTier: null,
-    pointsToNext: null,
+    pointsToNext: 5000,
     minPoints: 4000,
+    maxPoints: 4999
+  },
+  master: {
+    name: 'MASTER',
+    subtitle: 'Mythic',
+    color: 'from-pink-500 via-rose-400 to-fuchsia-500',
+    textColor: 'text-pink-200',
+    borderColor: 'border-pink-400/50',
+    icon: Crown,
+    secondaryIcon: Sparkles,
+    image: 'https://images.unsplash.com/photo-1549570652-97324981a6fd?w=800&q=80',
+    glow: 'shadow-pink-500/60',
+    particles: 'bg-pink-300',
+    nextTier: null,
+    pointsToNext: null,
+    minPoints: 5000,
     maxPoints: null
   }
 };
@@ -523,7 +539,7 @@ export default function Profile() {
     : "0";
 
   const userTier = (userProfile?.tier || "bronze") as keyof typeof tierConfig;
-  const tier = tierConfig[userTier];
+  const tier = tierConfig[userTier] || tierConfig.bronze;
   const TierIcon = tier.icon;
   const SecondaryIcon = tier.secondaryIcon;
   const userPoints = userProfile?.points || 0;
@@ -598,10 +614,10 @@ export default function Profile() {
   const isDark = theme === 'dark';
   
   // Calculate progress to next tier based on new thresholds
-  // Bronze: 0-999, Silver: 1000-1999, Gold: 2000-2999, Platinum: 3000-3999, Diamond: 4000+
+  // Bronze: 0-999, Silver: 1000-1999, Gold: 2000-2999, Platinum: 3000-3999, Diamond: 4000-4999, Master: 5000+
   const calculateProgressToNext = () => {
-    if (!tier.pointsToNext) return 100; // Diamond has no next tier
-    const pointsInCurrentTier = userPoints - tier.minPoints;
+    if (!tier.pointsToNext) return 100; // Master has no next tier
+    const pointsInCurrentTier = Math.max(userPoints - tier.minPoints, 0);
     const pointsNeededForNextTier = tier.pointsToNext - tier.minPoints;
     return Math.min((pointsInCurrentTier / pointsNeededForNextTier) * 100, 100);
   };

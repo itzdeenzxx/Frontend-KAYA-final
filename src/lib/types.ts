@@ -1,5 +1,5 @@
 // User Tier System
-export type UserTier = 'bronze' | 'silver' | 'gold' | 'platinum' | 'diamond';
+export type UserTier = 'bronze' | 'silver' | 'gold' | 'platinum' | 'diamond' | 'master';
 
 export interface User {
   id: string;
@@ -58,6 +58,13 @@ export const TIER_CONFIG: Record<UserTier, TierConfig> = {
     color: 'hsl(200, 80%, 65%)',
     icon: '💎',
     benefits: ['All Platinum benefits', 'Personal coaching', 'Exclusive content'],
+  },
+  master: {
+    name: 'Master',
+    minPoints: 5000,
+    color: 'hsl(331, 82%, 63%)',
+    icon: '👑',
+    benefits: ['All Diamond benefits', 'Master-only rewards', 'Top leaderboard prestige'],
   },
 };
 

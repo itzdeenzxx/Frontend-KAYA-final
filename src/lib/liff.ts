@@ -147,15 +147,12 @@ export const shareMessage = async (text: string): Promise<boolean> => {
 
 const tryShareFlex = async (message: unknown, context: string): Promise<boolean> => {
   try {
-    if (liff.isApiAvailable('shareTargetPicker')) {
-      const result = await liff.shareTargetPicker([message as any]);
-      if (result !== false && result !== null) {
-        return true;
-      }
+    if (!liff.isApiAvailable('shareTargetPicker')) {
+      return false;
     }
 
-    if (liff.isInClient()) {
-      await liff.sendMessages([message as any]);
+    const result = await liff.shareTargetPicker([message as any]);
+    if (result !== false && result !== null) {
       return true;
     }
   } catch (error) {
@@ -190,12 +187,16 @@ export const ensureInLineClientContext = (): boolean => {
   const userAgent = window.navigator.userAgent || '';
   const openedFromLine = /Line\//i.test(userAgent);
   if (!openedFromLine) {
-    return false;
+    // Regular external browsers should continue normal LIFF auth flow.
+    // Returning false here causes app to stay unauthenticated and show an infinite loader.
+    return true;
   }
 
   const alreadyForced = sessionStorage.getItem(FORCE_IN_CLIENT_KEY) === '1';
   if (alreadyForced) {
-    return false;
+    // We already attempted deep-link once. If user stayed in external browser,
+    // continue in current context instead of blocking the app forever.
+    return true;
   }
 
   sessionStorage.setItem(FORCE_IN_CLIENT_KEY, '1');
@@ -218,8 +219,8 @@ export const shareBadgeAchievement = async (
     `📊 รวมที่ปลดล็อกครั้งนี้: ${totalBadgeCount} เหรียญ\n` +
     `มาฟิตไปด้วยกันที่ KAYA!`;
 
-  if (!liff.isInClient() && !liff.isApiAvailable('shareTargetPicker')) {
-    console.warn('Aggregate badge share in fallback mode (no LINE share APIs).', {
+  if (!liff.isApiAvailable('shareTargetPicker')) {
+    console.warn('Aggregate badge share fallback: shareTargetPicker unavailable.', {
       inClient: liff.isInClient(),
       shareTargetPickerAvailable: liff.isApiAvailable('shareTargetPicker'),
     });
@@ -417,9 +418,7 @@ export const shareBadgeAchievement = async (
     return true;
   }
 
-  // For badge shares, return false if Flex could not be delivered.
-  // UI should tell user to open in LINE app and retry.
-  console.warn('Aggregate badge share fell back to non-flex path', {
+  console.warn('Aggregate badge share fallback: shareTargetPicker failed', {
     inClient: liff.isInClient(),
     shareTargetPickerAvailable: liff.isApiAvailable('shareTargetPicker'),
     messagePreview: message,
@@ -471,8 +470,8 @@ export const shareSingleBadgeAchievement = async (
     `📌 เงื่อนไข: ${badge.requirement || '-'}\n` +
     `✨ ${badge.description || 'มาออกกำลังกายไปด้วยกันกับ KAYA'}`;
 
-  if (!liff.isInClient() && !liff.isApiAvailable('shareTargetPicker')) {
-    console.warn('Single badge share in fallback mode (no LINE share APIs).', {
+  if (!liff.isApiAvailable('shareTargetPicker')) {
+    console.warn('Single badge share fallback: shareTargetPicker unavailable.', {
       inClient: liff.isInClient(),
       shareTargetPickerAvailable: liff.isApiAvailable('shareTargetPicker'),
       messagePreview: message,
@@ -682,7 +681,7 @@ export const shareSingleBadgeAchievement = async (
     return true;
   }
 
-  console.warn('Single badge share fell back to non-flex path', {
+  console.warn('Single badge share fallback: shareTargetPicker failed', {
     inClient: liff.isInClient(),
     shareTargetPickerAvailable: liff.isApiAvailable('shareTargetPicker'),
     messagePreview: message,

@@ -24,6 +24,7 @@ export function TierBadge({ tier, size = 'md', showName = true }: TierBadgeProps
     gold: t('tiers.gold'),
     platinum: t('tiers.platinum'),
     diamond: t('tiers.diamond'),
+    master: t('tiers.master'),
   };
 
   const tierColors: Record<UserTier, string> = {
@@ -32,6 +33,7 @@ export function TierBadge({ tier, size = 'md', showName = true }: TierBadgeProps
     gold: 'bg-amber-50 text-amber-700 border-amber-300',
     platinum: 'bg-cyan-50 text-cyan-700 border-cyan-300',
     diamond: 'bg-sky-50 text-sky-700 border-sky-300',
+    master: 'bg-pink-50 text-pink-700 border-pink-300',
   };
 
   return (

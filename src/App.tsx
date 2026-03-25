@@ -1,10 +1,9 @@
-import { useEffect, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner, toast as sonnerToast } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { useState, useEffect } from 'react';
 
 import Dashboard from "./pages/Dashboard";
 import WorkoutSelection from "./pages/WorkoutSelection";
@@ -31,6 +30,7 @@ import WorkoutHistory from "./pages/WorkoutHistory";
 import Leaderboard from "./pages/Leaderboard";
 import UserPublicProfile from "./pages/UserPublicProfile";
 import BadgesPage from "./pages/Badges";
+import AdminBadges from "./pages/AdminBadges";
 import { AppLayout } from "./components/layout/AppLayout";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
@@ -39,9 +39,9 @@ import { RunningLoader } from "./components/shared/RunningLoader";
 import { BadgeUnlockModal } from "./components/gamification/BadgeUnlockModal";
 import { shareBadgeAchievement } from "./lib/liff";
 import { BADGES_EARNED_EVENT, type BadgesEarnedEventDetail } from "./lib/badgeEvents";
-import React, { Suspense } from 'react';
 
 const AdminKaya = React.lazy(() => import("./pages/AdminKaya"));
+const BUILD_MARKER = "admin-kaya-hotfix-20260324-2";
 
 const queryClient = new QueryClient();
 
@@ -53,6 +53,10 @@ const AppRoutes = () => {
   const isDark = theme === "dark";
   const [unlockModalOpen, setUnlockModalOpen] = useState(false);
   const [latestUnlockedBadgeNames, setLatestUnlockedBadgeNames] = useState<string[]>([]);
+
+  useEffect(() => {
+    console.info(`[KAYA build] ${BUILD_MARKER}`);
+  }, []);
 
   useEffect(() => {
     const handleBadgesEarned = (event: Event) => {
@@ -104,6 +108,12 @@ const AppRoutes = () => {
     return <RunningLoader message="กำลังเข้าสู่ระบบ LINE..." />;
   }
 
+  const adminKayaElement = (
+    <Suspense fallback={<RunningLoader message="Loading..." />}>
+      <AdminKaya />
+    </Suspense>
+  );
+
   return (
     <>
       {/* Theme Selector Modal for first-time users */}
@@ -123,7 +133,7 @@ const AppRoutes = () => {
           if (shared) {
             sonnerToast.success('แชร์ความสำเร็จไปที่ LINE แล้ว');
           } else {
-            sonnerToast.error('ไม่สามารถส่ง Flex Message ได้ (กรุณาเปิดผ่าน LINE App)');
+            sonnerToast.error('ไม่สามารถแชร์ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง');
           }
         }}
       />
@@ -132,6 +142,8 @@ const AppRoutes = () => {
       <Routes>
         {/* Redirect root to dashboard */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/admin" element={<Navigate to="/admin/badges" replace />} />
+        <Route path="/admin/*" element={<Navigate to="/admin/badges" replace />} />
         
         {/* App Routes with Bottom Nav */}
         <Route element={<AppLayout />}>
@@ -146,9 +158,10 @@ const AppRoutes = () => {
           <Route path="/game-mode" element={<GameMode />} />
           <Route path="/challenges" element={<Challenges />} />
           <Route path="/workout-history" element={<WorkoutHistory />} />
-  <Route path="/leaderboard" element={<Leaderboard />} />
+            <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/user-profile/:userId" element={<UserPublicProfile />} />
           <Route path="/badges" element={<BadgesPage />} />
+          <Route path="/admin/badges" element={<AdminBadges />} />
         </Route>
         
         {/* Full Screen Routes */}
@@ -163,11 +176,8 @@ const AppRoutes = () => {
         <Route path="/fishing-game" element={<FishingGame />} />
         
         {/* Admin Panel - URL-only access, no nav link */}
-        <Route path="/admin-kaya" element={
-          <Suspense fallback={<RunningLoader message="Loading..." />}>
-            <AdminKaya />
-          </Suspense>
-        } />
+        <Route path="/admin-kaya" element={adminKayaElement} />
+        <Route path="/admin-kaya/*" element={<Navigate to="/admin-kaya" replace />} />
         
         {/* Catch-all */}
         <Route path="*" element={<NotFound />} />

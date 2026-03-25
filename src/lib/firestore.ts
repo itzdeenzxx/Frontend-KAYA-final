@@ -16,6 +16,7 @@ import {
   Timestamp,
   DocumentReference,
   writeBatch,
+  runTransaction,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { BADGE_DEFINITIONS } from './badges';
@@ -62,7 +63,7 @@ export interface FirestoreDailyStats {
   caloriesBurned: number;
   workoutTime: number; // in seconds
   totalWorkouts: number;
-  waterIntake: number; // number of glasses (0-8)
+  waterIntake: number; // number of glasses (0+)
   updatedAt: Timestamp;
 }
 
@@ -132,15 +133,11 @@ export const updateDailyStats = async (
   });
 };
 
-// Increment water intake (max 8)
+// Increment water intake (no max)
 export const incrementWaterIntake = async (userId: string): Promise<number> => {
   const stats = await initializeDailyStats(userId);
   const currentWater = stats.waterIntake || 0;
-  
-  if (currentWater >= 8) {
-    return currentWater; // Already at max
-  }
-  
+
   const newWater = currentWater + 1;
   await updateDailyStats(userId, { waterIntake: newWater });
 
@@ -302,6 +299,7 @@ export interface FirestoreBadgeCatalogItem {
   requirement: string;
   category: 'workout' | 'game' | 'nutrition';
   target: number;
+  active?: boolean;
   updatedAt?: Timestamp;
 }
 
@@ -391,6 +389,20 @@ export const DEFAULT_TTS_SETTINGS = {
   customCoachName: '',
 };
 
+const normalizePoints = (value: unknown): number => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+  return Math.max(0, Math.floor(value));
+};
+
+export const getTierFromPoints = (points: number): UserTier => {
+  if (points >= 5000) return 'master';
+  if (points >= 4000) return 'diamond';
+  if (points >= 3000) return 'platinum';
+  if (points >= 2000) return 'gold';
+  if (points >= 1000) return 'silver';
+  return 'bronze';
+};
+
 // ==================== USER OPERATIONS ====================
 
 // Create or update user profile from LINE login
@@ -403,20 +415,42 @@ export const createOrUpdateUserFromLine = async (
   const userSnap = await getDoc(userRef);
 
   if (userSnap.exists()) {
-    // Update existing user
-    await updateDoc(userRef, {
+    const existing = userSnap.data();
+    const normalizedPoints = normalizePoints(existing.points);
+    const expectedTier = getTierFromPoints(normalizedPoints);
+    const currentTier = (existing.tier as UserTier | undefined) || 'bronze';
+
+    const updates: Record<string, unknown> = {
       displayName,
       pictureUrl,
       lastLoginAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-    });
+    };
+
+    if (normalizedPoints !== existing.points) {
+      updates.points = normalizedPoints;
+    }
+    if (currentTier !== expectedTier) {
+      updates.tier = expectedTier;
+    }
+
+    // Update existing user
+    await updateDoc(userRef, updates);
 
     // Ensure login-related badges are evaluated on every successful login.
     await evaluateAndAwardBadges(lineUserId).catch((error) => {
       console.warn('Badge evaluation on login failed:', error);
     });
 
-    return { ...userSnap.data(), id: lineUserId } as FirestoreUserProfile;
+    return {
+      ...existing,
+      id: lineUserId,
+      lineUserId,
+      displayName,
+      pictureUrl,
+      points: normalizedPoints,
+      tier: expectedTier,
+    } as FirestoreUserProfile;
   } else {
     // Create new user
     const newUser: Omit<FirestoreUserProfile, 'id'> = {
@@ -448,7 +482,25 @@ export const getUserProfile = async (userId: string): Promise<FirestoreUserProfi
   const userSnap = await getDoc(userRef);
   
   if (userSnap.exists()) {
-    return { ...userSnap.data(), id: userId } as FirestoreUserProfile;
+    const data = userSnap.data();
+    const normalizedPoints = normalizePoints(data.points);
+    const expectedTier = getTierFromPoints(normalizedPoints);
+    const currentTier = (data.tier as UserTier | undefined) || 'bronze';
+
+    if (normalizedPoints !== data.points || currentTier !== expectedTier) {
+      await updateDoc(userRef, {
+        points: normalizedPoints,
+        tier: expectedTier,
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    return {
+      ...data,
+      id: userId,
+      points: normalizedPoints,
+      tier: expectedTier,
+    } as FirestoreUserProfile;
   }
   return null;
 };
@@ -468,26 +520,22 @@ export const updateUserProfile = async (
 // Update user points
 export const updateUserPoints = async (userId: string, pointsToAdd: number): Promise<void> => {
   const userRef = doc(db, COLLECTIONS.USERS, userId);
-  const userSnap = await getDoc(userRef);
-  
-  if (userSnap.exists()) {
-    const currentPoints = userSnap.data().points || 0;
-    const newPoints = currentPoints + pointsToAdd;
-    
-    // Calculate new tier based on new point thresholds
-    // Bronze: 0-999, Silver: 1000-1999, Gold: 2000-2999, Platinum: 3000-3999, Diamond: 4000+
-    let newTier: UserTier = 'bronze';
-    if (newPoints >= 4000) newTier = 'diamond';
-    else if (newPoints >= 3000) newTier = 'platinum';
-    else if (newPoints >= 2000) newTier = 'gold';
-    else if (newPoints >= 1000) newTier = 'silver';
-    
-    await updateDoc(userRef, {
+  const delta = Number.isFinite(pointsToAdd) ? Math.trunc(pointsToAdd) : 0;
+
+  await runTransaction(db, async (transaction) => {
+    const userSnap = await transaction.get(userRef);
+    if (!userSnap.exists()) return;
+
+    const currentPoints = normalizePoints(userSnap.data().points);
+    const newPoints = Math.max(0, currentPoints + delta);
+    const newTier = getTierFromPoints(newPoints);
+
+    transaction.update(userRef, {
       points: newPoints,
       tier: newTier,
       updatedAt: serverTimestamp(),
     });
-  }
+  });
 };
 
 // Update streak
@@ -776,6 +824,18 @@ export interface FirestoreNutritionScan {
     health_tips: string;
   };
   scannedAt: Timestamp;
+}
+
+export interface BadgeCatalogUpdateInput {
+  badgeId: string;
+  nameEn: string;
+  nameTh: string;
+  description: string;
+  icon: string;
+  requirement: string;
+  category: 'workout' | 'game' | 'nutrition';
+  target: number;
+  active?: boolean;
 }
 
 // Save nutrition scan
@@ -1090,6 +1150,7 @@ export const ensureBadgeCatalogSeeded = async (): Promise<void> => {
       requirement: definition.requirement,
       category: definition.category,
       target: definition.target,
+      active: true,
       updatedAt: serverTimestamp(),
     });
     writes += 1;
@@ -1098,6 +1159,51 @@ export const ensureBadgeCatalogSeeded = async (): Promise<void> => {
   if (writes > 0) {
     await batch.commit();
   }
+};
+
+export const upsertBadgeCatalogItem = async (
+  badgeId: string,
+  payload: BadgeCatalogUpdateInput
+): Promise<void> => {
+  const trimmedId = badgeId.trim();
+  if (!trimmedId) {
+    throw new Error('badgeId is required');
+  }
+
+  const badgeDocRef = doc(db, COLLECTIONS.BADGE_CATALOG, trimmedId);
+  await setDoc(badgeDocRef, {
+    badgeId: trimmedId,
+    nameEn: payload.nameEn.trim(),
+    nameTh: payload.nameTh.trim(),
+    description: payload.description.trim(),
+    icon: payload.icon.trim(),
+    requirement: payload.requirement.trim(),
+    category: payload.category,
+    target: Number.isFinite(payload.target) ? Math.max(1, Math.floor(payload.target)) : 1,
+    active: payload.active !== false,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+};
+
+export const resetBadgeCatalogFromDefinitions = async (): Promise<void> => {
+  const batch = writeBatch(db);
+  for (const definition of BADGE_DEFINITIONS) {
+    const badgeDocRef = doc(db, COLLECTIONS.BADGE_CATALOG, definition.id);
+    batch.set(badgeDocRef, {
+      badgeId: definition.id,
+      nameEn: definition.nameEn,
+      nameTh: definition.nameTh,
+      description: definition.description,
+      icon: definition.icon,
+      requirement: definition.requirement,
+      category: definition.category,
+      target: definition.target,
+      active: true,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+  }
+
+  await batch.commit();
 };
 
 export const getBadgeCatalog = async (): Promise<FirestoreBadgeCatalogItem[]> => {
@@ -1111,6 +1217,7 @@ export const getBadgeCatalog = async (): Promise<FirestoreBadgeCatalogItem[]> =>
     requirement: definition.requirement,
     category: definition.category,
     target: definition.target,
+    active: true,
   }));
 
   try {
@@ -1136,6 +1243,7 @@ export const getBadgeCatalog = async (): Promise<FirestoreBadgeCatalogItem[]> =>
         requirement: data.requirement || '-',
         category: data.category || 'workout',
         target: typeof data.target === 'number' ? data.target : 1,
+        active: data.active !== false,
         updatedAt: data.updatedAt,
       });
     }
@@ -1154,10 +1262,16 @@ export const getBadgeCatalog = async (): Promise<FirestoreBadgeCatalogItem[]> =>
         requirement: definition.requirement,
         category: definition.category,
         target: definition.target,
+        active: true,
       } as FirestoreBadgeCatalogItem;
     });
 
-    return orderedCatalog;
+    // Keep custom badges that are not in static definitions.
+    const extras = Array.from(byId.values()).filter(
+      (item) => !BADGE_DEFINITIONS.some((definition) => definition.id === item.badgeId)
+    );
+
+    return [...orderedCatalog, ...extras];
   } catch {
     return fallbackCatalog;
   }
@@ -1313,6 +1427,7 @@ export const evaluateAndAwardBadges = async (userId: string): Promise<string[]> 
   for (const definition of catalog) {
     const badgeId = definition.badgeId;
     if (!badgeId || earnedSet.has(badgeId)) continue;
+    if (definition.active === false) continue;
 
     const target = typeof definition.target === 'number' ? definition.target : 1;
     if (getBadgeCurrentProgress(badgeId, snapshot) < target) continue;
@@ -1393,12 +1508,13 @@ export const getLeaderboard = async (limitCount: number = 50): Promise<Leaderboa
   const querySnap = await getDocs(q);
   return querySnap.docs.map((doc, index) => {
     const data = doc.data();
+    const points = normalizePoints(data.points);
     return {
       rank: index + 1,
       userId: doc.id,
       nickname: data.nickname || data.displayName,
-      tier: data.tier as UserTier,
-      points: data.points,
+      tier: getTierFromPoints(points),
+      points,
       avatar: data.pictureUrl,
     };
   });
@@ -1429,8 +1545,7 @@ export const getUserRank = async (userId: string): Promise<number> => {
   const userSnap = await getDoc(doc(db, COLLECTIONS.USERS, userId));
 
   if (!userSnap.exists()) return 0;
-
-  const userPoints = userSnap.data().points || 0;
+  const userPoints = normalizePoints(userSnap.data().points);
   const q = query(usersRef, where('points', '>', userPoints));
   const higher = await getDocs(q);
 
@@ -1471,6 +1586,7 @@ export const getStreakLeaderboard = async (limitCount: number = 50): Promise<Ful
 };
 
 const TIER_ORDER: Record<string, number> = {
+  master: 5,
   diamond: 4,
   platinum: 3,
   gold: 2,

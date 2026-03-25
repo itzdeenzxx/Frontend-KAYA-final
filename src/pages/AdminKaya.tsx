@@ -1,11 +1,13 @@
 // Admin Dashboard - KAYA Fitness App
 // Access: URL-only (/admin-kaya), no buttons/links in app
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import {
   isAdmin,
   initializeAdminConfig,
+  logAdminAction,
+  listAdminAuditLogs,
   getAdminDashboardStats,
   getAllUsers,
   searchUsers,
@@ -24,9 +26,20 @@ import {
   getAdminIds,
   addAdminId,
   removeAdminId,
+  setAdminActorContext,
   ALL_COLLECTIONS,
+  type AdminAuditLogEntry,
   type StorageItem,
 } from '@/lib/adminFirestore';
+import {
+  ensureBadgeCatalogSeeded,
+  getBadgeProgressSnapshot,
+  getBadgeCatalog,
+  getUserBadges,
+  upsertBadgeCatalogItem,
+  type BadgeProgressSnapshot,
+  type FirestoreBadgeCatalogItem,
+} from '@/lib/firestore';
 import { toast } from 'sonner';
 
 // shadcn/ui
@@ -60,7 +73,7 @@ import {
   Loader2, ChevronRight, ArrowLeft, Download, Image,
   UserX, UserCheck, Edit3, Save, X, AlertTriangle, FileText, Folder,
   Activity, TrendingUp, Fish, MousePointer, Hammer,
-  LayoutDashboard, Crown, Zap,
+  LayoutDashboard, Crown, Zap, Award, CalendarDays, History,
 } from 'lucide-react';
 
 // ==================== HELPERS ====================
@@ -79,6 +92,99 @@ const truncate = (s: unknown, len = 40): string => {
   return str.length > len ? str.slice(0, len) + '...' : str;
 };
 
+const toDateFromUnknown = (value: unknown): Date | null => {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === 'object' && value !== null && 'toDate' in value) {
+    return (value as { toDate: () => Date }).toDate();
+  }
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
+};
+
+const formatReadableValue = (value: unknown): string => {
+  if (value === null || value === undefined) return '-';
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (typeof value === 'number') return Number.isFinite(value) ? value.toLocaleString() : String(value);
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return `Array(${value.length})`;
+  if (typeof value === 'object') return `Object(${Object.keys(value as Record<string, unknown>).length})`;
+  return String(value);
+};
+
+const prettyFieldLabel = (key: string): string =>
+  key
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const escapeCsvCell = (value: unknown): string => {
+  if (value === null || value === undefined) return '';
+  const raw = typeof value === 'object' ? JSON.stringify(value) : String(value);
+  return `"${raw.replace(/"/g, '""')}"`;
+};
+
+const exportRowsToCsv = (filename: string, rows: Array<Record<string, unknown>>): void => {
+  if (rows.length === 0) {
+    toast.error('ไม่มีข้อมูลสำหรับ export');
+    return;
+  }
+
+  const headers = Array.from(rows.reduce((set, row) => {
+    Object.keys(row).forEach((key) => set.add(key));
+    return set;
+  }, new Set<string>()));
+
+  const csv = [
+    headers.map((header) => escapeCsvCell(header)).join(','),
+    ...rows.map((row) => headers.map((header) => escapeCsvCell(row[header])).join(',')),
+  ].join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(link.href);
+};
+
+const getBadgeProgressValue = (badgeId: string, snapshot: BadgeProgressSnapshot): number => {
+  if (badgeId === 'workout_first' || /^workout_\d+_sessions$/.test(badgeId)) {
+    return snapshot.totalWorkouts;
+  }
+  if (/^workout_\d+_minutes$/.test(badgeId)) {
+    return snapshot.totalWorkoutTime;
+  }
+  if (/^workout_\d+_calories$/.test(badgeId)) {
+    return snapshot.totalCaloriesBurned;
+  }
+  if (/^workout_streak_current_\d+$/.test(badgeId)) {
+    return snapshot.currentWorkoutStreak24h;
+  }
+  if (/^workout_streak_record_\d+$/.test(badgeId)) {
+    return snapshot.bestWorkoutStreak24h;
+  }
+  if (badgeId === 'game_first' || /^game_\d+_sessions$/.test(badgeId)) {
+    return snapshot.totalGamesPlayed;
+  }
+  if (badgeId === 'nutrition_first_log' || /^nutrition_\d+_logs$/.test(badgeId)) {
+    return snapshot.totalNutritionLogs;
+  }
+  if (badgeId === 'nutrition_hydration_goal') {
+    return snapshot.hydrationGoalDays > 0 ? 1 : 0;
+  }
+  if (/^nutrition_hydration_\d+_days$/.test(badgeId)) {
+    return snapshot.hydrationGoalDays;
+  }
+  return 0;
+};
+
 // ==================== MAIN COMPONENT ====================
 export default function AdminKaya() {
   const { lineProfile, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -88,15 +194,32 @@ export default function AdminKaya() {
   const [activeTab, setActiveTab] = useState('dashboard');
 
   useEffect(() => {
+    if (lineProfile?.userId) {
+      setAdminActorContext({
+        userId: lineProfile.userId,
+        displayName: lineProfile.displayName || 'Admin',
+      });
+    }
+
     const checkAccess = async () => {
       if (!lineProfile?.userId) {
         setIsCheckingAdmin(false);
         return;
       }
-      const result = await isAdmin(lineProfile.userId);
-      setIsAdminUser(result);
-      if (result) await initializeAdminConfig();
-      setIsCheckingAdmin(false);
+
+      try {
+        const result = await isAdmin(lineProfile.userId);
+        setIsAdminUser(result);
+
+        if (result) {
+          await initializeAdminConfig();
+        }
+      } catch (error) {
+        console.warn('Admin access check failed:', error);
+        setIsAdminUser(false);
+      } finally {
+        setIsCheckingAdmin(false);
+      }
     };
     if (isAuthenticated && lineProfile) checkAccess();
     else if (!authLoading) setIsCheckingAdmin(false);
@@ -126,11 +249,13 @@ export default function AdminKaya() {
   const tabs = [
     { id: 'dashboard', label: 'ภาพรวม', icon: LayoutDashboard },
     { id: 'users', label: 'ผู้ใช้', icon: Users },
+    { id: 'badges', label: 'แบดจ์', icon: Award },
     { id: 'challenges', label: 'ชาเลนจ์', icon: Trophy },
     { id: 'content', label: 'เนื้อหา', icon: Utensils },
     { id: 'games', label: 'เกม', icon: Gamepad2 },
     { id: 'storage', label: 'ไฟล์', icon: FolderOpen },
     { id: 'firestore', label: 'ฐานข้อมูล', icon: Database },
+    { id: 'audit', label: 'audit', icon: History },
     { id: 'settings', label: 'ตั้งค่า', icon: Settings },
   ];
 
@@ -173,14 +298,14 @@ export default function AdminKaya() {
                   key={tab.id}
                   value={tab.id}
                   className={cn(
-                    'flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all',
+                    'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all',
                     'data-[state=inactive]:text-gray-500 data-[state=inactive]:hover:text-gray-300 data-[state=inactive]:hover:bg-white/[0.04]',
                     'data-[state=active]:bg-gradient-to-r data-[state=active]:from-orange-500/20 data-[state=active]:to-red-500/10',
                     'data-[state=active]:text-orange-400 data-[state=active]:shadow-[0_0_12px_rgba(249,115,22,0.15)]',
                     'data-[state=active]:border data-[state=active]:border-orange-500/20',
                   )}
                 >
-                  <tab.icon className="w-3.5 h-3.5" />
+                  <tab.icon className="w-4 h-4" />
                   <span className="hidden sm:inline">{tab.label}</span>
                 </TabsTrigger>
               ))}
@@ -189,11 +314,13 @@ export default function AdminKaya() {
 
           <TabsContent value="dashboard"><DashboardTab /></TabsContent>
           <TabsContent value="users"><UserManagementTab /></TabsContent>
+          <TabsContent value="badges"><BadgeManagementTab /></TabsContent>
           <TabsContent value="challenges"><ChallengeManagementTab /></TabsContent>
           <TabsContent value="content"><ContentManagementTab /></TabsContent>
           <TabsContent value="games"><GameManagementTab /></TabsContent>
           <TabsContent value="storage"><StorageBrowserTab /></TabsContent>
           <TabsContent value="firestore"><FirestoreExplorerTab /></TabsContent>
+          <TabsContent value="audit"><AuditLogsTab /></TabsContent>
           <TabsContent value="settings"><AdminSettingsTab /></TabsContent>
         </Tabs>
       </div>
@@ -220,8 +347,8 @@ function SectionHeader({ title, subtitle, action }: { title: string; subtitle?: 
   return (
     <div className="flex items-center justify-between mb-5">
       <div>
-        <h2 className="text-lg font-bold text-white">{title}</h2>
-        {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
+        <h2 className="text-xl font-bold text-white">{title}</h2>
+        {subtitle && <p className="text-sm text-gray-400 mt-0.5">{subtitle}</p>}
       </div>
       {action}
     </div>
@@ -229,7 +356,7 @@ function SectionHeader({ title, subtitle, action }: { title: string; subtitle?: 
 }
 
 // ==================== Shared DynamicViewer ====================
-const DynamicViewer = ({ data }: { data: any }) => {
+const DynamicViewer = ({ data }: { data: unknown }) => {
   if (data === null || data === undefined) return <span className="text-gray-500 italic">null</span>;
   if (typeof data !== 'object') return <span>{String(data)}</span>;
   return (
@@ -240,7 +367,7 @@ const DynamicViewer = ({ data }: { data: any }) => {
 };
 
 // ==================== Shared RecursiveEditor ====================
-const RecursiveEditor = ({ data, onChange }: { data: Record<string, any>; onChange: (newData: Record<string, any>) => void }) => {
+const RecursiveEditor = ({ data, onChange }: { data: Record<string, unknown>; onChange: (newData: Record<string, unknown>) => void }) => {
   const [jsonText, setJsonText] = useState(JSON.stringify(data, null, 2));
   const [error, setError] = useState<string | null>(null);
 
@@ -263,7 +390,7 @@ const RecursiveEditor = ({ data, onChange }: { data: Record<string, any>; onChan
   return (
     <div className="w-full">
       <textarea 
-        className={cn("w-full h-64 font-mono text-[13px] p-4 bg-black/40 border rounded-xl text-gray-200 outline-none transition-colors", error ? "border-red-500/50 focus:border-red-500" : "border-white/10 focus:border-white/20")}
+        className={cn("w-full h-64 font-mono text-sm leading-6 p-4 bg-black/40 border rounded-xl text-gray-200 outline-none transition-colors", error ? "border-red-500/50 focus:border-red-500" : "border-white/10 focus:border-white/20")}
         value={jsonText}
         onChange={handleChange}
         spellCheck={false}
@@ -276,13 +403,27 @@ const RecursiveEditor = ({ data, onChange }: { data: Record<string, any>; onChan
 // ==================== TAB 1: DASHBOARD ====================
 function DashboardTab() {
   const [stats, setStats] = useState<Record<string, number> | null>(null);
+  const [allUsers, setAllUsers] = useState<Array<{ id: string; data: Record<string, unknown> }>>([]);
+  const [growthMode, setGrowthMode] = useState<'cumulative' | 'daily'>('cumulative');
+  const [growthDays, setGrowthDays] = useState<7 | 30 | 90>(30);
+  const [useCustomRange, setUseCustomRange] = useState(false);
+  const [customStart, setCustomStart] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 29);
+    return d.toISOString().slice(0, 10);
+  });
+  const [customEnd, setCustomEnd] = useState(() => new Date().toISOString().slice(0, 10));
   const [loading, setLoading] = useState(true);
 
   const loadStats = useCallback(async () => {
     setLoading(true);
     try {
-      const s = await getAdminDashboardStats();
+      const [s, users] = await Promise.all([
+        getAdminDashboardStats(),
+        getAllUsers(),
+      ]);
       setStats(s);
+      setAllUsers(users);
     } catch (e: unknown) {
       toast.error('โหลดข้อมูลไม่สำเร็จ');
     } finally {
@@ -302,6 +443,208 @@ function DashboardTab() {
     { label: 'อาหารในระบบ', key: 'totalFoodItems', icon: Utensils, gradient: 'from-yellow-500 to-orange-400', bg: 'bg-yellow-500/10' },
     { label: 'ผู้เล่นตกปลา', key: 'totalFishingPlayers', icon: Fish, gradient: 'from-teal-500 to-cyan-400', bg: 'bg-teal-500/10' },
   ];
+
+  const growthRange = useMemo(() => {
+    if (!useCustomRange) {
+      const end = new Date();
+      end.setHours(0, 0, 0, 0);
+      const start = new Date(end);
+      start.setDate(end.getDate() - (growthDays - 1));
+      return {
+        start,
+        end,
+        valid: true,
+        error: null as string | null,
+      };
+    }
+
+    const start = new Date(customStart);
+    const end = new Date(customEnd);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      return { start, end, valid: false, error: 'วันที่ไม่ถูกต้อง' };
+    }
+    if (end < start) {
+      return { start, end, valid: false, error: 'วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม' };
+    }
+
+    const diffDays = Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+    if (diffDays > 90) {
+      return { start, end, valid: false, error: 'เลือกช่วงเวลาได้ไม่เกิน 90 วัน' };
+    }
+
+    return {
+      start,
+      end,
+      valid: true,
+      error: null as string | null,
+    };
+  }, [useCustomRange, growthDays, customStart, customEnd]);
+
+  const userGrowth = useMemo(() => {
+    if (!growthRange.valid) return [] as Array<{ label: string; count: number; showTick: boolean; added: number }>;
+
+    const totalDays = Math.floor((growthRange.end.getTime() - growthRange.start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+    const dayBuckets = Array.from({ length: totalDays }, (_, index) => {
+      const d = new Date(growthRange.start);
+      d.setDate(growthRange.start.getDate() + index);
+      const key = d.toISOString().slice(0, 10);
+      return {
+        key,
+        date: d,
+        count: 0,
+      };
+    });
+
+    const bucketMap = new Map(dayBuckets.map((bucket) => [bucket.key, bucket]));
+    let baselineUsers = 0;
+
+    allUsers.forEach((user) => {
+      const sourceDate = toDateFromUnknown(user.data.createdAt)
+        || toDateFromUnknown(user.data.firstLoginAt);
+      if (!sourceDate) return;
+
+      const normalized = new Date(sourceDate);
+      normalized.setHours(0, 0, 0, 0);
+
+      if (normalized < growthRange.start) {
+        baselineUsers += 1;
+        return;
+      }
+
+      const key = normalized.toISOString().slice(0, 10);
+      const bucket = bucketMap.get(key);
+      if (bucket) {
+        bucket.count += 1;
+      }
+    });
+
+    let runningTotal = baselineUsers;
+    const dailySeries = dayBuckets.map((bucket, index) => {
+      const label = totalDays <= 14
+        ? bucket.date.toLocaleDateString('th-TH', { weekday: 'short' })
+        : `${String(bucket.date.getDate()).padStart(2, '0')}/${String(bucket.date.getMonth() + 1).padStart(2, '0')}`;
+      const showTick = totalDays <= 10 || index === 0 || index === dayBuckets.length - 1 || index % Math.ceil(totalDays / 6) === 0;
+      runningTotal += bucket.count;
+      return {
+        label,
+        count: runningTotal,
+        showTick,
+        added: bucket.count,
+      };
+    });
+
+    if (totalDays <= 60) {
+      return dailySeries;
+    }
+
+    // Long ranges are easier to read when bucketed weekly.
+    const weeklySeries: Array<{ label: string; count: number; showTick: boolean; added: number }> = [];
+    for (let i = 0; i < dailySeries.length; i += 7) {
+      const chunk = dailySeries.slice(i, i + 7);
+      if (!chunk.length) continue;
+      const lastPoint = chunk[chunk.length - 1];
+      const added = chunk.reduce((sum, item) => sum + item.added, 0);
+      weeklySeries.push({
+        label: chunk[0].label,
+        count: lastPoint.count,
+        added,
+        showTick: true,
+      });
+    }
+
+    return weeklySeries.map((item, index) => ({
+      ...item,
+      showTick: index === 0 || index === weeklySeries.length - 1 || index % Math.ceil(weeklySeries.length / 6) === 0,
+    }));
+  }, [allUsers, growthRange]);
+
+  const latestTotalUsers = useMemo(() => {
+    if (!userGrowth.length) return 0;
+    return userGrowth[userGrowth.length - 1].count;
+  }, [userGrowth]);
+
+  const periodAddedUsers = useMemo(() => {
+    return userGrowth.reduce((sum, point) => sum + point.added, 0);
+  }, [userGrowth]);
+
+  const totalRangeDays = useMemo(() => {
+    if (!growthRange.valid) return 0;
+    return Math.floor((growthRange.end.getTime() - growthRange.start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+  }, [growthRange]);
+
+  const getGrowthValue = useCallback((point: { count: number; added: number }) => {
+    return growthMode === 'cumulative' ? point.count : point.added;
+  }, [growthMode]);
+
+  const pointValues = useMemo(() => {
+    return userGrowth.map((point) => getGrowthValue(point));
+  }, [userGrowth, getGrowthValue]);
+
+  const summaryCards = useMemo(() => {
+    const startValue = pointValues[0] || 0;
+    const latestValue = pointValues[pointValues.length - 1] || 0;
+    const maxValue = pointValues.length ? Math.max(...pointValues) : 0;
+    const avgPerPoint = pointValues.length
+      ? pointValues.reduce((sum, value) => sum + value, 0) / pointValues.length
+      : 0;
+
+    if (growthMode === 'cumulative') {
+      const avgPerDay = totalRangeDays > 0 ? periodAddedUsers / totalRangeDays : 0;
+      return [
+        { label: 'เริ่มต้นช่วง', value: startValue.toLocaleString() },
+        { label: 'ล่าสุด', value: latestValue.toLocaleString() },
+        { label: 'เพิ่มสุทธิ', value: Math.max(0, latestValue - startValue).toLocaleString() },
+        { label: 'เฉลี่ยผู้ใช้ใหม่/วัน', value: avgPerDay.toFixed(1) },
+      ];
+    }
+
+    return [
+      { label: 'ผู้ใช้ใหม่รวม', value: periodAddedUsers.toLocaleString() },
+      { label: 'ค่าสูงสุด/จุด', value: maxValue.toLocaleString() },
+      { label: 'ค่าเฉลี่ย/จุด', value: avgPerPoint.toFixed(1) },
+      { label: 'ค่าล่าสุด', value: latestValue.toLocaleString() },
+    ];
+  }, [pointValues, growthMode, periodAddedUsers, totalRangeDays]);
+
+  const headerSummary = useMemo(() => {
+    if (growthMode === 'cumulative') {
+      return {
+        title: 'รวมทั้งหมด',
+        mainValue: `${latestTotalUsers.toLocaleString()} คน`,
+        subValue: `+${periodAddedUsers.toLocaleString()} ในช่วงที่เลือก`,
+      };
+    }
+    return {
+      title: 'ผู้ใช้ใหม่รวม',
+      mainValue: `${periodAddedUsers.toLocaleString()} คน`,
+      subValue: 'ในช่วงที่เลือก',
+    };
+  }, [growthMode, latestTotalUsers, periodAddedUsers]);
+
+  const maxGrowth = useMemo(() => {
+    if (!userGrowth.length) return 1;
+    return Math.max(...userGrowth.map((point) => getGrowthValue(point)), 1);
+  }, [userGrowth, getGrowthValue]);
+
+  const chartBaselineY = 40;
+  const chartTopPadding = 34;
+
+  const linePoints = useMemo(() => {
+    if (userGrowth.length === 0) return '';
+    if (userGrowth.length === 1) {
+      const y = chartBaselineY - (getGrowthValue(userGrowth[0]) / maxGrowth) * chartTopPadding;
+      return `0,${Math.max(2, y)}`;
+    }
+
+    return userGrowth.map((point, index) => {
+      const x = (index / (userGrowth.length - 1)) * 100;
+      const y = chartBaselineY - (getGrowthValue(point) / maxGrowth) * chartTopPadding;
+      return `${x},${Math.max(2, y)}`;
+    }).join(' ');
+  }, [userGrowth, maxGrowth, getGrowthValue, chartBaselineY, chartTopPadding]);
 
   return (
     <div>
@@ -343,12 +686,169 @@ function DashboardTab() {
         ))}
       </div>
 
+      <GlassCard className="mt-5 p-4 md:p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg md:text-xl font-semibold text-white">
+              {growthMode === 'cumulative' ? 'แนวโน้มผู้ใช้สะสมทั้งหมด (กราฟเส้น)' : 'แนวโน้มผู้ใช้ใหม่รายวัน (กราฟเส้น)'}
+            </h3>
+            <p className="text-sm md:text-base text-gray-400">
+              {growthMode === 'cumulative'
+                ? 'แสดงยอดผู้ใช้สะสมทั้งหมดจาก createdAt / firstLoginAt'
+                : 'แสดงจำนวนผู้ใช้ใหม่รายวันจาก createdAt / firstLoginAt'}
+              {userGrowth.length > 0 && (totalRangeDays > 60 ? ' (ช่วงยาวจะแสดงแบบรายสัปดาห์เพื่อให้อ่านง่ายขึ้น)' : '')}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <div className="inline-flex rounded-lg border border-white/[0.08] bg-white/[0.03] p-0.5">
+              <button
+                onClick={() => setGrowthMode('cumulative')}
+                className={cn(
+                  'px-2.5 py-1.5 rounded-md text-xs transition-colors',
+                  growthMode === 'cumulative'
+                    ? 'bg-orange-500/20 text-orange-300 border border-orange-500/20'
+                    : 'text-gray-400 hover:text-gray-200 hover:bg-white/[0.05]'
+                )}
+              >
+                ยอดสะสมทั้งหมด
+              </button>
+              <button
+                onClick={() => setGrowthMode('daily')}
+                className={cn(
+                  'px-2.5 py-1.5 rounded-md text-xs transition-colors',
+                  growthMode === 'daily'
+                    ? 'bg-orange-500/20 text-orange-300 border border-orange-500/20'
+                    : 'text-gray-400 hover:text-gray-200 hover:bg-white/[0.05]'
+                )}
+              >
+                ผู้ใช้ใหม่รายวัน
+              </button>
+            </div>
+            <div className="inline-flex rounded-lg border border-white/[0.08] bg-white/[0.03] p-0.5">
+              {[7, 30, 90].map((days) => (
+                <button
+                  key={days}
+                  onClick={() => {
+                    setUseCustomRange(false);
+                    setGrowthDays(days as 7 | 30 | 90);
+                  }}
+                  className={cn(
+                    'px-2.5 py-1.5 rounded-md text-xs transition-colors',
+                    !useCustomRange && growthDays === days
+                      ? 'bg-orange-500/20 text-orange-300 border border-orange-500/20'
+                      : 'text-gray-400 hover:text-gray-200 hover:bg-white/[0.05]'
+                  )}
+                >
+                  {days} วัน
+                </button>
+              ))}
+              <button
+                onClick={() => setUseCustomRange(true)}
+                className={cn(
+                  'px-2.5 py-1.5 rounded-md text-xs transition-colors flex items-center gap-1',
+                  useCustomRange
+                    ? 'bg-orange-500/20 text-orange-300 border border-orange-500/20'
+                    : 'text-gray-400 hover:text-gray-200 hover:bg-white/[0.05]'
+                )}
+              >
+                <CalendarDays className="w-3 h-3" />กำหนดเอง
+              </button>
+            </div>
+            <div className="min-w-[260px] rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-right tabular-nums">
+              <p className="text-[11px] text-gray-500">{headerSummary.title}</p>
+              <p className="text-base text-gray-100 font-semibold leading-tight">{headerSummary.mainValue}</p>
+              <p className="text-xs text-gray-400">{headerSummary.subValue}</p>
+            </div>
+          </div>
+        </div>
+
+        {useCustomRange && (
+          <div className="mb-3 flex flex-wrap items-end gap-2">
+            <div>
+              <p className="text-xs text-gray-500 mb-1">เริ่ม</p>
+              <Input
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                className="h-9 text-sm bg-white/[0.03] border-white/[0.08] text-gray-200"
+              />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 mb-1">สิ้นสุด</p>
+              <Input
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                className="h-9 text-sm bg-white/[0.03] border-white/[0.08] text-gray-200"
+              />
+            </div>
+            {growthRange.error && <p className="text-xs text-red-400 pb-2">{growthRange.error}</p>}
+          </div>
+        )}
+
+        {loading ? (
+          <div className="h-36 rounded-xl bg-white/[0.03] animate-pulse" />
+        ) : (
+          <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 md:p-4">
+            <svg viewBox="0 0 100 52" className="w-full h-48 md:h-56">
+              <defs>
+                <linearGradient id="growthLine" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#fb923c" />
+                  <stop offset="100%" stopColor="#f97316" />
+                </linearGradient>
+              </defs>
+              <line x1="0" y1={chartBaselineY} x2="100" y2={chartBaselineY} stroke="rgba(255,255,255,0.14)" strokeWidth="0.5" />
+              <polyline
+                points={linePoints}
+                fill="none"
+                stroke="url(#growthLine)"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              {userGrowth.map((point, index) => {
+                const x = userGrowth.length <= 1 ? 0 : (index / (userGrowth.length - 1)) * 100;
+                const pointValue = getGrowthValue(point);
+                const y = Math.max(2, chartBaselineY - (pointValue / maxGrowth) * chartTopPadding);
+                return (
+                  <g key={`${point.label}-${index}`}>
+                    <circle cx={x} cy={y} r="1.1" fill="#fb923c" />
+                  </g>
+                );
+              })}
+              {userGrowth.map((point, index) => {
+                if (!point.showTick) return null;
+                const x = userGrowth.length <= 1 ? 0 : (index / (userGrowth.length - 1)) * 100;
+                const anchor = index === 0 ? 'start' : index === userGrowth.length - 1 ? 'end' : 'middle';
+                return (
+                  <g key={`axis-${point.label}-${index}`}>
+                    <line x1={x} y1={chartBaselineY} x2={x} y2={chartBaselineY + 1.8} stroke="rgba(148,163,184,0.4)" strokeWidth="0.4" />
+                    <text x={x} y={48} textAnchor={anchor} fill="#94a3b8" fontSize="2.8">
+                      {point.label}
+                    </text>
+                  </g>
+                );
+              })}
+            </svg>
+            <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2">
+              {summaryCards.map((card) => (
+                <div key={card.label} className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2.5">
+                  <p className="text-[11px] text-gray-500">{card.label}</p>
+                  <p className="text-base md:text-lg font-semibold text-gray-100 mt-0.5">{card.value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </GlassCard>
+
       {/* Quick Actions */}
       <div className="mt-6">
         <h3 className="text-sm font-semibold text-gray-400 mb-3">เข้าถึงด่วน</h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {[
             { label: 'จัดการผู้ใช้', icon: Users, tab: 'users' },
+            { label: 'จัดการแบดจ์', icon: Award, tab: 'badges' },
             { label: 'ดูเกม & คะแนน', icon: Gamepad2, tab: 'games' },
             { label: 'แก้ไขชาเลนจ์', icon: Trophy, tab: 'challenges' },
             { label: 'ตั้งค่าแอดมิน', icon: Shield, tab: 'settings' },
@@ -451,12 +951,28 @@ function UserManagementTab() {
     }
   };
 
+  const handleExportUsersCsv = () => {
+    const rows = users.map((user) => ({
+      userId: user.id,
+      displayName: String(user.data.displayName || ''),
+      nickname: String(user.data.nickname || ''),
+      tier: String(user.data.tier || ''),
+      points: Number(user.data.points || 0),
+      streakDays: Number(user.data.streakDays || 0),
+      banned: user.data.banned === true ? 'true' : 'false',
+      lastLoginAt: formatTimestamp(user.data.lastLoginAt),
+      createdAt: formatTimestamp(user.data.createdAt),
+    }));
+    exportRowsToCsv(`kaya-users-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+  };
+
   const tierColors: Record<string, string> = {
     bronze: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
     silver: 'bg-gray-400/10 text-gray-300 border-gray-400/20',
     gold: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
     platinum: 'bg-cyan-500/10 text-cyan-300 border-cyan-500/20',
     diamond: 'bg-purple-500/10 text-purple-300 border-purple-500/20',
+    master: 'bg-pink-500/10 text-pink-300 border-pink-500/20',
   };
 
   return (
@@ -465,9 +981,14 @@ function UserManagementTab() {
         title="จัดการผู้ใช้"
         subtitle={`ทั้งหมด ${users.length} คน`}
         action={
-          <Button variant="ghost" size="sm" onClick={loadUsers} disabled={loading} className="text-gray-400 hover:text-white hover:bg-white/[0.06] h-8">
-            <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleExportUsersCsv} className="h-8 text-xs border-white/[0.1] text-gray-300 hover:text-white hover:bg-white/[0.06]">
+              <Download className="w-3.5 h-3.5 mr-1" />CSV
+            </Button>
+            <Button variant="ghost" size="sm" onClick={loadUsers} disabled={loading} className="text-gray-400 hover:text-white hover:bg-white/[0.06] h-8">
+              <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+            </Button>
+          </div>
         }
       />
 
@@ -575,6 +1096,33 @@ function UserManagementTab() {
           </DialogHeader>
           {userFullData && (
             <div className="space-y-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                  <p className="text-[10px] text-gray-500">Tier</p>
+                  <p className="text-sm font-semibold text-white uppercase">{String((userFullData.profile as Record<string, unknown> | null)?.tier || '-') }</p>
+                </div>
+                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                  <p className="text-[10px] text-gray-500">Points</p>
+                  <p className="text-sm font-semibold text-white">{Number((userFullData.profile as Record<string, unknown> | null)?.points || 0).toLocaleString()}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                  <p className="text-[10px] text-gray-500">Streak</p>
+                  <p className="text-sm font-semibold text-white">{Number((userFullData.profile as Record<string, unknown> | null)?.streakDays || 0)} วัน</p>
+                </div>
+                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                  <p className="text-[10px] text-gray-500">Workouts</p>
+                  <p className="text-sm font-semibold text-white">{Array.isArray(userFullData.workouts) ? userFullData.workouts.length : 0}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                  <p className="text-[10px] text-gray-500">Badges</p>
+                  <p className="text-sm font-semibold text-white">{Array.isArray(userFullData.badges) ? userFullData.badges.length : 0}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                  <p className="text-[10px] text-gray-500">Last Login</p>
+                  <p className="text-xs font-semibold text-white">{formatTimestamp((userFullData.profile as Record<string, unknown> | null)?.lastLoginAt)}</p>
+                </div>
+              </div>
+
               {Object.entries(userFullData).map(([section, data]) => {
                 if (!data || (Array.isArray(data) && data.length === 0)) return null;
                 const sectionLabels: Record<string, string> = {
@@ -586,7 +1134,12 @@ function UserManagementTab() {
                 return (
                   <div key={section} className="rounded-xl bg-white/[0.03] border border-white/[0.06] overflow-hidden">
                     <div className="px-3 py-2 border-b border-white/[0.06]">
-                      <h4 className="font-semibold text-xs text-gray-300">{sectionLabels[section] || section}</h4>
+                      <div className="flex items-center justify-between gap-2">
+                        <h4 className="font-semibold text-xs text-gray-300">{sectionLabels[section] || section}</h4>
+                        <span className="text-[10px] text-gray-500">
+                          {Array.isArray(data) ? `${data.length} รายการ` : 'เอกสารเดี่ยว'}
+                        </span>
+                      </div>
                     </div>
                     <div className="p-3">
                       <DynamicViewer data={data} />
@@ -613,6 +1166,529 @@ function UserManagementTab() {
           <AlertDialogFooter>
             <AlertDialogCancel className="bg-white/[0.05] border-white/[0.08] text-gray-300 hover:bg-white/[0.1] hover:text-white">ยกเลิก</AlertDialogCancel>
             <AlertDialogAction onClick={handleBan} className="bg-red-600 hover:bg-red-700 text-white">แบนผู้ใช้</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+function BadgeManagementTab() {
+  const [badges, setBadges] = useState<FirestoreBadgeCatalogItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<FirestoreBadgeCatalogItem | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [disableTarget, setDisableTarget] = useState<FirestoreBadgeCatalogItem | null>(null);
+  const [disableImpact, setDisableImpact] = useState<{ sampleSize: number; eligibleNow: number; alreadyEarned: number; wouldBeBlocked: number } | null>(null);
+  const [loadingDisableImpact, setLoadingDisableImpact] = useState(false);
+  const [newBadge, setNewBadge] = useState({
+    badgeId: '',
+    nameTh: '',
+    nameEn: '',
+    icon: '🏅',
+    category: 'workout' as 'workout' | 'game' | 'nutrition',
+    target: 1,
+    description: '',
+    requirement: '',
+    active: true,
+  });
+
+  const loadBadges = useCallback(async () => {
+    setLoading(true);
+    try {
+      await ensureBadgeCatalogSeeded();
+      const catalog = await getBadgeCatalog();
+      setBadges(catalog);
+    } catch (error) {
+      toast.error('โหลด badge catalog ไม่สำเร็จ');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadBadges();
+  }, [loadBadges]);
+
+  const filtered = badges.filter((badge) => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      badge.badgeId.toLowerCase().includes(q)
+      || badge.nameTh.toLowerCase().includes(q)
+      || badge.nameEn.toLowerCase().includes(q)
+    );
+  });
+
+  const handleSave = async () => {
+    if (!selected) return;
+    try {
+      setSaving(true);
+      await upsertBadgeCatalogItem(selected.badgeId, {
+        badgeId: selected.badgeId,
+        nameEn: selected.nameEn,
+        nameTh: selected.nameTh,
+        description: selected.description,
+        icon: selected.icon,
+        requirement: selected.requirement,
+        category: selected.category,
+        target: selected.target,
+        active: selected.active !== false,
+      });
+      await logAdminAction('badge.update', 'แก้ไขแบดจ์', {
+        targetCollection: 'badgeCatalog',
+        targetId: selected.badgeId,
+        details: {
+          active: selected.active !== false,
+          category: selected.category,
+          target: selected.target,
+        },
+      });
+      toast.success('บันทึก badge สำเร็จ');
+      setSelected(null);
+      await loadBadges();
+    } catch (error) {
+      toast.error('บันทึก badge ไม่สำเร็จ');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCreate = async () => {
+    const badgeId = newBadge.badgeId.trim();
+    if (!badgeId) {
+      toast.error('กรุณาใส่ badgeId');
+      return;
+    }
+    if (!newBadge.nameTh.trim() || !newBadge.nameEn.trim()) {
+      toast.error('กรุณาใส่ชื่อแบดจ์ TH/EN');
+      return;
+    }
+
+    const duplicated = badges.some((badge) => badge.badgeId.toLowerCase() === badgeId.toLowerCase());
+    if (duplicated) {
+      toast.error('badgeId นี้มีอยู่แล้ว');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await upsertBadgeCatalogItem(badgeId, {
+        badgeId,
+        nameEn: newBadge.nameEn,
+        nameTh: newBadge.nameTh,
+        description: newBadge.description,
+        icon: newBadge.icon,
+        requirement: newBadge.requirement,
+        category: newBadge.category,
+        target: Number(newBadge.target) || 1,
+        active: newBadge.active,
+      });
+      await logAdminAction('badge.create', 'สร้างแบดจ์ใหม่', {
+        targetCollection: 'badgeCatalog',
+        targetId: badgeId,
+        details: {
+          active: newBadge.active,
+          category: newBadge.category,
+          target: Number(newBadge.target) || 1,
+        },
+      });
+      toast.success('สร้างแบดจ์ใหม่สำเร็จ');
+      setShowCreateDialog(false);
+      setNewBadge({
+        badgeId: '',
+        nameTh: '',
+        nameEn: '',
+        icon: '🏅',
+        category: 'workout',
+        target: 1,
+        description: '',
+        requirement: '',
+        active: true,
+      });
+      await loadBadges();
+    } catch (error) {
+      toast.error('สร้างแบดจ์ใหม่ไม่สำเร็จ');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleExportBadgesCsv = () => {
+    const rows = badges.map((badge) => ({
+      badgeId: badge.badgeId,
+      nameTh: badge.nameTh,
+      nameEn: badge.nameEn,
+      category: badge.category,
+      target: badge.target,
+      active: badge.active === false ? 'false' : 'true',
+      requirement: badge.requirement,
+      description: badge.description,
+    }));
+    exportRowsToCsv(`kaya-badges-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+  };
+
+  const estimateDisableImpact = async (badge: FirestoreBadgeCatalogItem) => {
+    setLoadingDisableImpact(true);
+    setDisableImpact(null);
+    try {
+      const sampleUsers = await getAllUsers(300);
+      const batchSize = 12;
+      let eligibleNow = 0;
+      let alreadyEarned = 0;
+      let wouldBeBlocked = 0;
+
+      for (let i = 0; i < sampleUsers.length; i += batchSize) {
+        const batch = sampleUsers.slice(i, i + batchSize);
+        const batchResult = await Promise.all(batch.map(async (user) => {
+          const [snapshot, earned] = await Promise.all([
+            getBadgeProgressSnapshot(user.id),
+            getUserBadges(user.id),
+          ]);
+          const target = Number(badge.target) || 1;
+          const progress = getBadgeProgressValue(badge.badgeId, snapshot);
+          const meetsTarget = progress >= target;
+          const hasEarned = earned.some((item) => item.badgeId === badge.badgeId);
+          return { meetsTarget, hasEarned };
+        }));
+
+        batchResult.forEach((item) => {
+          if (!item.meetsTarget) return;
+          eligibleNow += 1;
+          if (item.hasEarned) {
+            alreadyEarned += 1;
+          } else {
+            wouldBeBlocked += 1;
+          }
+        });
+      }
+
+      setDisableImpact({
+        sampleSize: sampleUsers.length,
+        eligibleNow,
+        alreadyEarned,
+        wouldBeBlocked,
+      });
+    } catch {
+      toast.error('คำนวณผลกระทบไม่สำเร็จ');
+    } finally {
+      setLoadingDisableImpact(false);
+    }
+  };
+
+  const confirmDisableBadge = async () => {
+    if (!disableTarget) return;
+    try {
+      setSaving(true);
+      await upsertBadgeCatalogItem(disableTarget.badgeId, {
+        badgeId: disableTarget.badgeId,
+        nameEn: disableTarget.nameEn,
+        nameTh: disableTarget.nameTh,
+        description: disableTarget.description,
+        icon: disableTarget.icon,
+        requirement: disableTarget.requirement,
+        category: disableTarget.category,
+        target: Number(disableTarget.target) || 1,
+        active: false,
+      });
+      await logAdminAction('badge.disable', 'ปิดใช้งานแบดจ์', {
+        targetCollection: 'badgeCatalog',
+        targetId: disableTarget.badgeId,
+        details: disableImpact || undefined,
+      });
+      toast.success('ปิดใช้งานแบดจ์แล้ว');
+      setDisableTarget(null);
+      setDisableImpact(null);
+      await loadBadges();
+    } catch {
+      toast.error('ปิดใช้งานแบดจ์ไม่สำเร็จ');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleToggleActive = async (badge: FirestoreBadgeCatalogItem) => {
+    if (badge.active !== false) {
+      setDisableTarget(badge);
+      estimateDisableImpact(badge);
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await upsertBadgeCatalogItem(badge.badgeId, {
+        badgeId: badge.badgeId,
+        nameEn: badge.nameEn,
+        nameTh: badge.nameTh,
+        description: badge.description,
+        icon: badge.icon,
+        requirement: badge.requirement,
+        category: badge.category,
+        target: Number(badge.target) || 1,
+        active: true,
+      });
+      await logAdminAction('badge.enable', 'เปิดใช้งานแบดจ์', {
+        targetCollection: 'badgeCatalog',
+        targetId: badge.badgeId,
+      });
+      toast.success('เปิดใช้งานแบดจ์แล้ว');
+      await loadBadges();
+    } catch {
+      toast.error('เปลี่ยนสถานะแบดจ์ไม่สำเร็จ');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div>
+      <SectionHeader
+        title="จัดการแบดจ์"
+        subtitle={`ทั้งหมด ${badges.length} รายการ`}
+        action={
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={handleExportBadgesCsv} className="h-9 px-3 text-xs border-white/[0.1] text-gray-300 hover:text-white hover:bg-white/[0.06]">
+              <Download className="w-3.5 h-3.5 mr-1" />CSV
+            </Button>
+            <Button size="sm" onClick={() => setShowCreateDialog(true)} className="bg-orange-500 hover:bg-orange-600 text-white h-9 px-4 text-sm rounded-lg">
+              <Plus className="w-4 h-4 mr-1" />สร้างใหม่
+            </Button>
+            <Button variant="ghost" size="sm" onClick={loadBadges} disabled={loading} className="text-gray-300 hover:text-white hover:bg-white/[0.06] h-9">
+              <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} />
+            </Button>
+          </div>
+        }
+      />
+
+      <div className="relative mb-4">
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+        <Input
+          placeholder="ค้นหา badgeId / ชื่อไทย / ชื่ออังกฤษ"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="pl-10 bg-white/[0.03] border-white/[0.08] text-gray-200 placeholder:text-gray-600 focus:border-orange-500/40 h-10 rounded-xl"
+        />
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <Loader2 className="w-6 h-6 animate-spin text-orange-400" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-12 text-gray-500 text-sm">ไม่พบแบดจ์</div>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map((badge) => (
+            <GlassCard key={badge.badgeId} className="p-4 hover:border-white/[0.12] transition-all">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-white/[0.04] border border-white/[0.08] flex items-center justify-center text-lg">
+                  {badge.icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <p className="font-semibold text-base text-white truncate">{badge.nameTh}</p>
+                    <span className="text-xs px-2 py-0.5 rounded-full border bg-white/[0.03] border-white/[0.08] text-gray-300">{badge.category}</span>
+                    <span
+                      className={cn(
+                        'text-xs px-2 py-0.5 rounded-full border',
+                        badge.active === false
+                          ? 'bg-red-500/10 border-red-500/20 text-red-300'
+                          : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+                      )}
+                    >
+                      {badge.active === false ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-400 truncate">{badge.badgeId} • target {badge.target}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={badge.active !== false}
+                    disabled={saving}
+                    onCheckedChange={() => handleToggleActive(badge)}
+                    className="data-[state=checked]:bg-emerald-500"
+                  />
+                  <Button variant="ghost" size="sm" className="h-9 w-9 p-0 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg" onClick={() => setSelected(badge)}>
+                    <Edit3 className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            </GlassCard>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="max-w-xl bg-[#1a1d2e] border-white/[0.08] text-gray-200">
+          <DialogHeader>
+            <DialogTitle className="text-white">สร้างแบดจ์ใหม่</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium text-gray-300 mb-1 block">Badge ID</label>
+              <Input value={newBadge.badgeId} onChange={(e) => setNewBadge({ ...newBadge, badgeId: e.target.value })} placeholder="เช่น monthly_master" className="bg-white/[0.03] border-white/[0.08] text-gray-200 font-mono" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium text-gray-300 mb-1 block">ชื่อ (TH)</label>
+                <Input value={newBadge.nameTh} onChange={(e) => setNewBadge({ ...newBadge, nameTh: e.target.value })} className="bg-white/[0.03] border-white/[0.08] text-gray-200" />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-300 mb-1 block">ชื่อ (EN)</label>
+                <Input value={newBadge.nameEn} onChange={(e) => setNewBadge({ ...newBadge, nameEn: e.target.value })} className="bg-white/[0.03] border-white/[0.08] text-gray-200" />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="text-sm font-medium text-gray-300 mb-1 block">Icon</label>
+                <Input value={newBadge.icon} onChange={(e) => setNewBadge({ ...newBadge, icon: e.target.value })} className="bg-white/[0.03] border-white/[0.08] text-gray-200" />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-300 mb-1 block">Category</label>
+                <Select value={newBadge.category} onValueChange={(value: 'workout' | 'game' | 'nutrition') => setNewBadge({ ...newBadge, category: value })}>
+                  <SelectTrigger className="bg-white/[0.03] border-white/[0.08] text-gray-200"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-[#1a1d2e] border-white/[0.08]">
+                    <SelectItem value="workout" className="text-gray-200">workout</SelectItem>
+                    <SelectItem value="game" className="text-gray-200">game</SelectItem>
+                    <SelectItem value="nutrition" className="text-gray-200">nutrition</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-300 mb-1 block">Target</label>
+                <Input type="number" value={newBadge.target} onChange={(e) => setNewBadge({ ...newBadge, target: Number(e.target.value) || 1 })} className="bg-white/[0.03] border-white/[0.08] text-gray-200" />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-300 mb-1 block">Description</label>
+              <Textarea value={newBadge.description} onChange={(e) => setNewBadge({ ...newBadge, description: e.target.value })} className="bg-white/[0.03] border-white/[0.08] text-gray-200 min-h-[72px]" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-300 mb-1 block">Requirement</label>
+              <Textarea value={newBadge.requirement} onChange={(e) => setNewBadge({ ...newBadge, requirement: e.target.value })} className="bg-white/[0.03] border-white/[0.08] text-gray-200 min-h-[72px]" />
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch checked={newBadge.active} onCheckedChange={(value) => setNewBadge({ ...newBadge, active: value })} className="data-[state=checked]:bg-emerald-500" />
+              <span className="text-sm text-gray-300">เปิดใช้งานทันที</span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowCreateDialog(false)} className="text-gray-300 hover:text-white">ยกเลิก</Button>
+            <Button onClick={handleCreate} disabled={saving} className="bg-orange-500 hover:bg-orange-600 text-white">
+              {saving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Plus className="w-4 h-4 mr-1" />}สร้าง
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!selected} onOpenChange={(open) => { if (!open) setSelected(null); }}>
+        <DialogContent className="max-w-xl bg-[#1a1d2e] border-white/[0.08] text-gray-200">
+          <DialogHeader>
+            <DialogTitle className="text-white">แก้ไขแบดจ์</DialogTitle>
+            <DialogDescription className="font-mono text-xs text-gray-500">{selected?.badgeId}</DialogDescription>
+          </DialogHeader>
+          {selected && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-400 mb-1 block">ชื่อ (TH)</label>
+                  <Input value={selected.nameTh} onChange={(e) => setSelected({ ...selected, nameTh: e.target.value })} className="bg-white/[0.03] border-white/[0.08] text-gray-200" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-400 mb-1 block">ชื่อ (EN)</label>
+                  <Input value={selected.nameEn} onChange={(e) => setSelected({ ...selected, nameEn: e.target.value })} className="bg-white/[0.03] border-white/[0.08] text-gray-200" />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-400 mb-1 block">Icon</label>
+                  <Input value={selected.icon} onChange={(e) => setSelected({ ...selected, icon: e.target.value })} className="bg-white/[0.03] border-white/[0.08] text-gray-200" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-400 mb-1 block">Category</label>
+                  <Select value={selected.category} onValueChange={(value: 'workout' | 'game' | 'nutrition') => setSelected({ ...selected, category: value })}>
+                    <SelectTrigger className="bg-white/[0.03] border-white/[0.08] text-gray-200"><SelectValue /></SelectTrigger>
+                    <SelectContent className="bg-[#1a1d2e] border-white/[0.08]">
+                      <SelectItem value="workout" className="text-gray-200">workout</SelectItem>
+                      <SelectItem value="game" className="text-gray-200">game</SelectItem>
+                      <SelectItem value="nutrition" className="text-gray-200">nutrition</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-400 mb-1 block">Target</label>
+                  <Input type="number" value={selected.target} onChange={(e) => setSelected({ ...selected, target: Number(e.target.value) || 1 })} className="bg-white/[0.03] border-white/[0.08] text-gray-200" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-400 mb-1 block">Description</label>
+                <Textarea value={selected.description} onChange={(e) => setSelected({ ...selected, description: e.target.value })} className="bg-white/[0.03] border-white/[0.08] text-gray-200 min-h-[72px]" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-400 mb-1 block">Requirement</label>
+                <Textarea value={selected.requirement} onChange={(e) => setSelected({ ...selected, requirement: e.target.value })} className="bg-white/[0.03] border-white/[0.08] text-gray-200 min-h-[72px]" />
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch checked={selected.active !== false} onCheckedChange={(value) => setSelected({ ...selected, active: value })} className="data-[state=checked]:bg-emerald-500" />
+                <span className="text-sm text-gray-300">เปิดใช้งานแบดจ์</span>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setSelected(null)} className="text-gray-400 hover:text-white">ยกเลิก</Button>
+            <Button onClick={handleSave} disabled={saving} className="bg-orange-500 hover:bg-orange-600 text-white">
+              {saving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
+              บันทึก
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!disableTarget} onOpenChange={(open) => { if (!open) { setDisableTarget(null); setDisableImpact(null); } }}>
+        <AlertDialogContent className="bg-[#1a1d2e] border-white/[0.08]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white">ยืนยันปิดใช้งานแบดจ์</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-400">
+              แบดจ์ {disableTarget?.nameTh || disableTarget?.badgeId} จะไม่ถูกแจกให้ผู้ใช้ใหม่หลังจากนี้
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3">
+            {loadingDisableImpact ? (
+              <div className="flex items-center gap-2 text-sm text-gray-300">
+                <Loader2 className="w-4 h-4 animate-spin text-orange-400" />กำลังประเมินผลกระทบ...
+              </div>
+            ) : disableImpact ? (
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] p-2">
+                  <p className="text-gray-500">จำนวนตัวอย่าง</p>
+                  <p className="text-white font-semibold">{disableImpact.sampleSize.toLocaleString()} คน</p>
+                </div>
+                <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] p-2">
+                  <p className="text-gray-500">เข้าเงื่อนไขตอนนี้</p>
+                  <p className="text-orange-300 font-semibold">{disableImpact.eligibleNow.toLocaleString()} คน</p>
+                </div>
+                <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] p-2">
+                  <p className="text-gray-500">ได้แบดจ์แล้ว</p>
+                  <p className="text-emerald-300 font-semibold">{disableImpact.alreadyEarned.toLocaleString()} คน</p>
+                </div>
+                <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] p-2">
+                  <p className="text-gray-500">อาจถูกบล็อกหลังปิด</p>
+                  <p className="text-red-300 font-semibold">{disableImpact.wouldBeBlocked.toLocaleString()} คน</p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500">ไม่สามารถประเมินผลกระทบได้</p>
+            )}
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-white/[0.05] border-white/[0.08] text-gray-300 hover:bg-white/[0.1] hover:text-white">ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDisableBadge} className="bg-red-600 hover:bg-red-700 text-white" disabled={saving || loadingDisableImpact}>
+              ปิดใช้งานแบดจ์
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -878,8 +1954,8 @@ function ContentManagementTab() {
   const [items, setItems] = useState<Array<{ id: string; data: Record<string, unknown> }>>([]);
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
-  const [editingItem, setEditingItem] = useState<{ id: string; data: Record<string, any> } | null>(null);
-  const [newItem, setNewItem] = useState<Record<string, any>>({});
+  const [editingItem, setEditingItem] = useState<{ id: string; data: Record<string, unknown> } | null>(null);
+  const [newItem, setNewItem] = useState<Record<string, unknown>>({});
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const loadItems = useCallback(async () => {
@@ -1298,11 +2374,26 @@ function StorageBrowserTab() {
     { label: 'สแกนอาหาร', path: 'nutrition-scans', icon: Image },
   ];
 
+  const handleExportStorageCsv = () => {
+    const rows = items.map((item) => ({
+      currentPath,
+      name: item.name,
+      fullPath: item.fullPath,
+      type: item.isFolder ? 'folder' : 'file',
+    }));
+    exportRowsToCsv(`kaya-storage-${(currentPath || 'root').replace(/[\\/]/g, '-')}-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+  };
+
   return (
     <div>
       <SectionHeader
         title="จัดการไฟล์"
         subtitle="Firebase Cloud Storage"
+        action={
+          <Button variant="outline" size="sm" onClick={handleExportStorageCsv} className="h-8 text-xs border-white/[0.1] text-gray-300 hover:text-white hover:bg-white/[0.06]">
+            <Download className="w-3.5 h-3.5 mr-1" />CSV
+          </Button>
+        }
       />
 
       {/* Quick Nav */}
@@ -1418,8 +2509,21 @@ function StorageBrowserTab() {
               {String(filePreview.metadata?.contentType || '').startsWith('audio/') && (
                 <audio controls src={filePreview.url} className="w-full" />
               )}
-              <div className="p-3 rounded-lg overflow-auto max-h-48 bg-white/[0.03] border border-white/[0.06]">
-                  <DynamicViewer data={filePreview.metadata} />
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                {Object.entries(filePreview.metadata).slice(0, 6).map(([key, value]) => (
+                  <div key={key} className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-2.5 py-2">
+                    <p className="text-gray-500">{prettyFieldLabel(key)}</p>
+                    <p className="text-gray-200 font-medium truncate">{formatReadableValue(value)}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="p-3 rounded-lg overflow-auto max-h-64 bg-white/[0.03] border border-white/[0.06]">
+                <p className="text-xs text-gray-400 mb-2">ข้อมูลไฟล์ (JSON)</p>
+                <textarea
+                  readOnly
+                  className="w-full min-h-[180px] resize-y font-mono text-sm leading-6 p-3 bg-black/35 border border-white/[0.08] rounded-lg text-gray-200 outline-none"
+                  value={JSON.stringify(filePreview.metadata, null, 2)}
+                />
               </div>
               <div className="flex gap-2">
                 <a href={filePreview.url} target="_blank" rel="noreferrer">
@@ -1458,13 +2562,18 @@ function FirestoreExplorerTab() {
   const [documents, setDocuments] = useState<Array<{ id: string; data: Record<string, unknown> }>>([]);
   const [loading, setLoading] = useState(false);
   const [showDocDialog, setShowDocDialog] = useState(false);
-  const [editDoc, setEditDoc] = useState<{ id: string; data: Record<string, any> } | null>(null);
+  const [editDoc, setEditDoc] = useState<{ id: string; data: Record<string, unknown> } | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newDocId, setNewDocId] = useState('');
-  const [newDocItem, setNewDocItem] = useState<Record<string, any>>({});
+  const [newDocItem, setNewDocItem] = useState<Record<string, unknown>>({});
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [subcollectionView, setSubcollectionView] = useState<{ parentCol: string; parentId: string; subName: string } | null>(null);
   const [subDocs, setSubDocs] = useState<Array<{ id: string; data: Record<string, unknown> }>>([]);
+
+  const previewEntries = useMemo(() => {
+    if (!editDoc) return [] as Array<[string, unknown]>;
+    return Object.entries(editDoc.data).slice(0, 10);
+  }, [editDoc]);
 
   const loadCollection = useCallback(async () => {
     setLoading(true);
@@ -1480,7 +2589,7 @@ function FirestoreExplorerTab() {
 
   useEffect(() => { loadCollection(); }, [loadCollection]);
 
-  const handleViewDoc = (d: { id: string; data: Record<string, any> }) => {
+  const handleViewDoc = (d: { id: string; data: Record<string, unknown> }) => {
     setEditDoc({ id: d.id, data: d.data });
     setShowDocDialog(true);
   };
@@ -1532,6 +2641,16 @@ function FirestoreExplorerTab() {
     }
   };
 
+  const handleExportFirestoreCsv = () => {
+    const rows = documents.map((item) => ({
+      collection: selectedCollection,
+      docId: item.id,
+      fieldsCount: Object.keys(item.data || {}).length,
+      data: JSON.stringify(item.data || {}),
+    }));
+    exportRowsToCsv(`kaya-firestore-${selectedCollection}-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+  };
+
   return (
     <div>
       <SectionHeader
@@ -1539,6 +2658,9 @@ function FirestoreExplorerTab() {
         subtitle="เรียกดูและแก้ไขข้อมูล"
         action={
           <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={handleExportFirestoreCsv} className="h-8 px-3 text-xs border-white/[0.1] text-gray-300 hover:text-white hover:bg-white/[0.06]">
+              <Download className="w-3.5 h-3.5 mr-1" />CSV
+            </Button>
             <Button size="sm" onClick={() => setShowCreateDialog(true)} className="bg-orange-500 hover:bg-orange-600 text-white h-8 px-3 text-xs rounded-lg">
               <Plus className="w-3.5 h-3.5 mr-1" />เอกสารใหม่
             </Button>
@@ -1551,7 +2673,7 @@ function FirestoreExplorerTab() {
 
       {/* Collection Selector */}
       <div className="flex gap-3 items-center mb-4">
-        <span className="text-xs font-medium text-gray-500">Collection:</span>
+        <span className="text-sm font-medium text-gray-300">Collection:</span>
         <Select value={selectedCollection} onValueChange={setSelectedCollection}>
           <SelectTrigger className="w-56 bg-white/[0.03] border-white/[0.08] text-gray-200 h-9 rounded-lg">
             <SelectValue />
@@ -1562,7 +2684,7 @@ function FirestoreExplorerTab() {
             ))}
           </SelectContent>
         </Select>
-        <span className="text-[10px] text-gray-600 bg-white/[0.03] px-2 py-1 rounded-md border border-white/[0.06]">
+        <span className="text-xs text-gray-400 bg-white/[0.03] px-2 py-1 rounded-md border border-white/[0.06]">
           {documents.length} docs
         </span>
       </div>
@@ -1584,8 +2706,17 @@ function FirestoreExplorerTab() {
                   <Database className="w-4 h-4 text-blue-400" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-mono text-gray-300 truncate">{truncate(d.id, 32)}</p>
-                  <p className="text-[10px] text-gray-600 truncate">{truncate(JSON.stringify(d.data), 80)}</p>
+                  <p className="text-sm font-mono text-gray-200 truncate">{truncate(d.id, 40)}</p>
+                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                    {Object.keys(d.data).slice(0, 5).map((key) => (
+                      <span key={key} className="text-xs px-2 py-0.5 rounded-md bg-white/[0.03] border border-white/[0.08] text-gray-400">
+                        {prettyFieldLabel(key)}
+                      </span>
+                    ))}
+                    {Object.keys(d.data).length > 5 && (
+                      <span className="text-xs text-gray-500">+{Object.keys(d.data).length - 5} fields</span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg"
@@ -1611,12 +2742,22 @@ function FirestoreExplorerTab() {
 
       {/* Edit Doc Dialog */}
       <Dialog open={showDocDialog} onOpenChange={v => { if (!v) { setShowDocDialog(false); setEditDoc(null); } }}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto bg-[#1a1d2e] border-white/[0.08] text-gray-200">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto bg-[#1a1d2e] border-white/[0.08] text-gray-200">
           <DialogHeader>
-            <DialogTitle className="text-sm text-white">
+            <DialogTitle className="text-base text-white">
               <span className="text-gray-500">{selectedCollection}/</span>{editDoc?.id}
             </DialogTitle>
           </DialogHeader>
+          {editDoc && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
+              {previewEntries.map(([key, value]) => (
+                <div key={key} className="p-2.5 rounded-lg bg-white/[0.03] border border-white/[0.08]">
+                  <p className="text-xs text-gray-500 mb-0.5">{prettyFieldLabel(key)}</p>
+                  <p className="text-sm text-gray-200 break-all">{formatReadableValue(value)}</p>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="py-2">
              {editDoc && (
                <RecursiveEditor 
@@ -1698,6 +2839,194 @@ function FirestoreExplorerTab() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+function AuditLogsTab() {
+  const [logs, setLogs] = useState<AdminAuditLogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionFilter, setActionFilter] = useState('all');
+  const [actorFilter, setActorFilter] = useState('');
+  const [timeFilter, setTimeFilter] = useState<'all' | 'today' | '7d' | '30d' | 'custom'>('all');
+  const [customStart, setCustomStart] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6);
+    return d.toISOString().slice(0, 10);
+  });
+  const [customEnd, setCustomEnd] = useState(() => new Date().toISOString().slice(0, 10));
+
+  const loadLogs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await listAdminAuditLogs(300);
+      setLogs(data);
+    } catch {
+      toast.error('โหลด audit log ไม่สำเร็จ');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadLogs();
+  }, [loadLogs]);
+
+  const actions = useMemo(() => Array.from(new Set(logs.map((item) => item.action).filter(Boolean))), [logs]);
+
+  const filteredLogs = useMemo(() => {
+    const now = new Date();
+    const startOfToday = new Date(now);
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const customStartDate = new Date(customStart);
+    customStartDate.setHours(0, 0, 0, 0);
+    const customEndDate = new Date(customEnd);
+    customEndDate.setHours(23, 59, 59, 999);
+
+    return logs.filter((item) => {
+      if (actionFilter !== 'all' && item.action !== actionFilter) return false;
+      const q = actorFilter.trim().toLowerCase();
+      const textMatch = !q || (
+        String(item.actorName || '').toLowerCase().includes(q)
+        || String(item.actorUserId || '').toLowerCase().includes(q)
+        || String(item.summary || '').toLowerCase().includes(q)
+      );
+
+      const createdDate = toDateFromUnknown(item.createdAt);
+      let timeMatch = true;
+      if (timeFilter === 'today') {
+        timeMatch = !!createdDate && createdDate >= startOfToday;
+      } else if (timeFilter === '7d') {
+        const from = new Date(startOfToday);
+        from.setDate(from.getDate() - 6);
+        timeMatch = !!createdDate && createdDate >= from;
+      } else if (timeFilter === '30d') {
+        const from = new Date(startOfToday);
+        from.setDate(from.getDate() - 29);
+        timeMatch = !!createdDate && createdDate >= from;
+      } else if (timeFilter === 'custom') {
+        if (Number.isNaN(customStartDate.getTime()) || Number.isNaN(customEndDate.getTime()) || customEndDate < customStartDate) {
+          timeMatch = false;
+        } else {
+          timeMatch = !!createdDate && createdDate >= customStartDate && createdDate <= customEndDate;
+        }
+      }
+
+      return textMatch && timeMatch;
+    });
+  }, [logs, actionFilter, actorFilter, timeFilter, customStart, customEnd]);
+
+  const timeFilterInvalid = useMemo(() => {
+    if (timeFilter !== 'custom') return false;
+    const start = new Date(customStart);
+    const end = new Date(customEnd);
+    return Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start;
+  }, [timeFilter, customStart, customEnd]);
+
+  return (
+    <div>
+      <SectionHeader
+        title="Audit Log"
+        subtitle={`บันทึกการแก้ไขล่าสุด ${filteredLogs.length} รายการ`}
+        action={
+          <Button variant="ghost" size="sm" onClick={loadLogs} disabled={loading} className="text-gray-400 hover:text-white hover:bg-white/[0.06] h-8">
+            <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+          </Button>
+        }
+      />
+
+      <div className="grid md:grid-cols-3 gap-2 mb-3">
+        <Select value={actionFilter} onValueChange={setActionFilter}>
+          <SelectTrigger className="bg-white/[0.03] border-white/[0.08] text-gray-200">
+            <SelectValue placeholder="เลือก action" />
+          </SelectTrigger>
+          <SelectContent className="bg-[#1a1d2e] border-white/[0.08]">
+            <SelectItem value="all" className="text-gray-200">ทั้งหมด</SelectItem>
+            {actions.map((action) => (
+              <SelectItem key={action} value={action} className="text-gray-200">{action}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          value={actorFilter}
+          onChange={(e) => setActorFilter(e.target.value)}
+          placeholder="ค้นหาตามชื่อแอดมินหรือ userId"
+          className="bg-white/[0.03] border-white/[0.08] text-gray-200 placeholder:text-gray-600"
+        />
+        <Select value={timeFilter} onValueChange={(value: 'all' | 'today' | '7d' | '30d' | 'custom') => setTimeFilter(value)}>
+          <SelectTrigger className="bg-white/[0.03] border-white/[0.08] text-gray-200">
+            <SelectValue placeholder="ช่วงเวลา" />
+          </SelectTrigger>
+          <SelectContent className="bg-[#1a1d2e] border-white/[0.08]">
+            <SelectItem value="all" className="text-gray-200">ทุกช่วงเวลา</SelectItem>
+            <SelectItem value="today" className="text-gray-200">วันนี้</SelectItem>
+            <SelectItem value="7d" className="text-gray-200">7 วันล่าสุด</SelectItem>
+            <SelectItem value="30d" className="text-gray-200">30 วันล่าสุด</SelectItem>
+            <SelectItem value="custom" className="text-gray-200">กำหนดเอง</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {timeFilter === 'custom' && (
+        <div className="flex flex-wrap items-end gap-2 mb-4">
+          <div>
+            <p className="text-xs text-gray-500 mb-1">เริ่ม</p>
+            <Input
+              type="date"
+              value={customStart}
+              onChange={(e) => setCustomStart(e.target.value)}
+              className="h-9 text-sm bg-white/[0.03] border-white/[0.08] text-gray-200"
+            />
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 mb-1">สิ้นสุด</p>
+            <Input
+              type="date"
+              value={customEnd}
+              onChange={(e) => setCustomEnd(e.target.value)}
+              className="h-9 text-sm bg-white/[0.03] border-white/[0.08] text-gray-200"
+            />
+          </div>
+          {timeFilterInvalid && <p className="text-xs text-red-400 pb-2">ช่วงวันที่ไม่ถูกต้อง</p>}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-orange-400" /></div>
+      ) : filteredLogs.length === 0 ? (
+        <GlassCard className="p-8 text-center">
+          <History className="w-10 h-10 text-gray-600 mx-auto mb-3" />
+          <p className="text-sm text-gray-500">ยังไม่มีบันทึกที่ตรงกับเงื่อนไข</p>
+        </GlassCard>
+      ) : (
+        <div className="space-y-2">
+          {filteredLogs.map((item) => (
+            <GlassCard key={item.id} className="p-3 border-white/[0.08]">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-300 border border-orange-500/20">{item.action}</span>
+                    <span className="text-xs text-gray-500">{formatTimestamp(item.createdAt)}</span>
+                  </div>
+                  <p className="text-sm text-white mt-1">{item.summary}</p>
+                  <p className="text-xs text-gray-500 mt-1">โดย {item.actorName || '-'} ({item.actorUserId || '-'})</p>
+                  {(item.targetCollection || item.targetId) && (
+                    <p className="text-xs text-gray-500 mt-1">เป้าหมาย: {item.targetCollection || '-'} / {item.targetId || '-'}</p>
+                  )}
+                </div>
+                {item.details && (
+                  <div className="max-w-[360px] w-full hidden md:block">
+                    <pre className="text-[10px] font-mono leading-5 p-2 rounded-lg bg-black/30 border border-white/[0.08] text-gray-400 overflow-x-auto">
+                      {JSON.stringify(item.details, null, 2)}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            </GlassCard>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
